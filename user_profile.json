@@ -34,7 +34,7 @@
     "therapist_followup_tone": "soft"
   },
   "progress": {
-    "sessions_count": 11,
+    "sessions_count": 12,
     "goals_created": 0,
     "goals_completed": 0,
     "last_session_date": "2026-02-24",
@@ -109,7 +109,9 @@
   },
   "environment": {
     "last_scene_key": "balanced_default",
-    "last_scene_applied_at": "2026-02-24T20:25:48"
+    "last_scene_applied_at": "2026-02-24T20:25:48",
+    "last_preload_phase": "sleep",
+    "last_preload_at": "2026-02-24T21:53:40"
   },
   "personality_runtime": {
     "emotion_history": [
@@ -415,6 +417,10 @@
       {
         "ts": "2026-02-24T20:24:58",
         "text": "wake"
+      },
+      {
+        "ts": "2026-02-24T21:53:40",
+        "text": "hey smart bed"
       }
     ],
     "interrupt_count_today": 1,
@@ -422,7 +428,16 @@
     "quality_samples": 55,
     "quality_running_avg": 0.7496969696969696,
     "continuity_by_personality": {},
-    "last_voice_pacing": "balanced"
+    "last_voice_pacing": "balanced",
+    "cognitive_load_samples": [],
+    "brevity_mode": "normal",
+    "phrase_history": [
+      {
+        "ts": "2026-02-24T21:53:40",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      }
+    ]
   },
   "runtime_flags": {
     "breathing_offer_active": false,
