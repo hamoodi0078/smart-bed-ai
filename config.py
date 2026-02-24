@@ -59,11 +59,16 @@ class Settings:
     local_music_dir: str = os.getenv("LOCAL_MUSIC_DIR", "local_music")
     wake_word_mode: str = os.getenv("WAKE_WORD_MODE", "keyboard")
     wake_word_phrase: str = os.getenv("WAKE_WORD_PHRASE", "hey smart bed")
+    wake_word_enforce_local: bool = os.getenv("WAKE_WORD_ENFORCE_LOCAL", "1") == "1"
     wake_word_mic_index: int = _env_int("WAKE_WORD_MIC_INDEX", -1)
     wake_word_voice_timeout_seconds: int = _env_int("WAKE_WORD_TIMEOUT_SECONDS", 3)
     wake_word_phrase_limit_seconds: int = _env_int("WAKE_WORD_PHRASE_LIMIT_SECONDS", 3)
     wake_word_barge_in_timeout_seconds: int = _env_int("WAKE_WORD_BARGE_IN_TIMEOUT_SECONDS", 1)
     wake_word_barge_in_phrase_limit_seconds: int = _env_int("WAKE_WORD_BARGE_IN_PHRASE_LIMIT_SECONDS", 1)
+    enable_sensor_bridge: bool = os.getenv("ENABLE_SENSOR_BRIDGE", "1") == "1"
+    sensor_pressure_enabled: bool = os.getenv("SENSOR_PRESSURE_ENABLED", "0") == "1"
+    sensor_motion_enabled: bool = os.getenv("SENSOR_MOTION_ENABLED", "0") == "1"
+    aec_min_confidence_when_playing: float = float(os.getenv("AEC_MIN_CONFIDENCE_WHEN_PLAYING", "0.72"))
     spotify_access_token: str = os.getenv("SPOTIFY_ACCESS_TOKEN", "")
     spotify_device_id: str = os.getenv("SPOTIFY_DEVICE_ID", "")
     spotify_default_playlist_uri: str = os.getenv("SPOTIFY_DEFAULT_PLAYLIST_URI", "")

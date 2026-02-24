@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 
 import requests
 
@@ -41,6 +42,25 @@ HUMAN_ENGAGEMENT_INSTRUCTION = (
     "When user shares emotion, reflect one specific phrase from their words, then one concrete next step. "
     "For 'teach/explain/tell me about' requests, include one vivid practical example in the first reply."
 )
+
+MOOD_LAYERS = {
+    "distressed": (
+        "Mood layer: user is distressed. Keep voice softer, validate first, and avoid performance pressure. "
+        "Use one stabilizing next step before any broader advice."
+    ),
+    "low_energy": (
+        "Mood layer: user energy is low. Keep sentences short, lower cognitive load, and offer one tiny action."
+    ),
+    "motivated": (
+        "Mood layer: user is motivated. Keep momentum with concise and concrete action language."
+    ),
+    "dream_negative": (
+        "Mood layer: user may be emotionally fragile after a negative dream. Prioritize calm reassurance and safety."
+    ),
+    "dream_positive": (
+        "Mood layer: user has positive affect. Keep warmth and support momentum gently."
+    ),
+}
 
 
 def _build_temporal_grounding_message() -> str:
@@ -85,27 +105,16 @@ class ConversationEngine:
         self.max_history_turns = 6
         self.history = []
 
-    def generate_response(
+    def _build_messages(
         self,
         user_text: str,
-        personality: str = "therapist",
-        realtime_context: str = "",
-        user_context: str = "",
-        quick_timeout_seconds: int = 4,
-        total_timeout_seconds: int = 10,
-        max_response_tokens: int = 120,
-    ) -> str:
+        personality: str,
+        realtime_context: str,
+        user_context: str,
+        emotion_state: str = "neutral",
+    ) -> list[dict]:
         personality = personality.lower().strip()
         system_prompt = SYSTEM_PROMPTS.get(personality, SYSTEM_PROMPTS["guide"])
-
-        if not self.api_key:
-            return self._fallback_response(user_text, personality)
-
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
 
         conversation_messages = [{"role": "system", "content": system_prompt}]
         conversation_messages.append(
@@ -116,6 +125,12 @@ class ConversationEngine:
         if method_pack:
             conversation_messages.append({"role": "system", "content": method_pack})
         conversation_messages.append({"role": "system", "content": SESSION_ARC_INSTRUCTION})
+
+        mood_key = str(emotion_state or "neutral").strip().lower()
+        mood_layer = MOOD_LAYERS.get(mood_key)
+        if mood_layer:
+            conversation_messages.append({"role": "system", "content": mood_layer})
+
         if user_context.strip():
             conversation_messages.append(
                 {
@@ -139,6 +154,37 @@ class ConversationEngine:
             )
         conversation_messages.extend(self.history)
         conversation_messages.append({"role": "user", "content": user_text})
+        return conversation_messages
+
+    def generate_response(
+        self,
+        user_text: str,
+        personality: str = "therapist",
+        realtime_context: str = "",
+        user_context: str = "",
+        emotion_state: str = "neutral",
+        quick_timeout_seconds: int = 4,
+        total_timeout_seconds: int = 10,
+        max_response_tokens: int = 120,
+    ) -> str:
+        personality = personality.lower().strip()
+
+        if not self.api_key:
+            return self._fallback_response(user_text, personality)
+
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        conversation_messages = self._build_messages(
+            user_text=user_text,
+            personality=personality,
+            realtime_context=realtime_context,
+            user_context=user_context,
+            emotion_state=emotion_state,
+        )
 
         payload = {
             "model": self.model,
@@ -177,6 +223,84 @@ class ConversationEngine:
         max_messages = self.max_history_turns * 2
         if len(self.history) > max_messages:
             self.history = self.history[-max_messages:]
+
+    def generate_response_stream(
+        self,
+        user_text: str,
+        personality: str = "therapist",
+        realtime_context: str = "",
+        user_context: str = "",
+        emotion_state: str = "neutral",
+        total_timeout_seconds: int = 15,
+        max_response_tokens: int = 140,
+    ):
+        personality = personality.lower().strip()
+        if not self.api_key:
+            yield self._fallback_response(user_text, personality)
+            return
+
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model,
+            "temperature": 0.6,
+            "max_tokens": max(40, int(max_response_tokens)),
+            "stream": True,
+            "messages": self._build_messages(
+                user_text=user_text,
+                personality=personality,
+                realtime_context=realtime_context,
+                user_context=user_context,
+                emotion_state=emotion_state,
+            ),
+        }
+
+        collected = []
+        try:
+            with requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=max(4, int(total_timeout_seconds)),
+                stream=True,
+            ) as response:
+                response.raise_for_status()
+                for raw_line in response.iter_lines(decode_unicode=True):
+                    if not raw_line:
+                        continue
+                    line = str(raw_line).strip()
+                    if not line.startswith("data:"):
+                        continue
+
+                    data_str = line[5:].strip()
+                    if data_str == "[DONE]":
+                        break
+
+                    try:
+                        event = json.loads(data_str)
+                    except Exception:
+                        continue
+
+                    choices = event.get("choices") or []
+                    if not choices:
+                        continue
+
+                    delta = choices[0].get("delta") or {}
+                    chunk = str(delta.get("content", "") or "")
+                    if not chunk:
+                        continue
+                    collected.append(chunk)
+                    yield chunk
+        except Exception:
+            yield self._fallback_response(user_text, personality)
+            return
+
+        assistant_text = "".join(collected).strip()
+        if assistant_text:
+            self._append_history(user_text, assistant_text)
 
     @staticmethod
     def _fallback_response(user_text: str, personality: str) -> str:

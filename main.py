@@ -1,10 +1,15 @@
 from datetime import datetime, timedelta
 import re
+import threading
+import time
 from zoneinfo import ZoneInfo
 
 from ai.audio_output_manager import AudioOutputManager
 from ai.action_resolver import resolve_action
+from ai.acoustic_echo_guard import AcousticEchoGuard
+from ai.barge_in_monitor import ContinuousBargeInMonitor
 from ai.bed_backend_client import BedBackendClient
+from ai.conversational_fillers import ConversationalFillerManager
 from ai.conversation_engine import ConversationEngine
 from ai.audio_playback_controller import AudioPlaybackController
 from ai.device_health import format_health_report, run_device_health_checks
@@ -27,11 +32,15 @@ from ai.adaptive_personality_engine import AdaptivePersonalityEngine
 from ai.breathing_guide_engine import BreathingGuideEngine
 from ai.dream_journal_manager import DreamJournalManager
 from ai.realtime_info import fetch_realtime_context, is_realtime_query
+from ai.realtime_voice_pipeline import RealtimeVoicePipeline
 from ai.routine_engine import RoutineEngine
 from ai.safety_guardrails import evaluate_safety
+from ai.safety_valve import SafetyValve
 from ai.session_goal_manager import SessionGoalManager
+from ai.sensor_bridge import SensorBridge
 from ai.signature_experiences import SignatureExperienceEngine
 from ai.sleep_intelligence import SleepIntelligenceEngine
+from ai.long_term_memory import LongTermMemoryStore
 from ai.personality_runtime import PersonalityRuntimeOrchestrator
 from ai.sleep_routine_manager import SleepRoutineManager
 from ai.spotify_manager import SpotifyManager
@@ -2230,6 +2239,32 @@ def _split_for_fast_tts_start(text: str, head_limit_chars: int = 140) -> tuple[s
     return head, tail
 
 
+def _infer_interim_intent_hint(text: str) -> dict:
+    normalized = normalize_for_intent(text)
+    if not normalized:
+        return {}
+
+    words = [w for w in normalized.split(" ") if w]
+    has = lambda *tokens: any(t in normalized for t in tokens)
+
+    if has("set alarm", "alarm for", "wake me"):
+        return {"intent": "set_alarm", "category": "control", "normalized": normalized}
+    if "timer" in words and has("set", "start", "for"):
+        return {"intent": "set_timer", "category": "control", "normalized": normalized}
+    if has("pause music", "pause spotify", "stop music"):
+        return {"intent": "music_pause", "category": "control", "normalized": normalized}
+    if has("resume music", "play music", "play spotify"):
+        return {"intent": "music_play", "category": "control", "normalized": normalized}
+    if has("next song", "skip song", "previous song", "prev song"):
+        return {"intent": "music_transport", "category": "control", "normalized": normalized}
+
+    led_action, _slots, _confidence = detect_led_command(text)
+    if led_action:
+        return {"intent": "lighting", "category": "control", "normalized": normalized}
+
+    return {}
+
+
 def play_tts_with_fast_start(
     tts: TTSManager,
     tts_player: AudioPlaybackController,
@@ -2272,7 +2307,104 @@ def play_tts_with_fast_start(
     return head_audio
 
 
-def get_query_text(stt_manager: STTManager, wake_word_manager: WakeWordManager) -> tuple[str, float]:
+def run_streaming_voice_turn(
+    *,
+    chat: ConversationEngine,
+    realtime_voice_pipeline: RealtimeVoicePipeline,
+    filler_manager: ConversationalFillerManager,
+    barge_in_monitor: ContinuousBargeInMonitor,
+    echo_guard: AcousticEchoGuard,
+    tts: TTSManager,
+    tts_player: AudioPlaybackController,
+    led: LEDController,
+    user_text_for_ai: str,
+    personality: str,
+    realtime_context: str,
+    user_context: str,
+    emotion_state: str,
+    voice_override: str,
+    pace_override: float,
+    total_timeout_seconds: int,
+    max_response_tokens: int,
+) -> tuple[str, str]:
+    interrupted = {"text": ""}
+    first_chunk_seen = threading.Event()
+    watch_stop = threading.Event()
+
+    def _should_stop() -> bool:
+        return bool(interrupted["text"])
+
+    def _on_barge_in(text: str, confidence: float):
+        if not echo_guard.should_accept_barge_in(
+            playback_active=tts_player.is_playing(),
+            text=text,
+            confidence=confidence,
+        ):
+            return
+        interrupted["text"] = str(text or "").strip()
+        tts_player.stop()
+        led.set_state("listening")
+
+    stream_started_at = time.monotonic()
+
+    def _filler_watcher():
+        while (not watch_stop.is_set()) and (not first_chunk_seen.is_set()) and (not _should_stop()):
+            elapsed = time.monotonic() - stream_started_at
+            if filler_manager.should_play(elapsed) and tts_player.is_ready():
+                filler = filler_manager.pick()
+                if filler:
+                    filler_audio = tts.synthesize_to_mp3(
+                        filler,
+                        filename="thinking_filler.mp3",
+                        voice_override=voice_override,
+                        pace_override=1.05,
+                    )
+                    tts_player.play_file(filler_audio)
+                return
+            time.sleep(0.05)
+
+    watcher = threading.Thread(target=_filler_watcher, name="filler-watcher", daemon=True)
+    watcher.start()
+
+    barge_in_monitor.start(_on_barge_in)
+    response_text = ""
+    try:
+        def _chunk_source():
+            for chunk in chat.generate_response_stream(
+                user_text_for_ai,
+                personality=personality,
+                realtime_context=realtime_context,
+                user_context=user_context,
+                emotion_state=emotion_state,
+                total_timeout_seconds=total_timeout_seconds,
+                max_response_tokens=max_response_tokens,
+            ):
+                if _should_stop():
+                    break
+                text_chunk = str(chunk or "")
+                if text_chunk:
+                    first_chunk_seen.set()
+                    yield text_chunk
+
+        response_text = realtime_voice_pipeline.speak_from_text_stream(
+            _chunk_source(),
+            voice_override=voice_override,
+            pace_override=pace_override,
+            should_stop=_should_stop,
+        )
+    finally:
+        watch_stop.set()
+        first_chunk_seen.set()
+        barge_in_monitor.stop()
+
+    return response_text, interrupted["text"]
+
+
+def get_query_text(
+    stt_manager: STTManager,
+    wake_word_manager: WakeWordManager,
+    interim_intent_callback=None,
+) -> tuple[str, float]:
     if wake_word_manager.is_voice_available():
         text, confidence = "", 0.0
         stream_capture = getattr(stt_manager, "transcribe_microphone_with_interim", None)
@@ -2280,6 +2412,7 @@ def get_query_text(stt_manager: STTManager, wake_word_manager: WakeWordManager) 
             phrase_limit = wake_word_manager.get_voice_phrase_limit_seconds()
             max_phrase_seconds = float(phrase_limit) if isinstance(phrase_limit, int) and phrase_limit > 0 else 16.0
             last_interim = {"text": ""}
+            last_hint = {"key": ""}
 
             def _on_interim(interim_text: str, _score: float):
                 cleaned = str(interim_text or "").strip()
@@ -2289,6 +2422,17 @@ def get_query_text(stt_manager: STTManager, wake_word_manager: WakeWordManager) 
                     return
                 last_interim["text"] = cleaned
                 print(f"Bed (interim): {cleaned}")
+
+                if interim_intent_callback is None:
+                    return
+                hint = _infer_interim_intent_hint(cleaned)
+                if not hint:
+                    return
+                hint_key = f"{hint.get('intent', '')}|{hint.get('normalized', '')}"
+                if hint_key == last_hint["key"]:
+                    return
+                last_hint["key"] = hint_key
+                interim_intent_callback(hint)
 
             text, confidence = stream_capture(
                 mic_device_index=wake_word_manager.get_active_mic_index(),
@@ -4065,9 +4209,17 @@ def main():
     adaptive_personality = AdaptivePersonalityEngine()
     proactive_engine = ProactiveAutomationEngine()
     signature_engine = SignatureExperienceEngine()
+    filler_manager = ConversationalFillerManager()
+    safety_valve = SafetyValve()
+    memory_store = LongTermMemoryStore()
+    sensor_bridge = SensorBridge()
+    echo_guard = AcousticEchoGuard(
+        min_confidence_when_playing=settings.aec_min_confidence_when_playing,
+    )
     wake_word_manager = WakeWordManager(
         mode=settings.wake_word_mode,
         wake_word=settings.wake_word_phrase,
+        enforce_local_wake=settings.wake_word_enforce_local,
         voice_timeout_seconds=settings.wake_word_voice_timeout_seconds,
         voice_phrase_limit_seconds=settings.wake_word_phrase_limit_seconds,
         barge_in_timeout_seconds=settings.wake_word_barge_in_timeout_seconds,
@@ -4095,6 +4247,8 @@ def main():
         voice=settings.tts_voice,
         timeout_seconds=settings.openai_timeout_seconds,
     )
+    realtime_voice_pipeline = RealtimeVoicePipeline(tts, tts_player)
+    barge_in_monitor = ContinuousBargeInMonitor(wake_word_manager)
     stt.warm_up()
     routine_engine.set_breathing_guide(breathing_guide)
     breathing_guide.set_led_controller(led)
@@ -4201,6 +4355,10 @@ def main():
     sleep_engine.ensure_shape(profile)
     runtime_orchestrator.ensure_shape(profile)
     proactive_engine.ensure_shape(profile)
+    safety_valve.ensure_shape(profile)
+    profile.setdefault("runtime_flags", {})
+    profile["runtime_flags"].setdefault("sensor_pressure_active", False)
+    profile["runtime_flags"].setdefault("sensor_motion_active", False)
     stt.language_hint = str(profile.get("preferences", {}).get("language", "auto") or "auto")
     output_ok, _ = audio_output.ensure_output(profile)
     if not output_ok:
@@ -4227,6 +4385,29 @@ def main():
 
     while True:
         process_due_alarms()
+        if settings.enable_sensor_bridge:
+            runtime_flags = profile.get("runtime_flags", {})
+            pressure_active = bool(runtime_flags.get("sensor_pressure_active", False)) and bool(settings.sensor_pressure_enabled)
+            motion_active = bool(runtime_flags.get("sensor_motion_active", False)) and bool(settings.sensor_motion_enabled)
+            sensor_event = sensor_bridge.classify_event(
+                pressure_active=pressure_active,
+                motion_active=motion_active,
+                now=datetime.now(),
+            )
+            if sensor_event:
+                proactive_greeting = sensor_bridge.proactive_greeting(sensor_event, user_name=profile.get("name", ""))
+                if proactive_greeting:
+                    led.set_state("speaking")
+                    proactive_audio = play_tts_with_fast_start(
+                        tts,
+                        tts_player,
+                        proactive_greeting,
+                        voice_override=get_personality_voice(profile),
+                    )
+                    print(f"Bed: {proactive_greeting}")
+                    if proactive_audio:
+                        print(f"Bed: Audio saved at {proactive_audio}")
+                    led.set_state("standby")
         wake_text = wake_word_manager.wait_for_wake_text()
         runtime_orchestrator.record_wake_phrase(profile, wake_text)
         save_profile(profile)
@@ -4471,10 +4652,25 @@ def main():
             process_due_alarms()
             stt.language_hint = str(profile.get("preferences", {}).get("language", "auto") or "auto")
             priority_followup_turn = bool(pending_user_text)
+            interim_intent_hint = {}
             if pending_user_text:
                 user_text, _query_confidence = pending_user_text, 1.0
             else:
-                user_text, _query_confidence = get_query_text(stt, wake_word_manager)
+                def _capture_interim_hint(hint: dict):
+                    nonlocal interim_intent_hint
+                    candidate = dict(hint or {})
+                    if not candidate:
+                        return
+                    if candidate == interim_intent_hint:
+                        return
+                    interim_intent_hint = candidate
+                    print(f"Bed (intent-prep): {candidate.get('intent', 'unknown')}")
+
+                user_text, _query_confidence = get_query_text(
+                    stt,
+                    wake_word_manager,
+                    interim_intent_callback=_capture_interim_hint,
+                )
             pending_user_text = ""
             lower_text = user_text.lower().strip()
 
@@ -4620,6 +4816,12 @@ def main():
             chosen_personality, _, _ = adaptive_personality.choose_personality(profile, emotion_state)
             if chosen_personality in ("therapist", "coach", "guide"):
                 personality = chosen_personality
+            personality, _safety_reason = safety_valve.apply(
+                profile,
+                base_personality=personality,
+                emotion_state=emotion_state,
+                safety_level="none",
+            )
 
             if personality == "coach":
                 tts_voice_for_turn = settings.tts_voice_coach
@@ -4662,7 +4864,22 @@ def main():
             )
             scene_line = environment_orchestrator.apply_scene(led, profile, scene)
             save_profile(profile)
-            realtime_query = is_realtime_query(user_text)
+            normalized_user_text = normalize_for_intent(user_text)
+            interim_normalized = str(interim_intent_hint.get("normalized", "")).strip()
+            preparsed_control_turn = bool(
+                interim_intent_hint.get("category") == "control"
+                and interim_normalized
+                and normalized_user_text
+                and (
+                    normalized_user_text in interim_normalized
+                    or interim_normalized in normalized_user_text
+                )
+            )
+
+            if preparsed_control_turn:
+                print(f"Bed: Fast path using preparsed intent '{interim_intent_hint.get('intent', 'control')}'.")
+
+            realtime_query = (not preparsed_control_turn) and is_realtime_query(user_text)
             realtime_context = ""
             effective_realtime_query = realtime_query and speed_tuning["allow_realtime_context"]
             if effective_realtime_query:
@@ -4671,12 +4888,11 @@ def main():
                     user_text, timeout_seconds=settings.openai_timeout_seconds
                 )
 
-            detailed_mode = wants_detailed_answer(user_text)
+            detailed_mode = (not preparsed_control_turn) and wants_detailed_answer(user_text)
             short_followup_mode = is_contextual_short_followup(user_text) or priority_followup_turn
             if detailed_mode:
                 speed_tuning["max_tokens"] = max(int(speed_tuning.get("max_tokens", 120)), 220)
                 speed_tuning["total_timeout"] = max(int(speed_tuning.get("total_timeout", 10)), 14)
-            normalized_user_text = normalize_for_intent(user_text)
             ultra_short_mode = len([w for w in normalized_user_text.split(" ") if w]) <= 2
             short_question_followup = normalized_user_text in {
                 "why",
@@ -4751,6 +4967,8 @@ def main():
                     "Be warm, genuine, and concise. Do not sound scripted."
                 )
 
+            response_audio_already_played = False
+            stream_interrupt_text = ""
             cached = None if (effective_realtime_query or detailed_mode or short_followup_mode or ultra_short_mode or long_prompt_mode or followup_active_turn) else cache.get(user_text, personality)
 
             if cached is not None:
@@ -4774,6 +4992,7 @@ def main():
                 if should_play_ack and tts_player.is_ready():
                     tts_player.play_file(ack_audio_file)
 
+                memory_context_line = memory_store.memory_prompt_line(user_text)
                 user_context = build_user_context(
                     profile,
                     goals_context=goal_manager.context_summary(profile),
@@ -4796,6 +5015,8 @@ def main():
                     daily_life_context=str(profile.get("daily_life", {}).get("last_coaching_tone", "")),
                     detailed_mode=detailed_mode,
                 )
+                if memory_context_line:
+                    user_context = (user_context + "\n" + memory_context_line).strip()
                 if (not settings.openai_api_key) or (not settings.use_api_first):
                     offline_response, handled_offline = offline_pack.handle(user_text)
                     if handled_offline:
@@ -4806,6 +5027,7 @@ def main():
                             personality=personality,
                             realtime_context=realtime_context,
                             user_context=user_context,
+                            emotion_state=emotion_state,
                             quick_timeout_seconds=speed_tuning["quick_timeout"],
                             total_timeout_seconds=speed_tuning["total_timeout"],
                             max_response_tokens=speed_tuning["max_tokens"],
@@ -4839,42 +5061,77 @@ def main():
                                 offline_response, handled_offline = offline_pack.handle(user_text)
                                 response_text = offline_response if handled_offline else cloud_text
                     else:
-                        if not effective_realtime_query:
+                        can_stream_this_turn = not effective_realtime_query
+                        if can_stream_this_turn:
+                            led.set_state("speaking")
+                            response_text, stream_interrupt_text = run_streaming_voice_turn(
+                                chat=chat,
+                                realtime_voice_pipeline=realtime_voice_pipeline,
+                                filler_manager=filler_manager,
+                                barge_in_monitor=barge_in_monitor,
+                                echo_guard=echo_guard,
+                                tts=tts,
+                                tts_player=tts_player,
+                                led=led,
+                                user_text_for_ai=user_text_for_ai,
+                                personality=personality,
+                                realtime_context=realtime_context,
+                                user_context=user_context,
+                                emotion_state=emotion_state,
+                                voice_override=tts_voice_for_turn,
+                                pace_override=pacing_speed,
+                                total_timeout_seconds=speed_tuning["total_timeout"],
+                                max_response_tokens=speed_tuning["max_tokens"],
+                            )
+                            if response_text:
+                                response_audio_already_played = True
+                        else:
                             led.set_state("thinking")
-                        response_text = chat.generate_response(
-                            user_text_for_ai,
-                            personality=personality,
-                            realtime_context=realtime_context,
-                            user_context=user_context,
-                            quick_timeout_seconds=speed_tuning["quick_timeout"],
-                            total_timeout_seconds=speed_tuning["total_timeout"],
-                            max_response_tokens=speed_tuning["max_tokens"],
-                        )
+                            response_text = chat.generate_response(
+                                user_text_for_ai,
+                                personality=personality,
+                                realtime_context=realtime_context,
+                                user_context=user_context,
+                                emotion_state=emotion_state,
+                                quick_timeout_seconds=speed_tuning["quick_timeout"],
+                                total_timeout_seconds=speed_tuning["total_timeout"],
+                                max_response_tokens=speed_tuning["max_tokens"],
+                            )
+
                         if response_text.startswith("(Offline fallback -"):
                             offline_response, handled_offline = offline_pack.handle(user_text)
                             if handled_offline:
                                 response_text = offline_response
 
-                tts_player.stop()
-
-                response_text, quality_tag = runtime_orchestrator.enforce_conversation_quality(
-                    profile,
-                    response_text=response_text,
-                    personality=personality,
-                    emotion_state=emotion_state,
-                )
-                response_style = str(
-                    profile.get("preferences", {}).get("response_style", "quick") or "quick"
-                ).strip().lower()
-                response_text = clamp_non_detail_response(
-                    response_text,
-                    detailed_mode=detailed_mode,
-                    response_style=response_style,
-                )
-                if followup_active_turn and therapist_followup_prompt.lower() not in response_text.lower():
-                    response_text = f"{therapist_followup_prompt} {response_text}".strip()
-                if quality_tag:
+                if stream_interrupt_text:
+                    runtime_orchestrator.record_interrupt(profile)
                     save_profile(profile)
+                    pending_user_text = stream_interrupt_text
+                    led.set_state("listening")
+                    continue
+
+                quality_tag = ""
+                if not response_audio_already_played:
+                    tts_player.stop()
+
+                    response_text, quality_tag = runtime_orchestrator.enforce_conversation_quality(
+                        profile,
+                        response_text=response_text,
+                        personality=personality,
+                        emotion_state=emotion_state,
+                    )
+                    response_style = str(
+                        profile.get("preferences", {}).get("response_style", "quick") or "quick"
+                    ).strip().lower()
+                    response_text = clamp_non_detail_response(
+                        response_text,
+                        detailed_mode=detailed_mode,
+                        response_style=response_style,
+                    )
+                    if followup_active_turn and therapist_followup_prompt.lower() not in response_text.lower():
+                        response_text = f"{therapist_followup_prompt} {response_text}".strip()
+                    if quality_tag:
+                        save_profile(profile)
 
                 adaptive_personality.record_interaction(
                     profile,
@@ -4896,6 +5153,12 @@ def main():
                 ):
                     cache.set(user_text, response_text, personality)
 
+            memory_store.record_turn(
+                user_text=user_text,
+                assistant_text=response_text,
+                emotion_state=emotion_state,
+                personality=personality,
+            )
             last_assistant_response = response_text
 
             led.set_state("speaking")
@@ -4906,26 +5169,31 @@ def main():
                 or ("breathing" in response_lower and "inhale" in response_lower and "exhale" in response_lower)
             )
             save_profile(profile)
-            audio_file = play_tts_with_fast_start(
-                tts,
-                tts_player,
-                response_text,
-                voice_override=tts_voice_for_turn,
-                pace_override=pacing_speed,
-            )
-            print(f"Bed: {response_text}")
-            print(f"Bed: Audio saved at {audio_file}")
-            if tts_player.is_playing():
-                print("Bed: Playing response audio now.")
+            if response_audio_already_played:
+                print(f"Bed: {response_text}")
+                if tts_player.is_playing():
+                    print("Bed: Streaming response audio now.")
+            else:
+                audio_file = play_tts_with_fast_start(
+                    tts,
+                    tts_player,
+                    response_text,
+                    voice_override=tts_voice_for_turn,
+                    pace_override=pacing_speed,
+                )
+                print(f"Bed: {response_text}")
+                print(f"Bed: Audio saved at {audio_file}")
+                if tts_player.is_playing():
+                    print("Bed: Playing response audio now.")
 
-            interrupt_text = wake_word_manager.capture_barge_in_text()
-            if interrupt_text:
-                runtime_orchestrator.record_interrupt(profile)
-                save_profile(profile)
-                tts_player.stop()
-                led.set_state("listening")
-                pending_user_text = interrupt_text
-                continue
+                interrupt_text = wake_word_manager.capture_barge_in_text()
+                if interrupt_text:
+                    runtime_orchestrator.record_interrupt(profile)
+                    save_profile(profile)
+                    tts_player.stop()
+                    led.set_state("listening")
+                    pending_user_text = interrupt_text
+                    continue
 
             led.set_state("listening")
 

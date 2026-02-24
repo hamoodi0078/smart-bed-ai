@@ -1,6 +1,8 @@
 import re
 from typing import Optional
 
+from ai.local_wake_word import LocalWakeWordDetector
+
 try:
     import speech_recognition as sr
 except Exception:  # pragma: no cover - optional runtime dependency
@@ -13,6 +15,7 @@ class WakeWordManager:
         mode: str = "keyboard",
         wake_word: str = "hey smart bed",
         wake_aliases: Optional[list[str]] = None,
+        enforce_local_wake: bool = True,
         voice_timeout_seconds: int = 5,
         voice_phrase_limit_seconds: int = 4,
         barge_in_timeout_seconds: int = 3,
@@ -21,6 +24,7 @@ class WakeWordManager:
     ):
         self.mode = (mode or "keyboard").strip().lower()
         self.wake_word = (wake_word or "hey smart bed").strip().lower()
+        self.enforce_local_wake = bool(enforce_local_wake)
         self.wake_aliases = []
         self.set_wake_aliases(wake_aliases or [])
         self.voice_timeout_seconds = max(2, int(voice_timeout_seconds))
@@ -31,6 +35,7 @@ class WakeWordManager:
 
         self._recognizer = sr.Recognizer() if sr is not None else None
         self._active_mic_index = self._preferred_mic_index
+        self._local_detector = LocalWakeWordDetector(primary_phrase=self.wake_word)
         self._voice_available = self._detect_voice_capability()
 
     def _detect_voice_capability(self) -> bool:
@@ -79,7 +84,7 @@ class WakeWordManager:
             return False
 
     def is_voice_mode(self) -> bool:
-        return self.mode == "voice"
+        return self.mode in ("voice", "voice_local")
 
     def is_voice_available(self) -> bool:
         return self.is_voice_mode() and self._voice_available
@@ -102,6 +107,10 @@ class WakeWordManager:
                 continue
             cleaned.append(item)
         self.wake_aliases = cleaned[:8]
+        self._local_detector = LocalWakeWordDetector(
+            primary_phrase=self.wake_word,
+            aliases=self.wake_aliases,
+        )
 
     def get_wake_phrases(self) -> list[str]:
         return [self.wake_word] + list(self.wake_aliases)
@@ -110,10 +119,15 @@ class WakeWordManager:
         lower = (text or "").lower().strip()
         if lower in {"wake", "hello"}:
             return True
+        if self.enforce_local_wake and self._local_detector.detect_in_text(lower):
+            return True
         for phrase in self.get_wake_phrases():
             if phrase and phrase in lower:
                 return True
         return False
+
+    def requires_local_wake(self) -> bool:
+        return bool(self.enforce_local_wake)
 
     def _clamp_confidence(self, value: float) -> float:
         return max(0.0, min(1.0, float(value)))
@@ -145,7 +159,7 @@ class WakeWordManager:
 
         print(f"Bed: Voice wake mode active. Say '{self.wake_word}'.")
         while True:
-            text = self._listen_once()
+            text = self._listen_once(local_only=self.enforce_local_wake)
             if not text:
                 continue
             lower = text.lower().strip()
@@ -212,14 +226,24 @@ class WakeWordManager:
         )
         return text.strip(), self._clamp_confidence(confidence)
 
-    def _listen_once(self, timeout_seconds: Optional[int] = None, phrase_limit_seconds: Optional[int] = None) -> str:
-        text, _ = self._listen_once_with_confidence(timeout_seconds=timeout_seconds, phrase_limit_seconds=phrase_limit_seconds)
+    def _listen_once(
+        self,
+        timeout_seconds: Optional[int] = None,
+        phrase_limit_seconds: Optional[int] = None,
+        local_only: bool = False,
+    ) -> str:
+        text, _ = self._listen_once_with_confidence(
+            timeout_seconds=timeout_seconds,
+            phrase_limit_seconds=phrase_limit_seconds,
+            local_only=local_only,
+        )
         return text
 
     def _listen_once_with_confidence(
         self,
         timeout_seconds: Optional[int] = None,
         phrase_limit_seconds: Optional[int] = None,
+        local_only: bool = False,
     ) -> tuple[str, float]:
         if self._recognizer is None:
             return "", 0.0
@@ -237,7 +261,21 @@ class WakeWordManager:
                     timeout=timeout_seconds,
                     phrase_time_limit=phrase_limit_seconds,
                 )
-            result = self._recognizer.recognize_google(audio, show_all=True)
+            result = None
+            if self.enforce_local_wake or local_only:
+                try:
+                    local_text = self._recognizer.recognize_sphinx(audio)
+                    local_text = str(local_text or "").strip()
+                    if local_text:
+                        return local_text, self._estimate_text_confidence(local_text)
+                except Exception:
+                    if local_only:
+                        return "", 0.0
+
+            try:
+                result = self._recognizer.recognize_google(audio, show_all=True)
+            except Exception:
+                result = None
 
             if isinstance(result, dict):
                 alternatives = result.get("alternative") or []
