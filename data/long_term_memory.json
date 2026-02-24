@@ -1,0 +1,18 @@
+{
+  "entries": [
+    {
+      "ts": "2026-02-24T20:25:19",
+      "user": "with anything",
+      "assistant": "It sounds like you’re open to exploring different topics! Is there something specific on your mind, or are you looking for suggestions?",
+      "emotion": "neutral",
+      "personality": "guide"
+    },
+    {
+      "ts": "2026-02-24T20:25:51",
+      "user": "what is my name ?",
+      "assistant": "Your name is Amjad! How can I assist you today?",
+      "emotion": "neutral",
+      "personality": "guide"
+    }
+  ]
+}

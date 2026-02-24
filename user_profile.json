@@ -34,10 +34,10 @@
     "therapist_followup_tone": "soft"
   },
   "progress": {
-    "sessions_count": 10,
+    "sessions_count": 11,
     "goals_created": 0,
     "goals_completed": 0,
-    "last_session_date": "2026-02-22",
+    "last_session_date": "2026-02-24",
     "last_goal_completion_date": "",
     "current_streak_days": 0,
     "best_streak_days": 0,
@@ -109,7 +109,7 @@
   },
   "environment": {
     "last_scene_key": "balanced_default",
-    "last_scene_applied_at": "2026-02-22T20:06:39"
+    "last_scene_applied_at": "2026-02-24T20:25:48"
   },
   "personality_runtime": {
     "emotion_history": [
@@ -332,6 +332,14 @@
       {
         "ts": "2026-02-22T20:06:39",
         "state": "neutral"
+      },
+      {
+        "ts": "2026-02-24T20:25:15",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-24T20:25:48",
+        "state": "neutral"
       }
     ],
     "priority_reminder_last_date": "",
@@ -399,6 +407,14 @@
       {
         "ts": "2026-02-22T20:38:20",
         "text": "exit"
+      },
+      {
+        "ts": "2026-02-24T20:24:28",
+        "text": "exit"
+      },
+      {
+        "ts": "2026-02-24T20:24:58",
+        "text": "wake"
       }
     ],
     "interrupt_count_today": 1,
@@ -414,7 +430,9 @@
     "bed_guide_step_index": 6,
     "awaiting_bed_nickname": false,
     "last_action": {},
-    "pending_action_resolve": {}
+    "pending_action_resolve": {},
+    "sensor_pressure_active": false,
+    "sensor_motion_active": false
   },
   "adaptive_personality": {
     "enabled": true,
@@ -804,6 +822,20 @@
         "emotion": "neutral",
         "score": 0.8,
         "sample": "hello bed"
+      },
+      {
+        "ts": "2026-02-24T20:25:19",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "with anything"
+      },
+      {
+        "ts": "2026-02-24T20:25:51",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "what is my name ?"
       }
     ],
     "last_selected": "guide"
@@ -841,5 +873,9 @@
     "sent_keys": [],
     "history": [],
     "verbosity": "normal"
+  },
+  "safety_valve": {
+    "distress_streak": 0,
+    "last_escalated_at": ""
   }
 }
