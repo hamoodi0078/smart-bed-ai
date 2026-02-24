@@ -75,3 +75,65 @@ def detect_dream_emotion(dream_text: str) -> str:
     if base == "motivated":
         return "dream_positive"
     return "neutral"
+
+
+def emotion_tts_profile(emotion_state: str) -> dict:
+    """Map emotional state to voice prosody controls for calming/energizing mirroring."""
+    state = str(emotion_state or "neutral").strip().lower()
+    profiles: Dict[str, dict] = {
+        "distressed": {
+            "profile_override": "whisper",
+            "pace_multiplier": 0.88,
+            "stability": "steady",
+            "pitch_style": "lower",
+        },
+        "anxious": {
+            "profile_override": "whisper",
+            "pace_multiplier": 0.9,
+            "stability": "steady",
+            "pitch_style": "lower",
+        },
+        "sad": {
+            "profile_override": "soft",
+            "pace_multiplier": 0.92,
+            "stability": "gentle",
+            "pitch_style": "lower",
+        },
+        "low_energy": {
+            "profile_override": "soft",
+            "pace_multiplier": 0.94,
+            "stability": "gentle",
+            "pitch_style": "warm",
+        },
+        "motivated": {
+            "profile_override": "default",
+            "pace_multiplier": 1.04,
+            "stability": "confident",
+            "pitch_style": "brighter",
+        },
+        "excited": {
+            "profile_override": "default",
+            "pace_multiplier": 1.06,
+            "stability": "expressive",
+            "pitch_style": "brighter",
+        },
+        "dream_negative": {
+            "profile_override": "whisper",
+            "pace_multiplier": 0.9,
+            "stability": "steady",
+            "pitch_style": "lower",
+        },
+        "dream_positive": {
+            "profile_override": "default",
+            "pace_multiplier": 1.02,
+            "stability": "warm",
+            "pitch_style": "warm",
+        },
+        "neutral": {
+            "profile_override": "default",
+            "pace_multiplier": 1.0,
+            "stability": "balanced",
+            "pitch_style": "neutral",
+        },
+    }
+    return dict(profiles.get(state, profiles["neutral"]))

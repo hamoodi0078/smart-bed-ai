@@ -15,6 +15,73 @@ class PersonalityRuntimeOrchestrator:
         pr.setdefault("quality_running_avg", 0.0)
         pr.setdefault("continuity_by_personality", {})
         pr.setdefault("last_voice_pacing", "balanced")
+        pr.setdefault("cognitive_load_samples", [])
+        pr.setdefault("brevity_mode", "normal")
+
+    def record_cognitive_load_signal(self, profile: dict, user_text: str, speech_seconds: float | None = None):
+        self.ensure_shape(profile)
+        text = str(user_text or "").strip()
+        if not text:
+            return
+        words = [w for w in text.split() if w]
+        word_count = len(words)
+        avg_word_len = (sum(len(w) for w in words) / word_count) if word_count else 0.0
+
+        speech_duration = float(speech_seconds or 0.0)
+        words_per_second = (word_count / speech_duration) if speech_duration > 0.2 else 0.0
+        terse_phrase = word_count <= 4
+        slow_delivery = speech_duration > 0 and words_per_second < 1.45
+        fatigue_signal = terse_phrase or slow_delivery or (avg_word_len <= 3.6 and word_count <= 6)
+
+        sample = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "word_count": word_count,
+            "speech_seconds": round(speech_duration, 2),
+            "wps": round(words_per_second, 2),
+            "fatigue_signal": bool(fatigue_signal),
+        }
+        samples = profile["personality_runtime"].get("cognitive_load_samples", [])
+        samples.append(sample)
+        profile["personality_runtime"]["cognitive_load_samples"] = samples[-40:]
+
+    def cognitive_load_mode(self, profile: dict, lookback: int = 6) -> str:
+        self.ensure_shape(profile)
+        samples = profile["personality_runtime"].get("cognitive_load_samples", [])[-max(2, int(lookback)) :]
+        if not samples:
+            return "normal"
+        fatigue_hits = sum(1 for x in samples if bool(x.get("fatigue_signal", False)))
+        if fatigue_hits >= max(2, int(len(samples) * 0.6)):
+            return "exhausted"
+        if fatigue_hits >= 1:
+            return "reduced"
+        return "normal"
+
+    def apply_cognitive_brevity(self, profile: dict, response_text: str, emotion_state: str) -> tuple[str, str]:
+        self.ensure_shape(profile)
+        text = str(response_text or "").strip()
+        if not text:
+            return "", ""
+
+        mode = self.cognitive_load_mode(profile)
+        emotion = str(emotion_state or "neutral").strip().lower()
+        if mode == "normal" and emotion not in ("low_energy", "distressed", "dream_negative"):
+            profile["personality_runtime"]["brevity_mode"] = "normal"
+            return text, ""
+
+        reduction_ratio = 0.66 if mode == "exhausted" else 0.6
+        hard_limit = 160 if mode == "exhausted" else 190
+        target_len = max(70, int(len(text) * (1.0 - reduction_ratio)))
+        target_len = min(target_len, hard_limit)
+
+        clipped = text[:target_len].strip()
+        split_idx = max(clipped.rfind("."), clipped.rfind("!"), clipped.rfind("?"))
+        if split_idx >= 40:
+            clipped = clipped[: split_idx + 1].strip()
+        elif len(text) > target_len:
+            clipped = clipped.rstrip(" ,;:") + "..."
+
+        profile["personality_runtime"]["brevity_mode"] = "cognitive_load"
+        return clipped, "brevity_cognitive_load"
 
     def record_emotion_state(self, profile: dict, state: str):
         self.ensure_shape(profile)

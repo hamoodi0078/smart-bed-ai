@@ -80,6 +80,30 @@ class ProactiveAutomationEngine:
         interrupts = int(session_state.get("interrupt_count_today", 0) or 0)
         active_goals_count = int(session_state.get("active_goals_count", 0) or 0)
         sleep = profile.get("sleep", {})
+        invisible_routine = session_state.get("invisible_routine", {})
+
+        if isinstance(invisible_routine, dict) and bool(invisible_routine.get("prep_window_active", False)):
+            key = "invisible_guide_prep"
+            if not self._already_sent(profile, key, now):
+                suggestions.append(
+                    {
+                        "key": key,
+                        "type": "action_bundle",
+                        "intent": "set_scene",
+                        "slots": {
+                            "scene_key": "calm_recovery",
+                            "brightness": 0.18,
+                            "color": "warmwhite",
+                            "animation": "breathing",
+                        },
+                        "line": str(
+                            invisible_routine.get(
+                                "offer_line",
+                                "I quietly prepared your guide environment. Want to begin now?",
+                            )
+                        ).strip(),
+                    }
+                )
 
         if interrupts >= 4:
             profile["proactive"]["verbosity"] = "minimal"

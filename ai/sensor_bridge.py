@@ -24,6 +24,23 @@ class SensorBridge:
                 return "wake_detected_morning"
         return ""
 
+    @staticmethod
+    def tts_profile_for_time(now: datetime | None = None) -> dict:
+        now = now or datetime.now()
+        if now.hour >= 23 or now.hour < 6:
+            return {
+                "profile_override": "whisper",
+                "pace_multiplier": 0.9,
+                "volume_multiplier": 0.58,
+                "label": "night_whisper",
+            }
+        return {
+            "profile_override": "default",
+            "pace_multiplier": 1.0,
+            "volume_multiplier": 1.0,
+            "label": "default",
+        }
+
     def proactive_greeting(self, event_name: str, user_name: str = "") -> str:
         name = str(user_name or "").strip()
         prefix = f"{name}, " if name else ""

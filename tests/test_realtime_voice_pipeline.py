@@ -7,8 +7,22 @@ class _FakeTTS:
     def __init__(self):
         self.calls = []
 
-    def synthesize_to_mp3(self, text, filename="", voice_override="", pace_override=1.0):
-        self.calls.append(text)
+    def synthesize_to_mp3(
+        self,
+        text,
+        filename="",
+        voice_override="",
+        pace_override=1.0,
+        emotion_state="neutral",
+        profile_override="",
+    ):
+        self.calls.append(
+            {
+                "text": text,
+                "emotion_state": emotion_state,
+                "profile_override": profile_override,
+            }
+        )
         return f"fake/{filename or 'audio'}.mp3"
 
 
@@ -38,10 +52,12 @@ class TestRealtimeVoicePipeline(unittest.TestCase):
         pipeline = RealtimeVoicePipeline(tts, player)
 
         text = ["Hello there. ", "How are you?", " I can help"]
-        full = pipeline.speak_from_text_stream(text)
+        full = pipeline.speak_from_text_stream(text, emotion_state="distressed", profile_override="whisper")
 
-        self.assertIn("Hello there.", tts.calls[0])
-        self.assertTrue(any("How are you?" in c for c in tts.calls))
+        self.assertIn("Hello there.", tts.calls[0]["text"])
+        self.assertTrue(any("How are you?" in c["text"] for c in tts.calls))
+        self.assertTrue(all(c["emotion_state"] == "distressed" for c in tts.calls))
+        self.assertTrue(all(c["profile_override"] == "whisper" for c in tts.calls))
         self.assertEqual(full, "Hello there. How are you? I can help")
 
 

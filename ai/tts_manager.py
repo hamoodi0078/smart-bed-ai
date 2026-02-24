@@ -2,6 +2,7 @@ import hashlib
 import re
 import shutil
 import threading
+from datetime import datetime
 from urllib.parse import urlencode
 from pathlib import Path
 from time import time
@@ -25,6 +26,48 @@ class TTSManager:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self._stream_lock = threading.Lock()
         self._active_cache_streams: dict[str, dict] = {}
+
+    @staticmethod
+    def _is_whisper_window(now: datetime | None = None) -> bool:
+        now = now or datetime.now()
+        return now.hour >= 23 or now.hour < 6
+
+    def resolve_audio_profile(
+        self,
+        *,
+        emotion_state: str = "neutral",
+        profile_override: str = "",
+        now: datetime | None = None,
+    ) -> dict:
+        now = now or datetime.now()
+        emotion = str(emotion_state or "neutral").strip().lower()
+        override = str(profile_override or "").strip().lower()
+
+        profile = {
+            "name": "default",
+            "voice": self.voice,
+            "pace_multiplier": 1.0,
+            "playback_volume": 1.0,
+        }
+
+        if self._is_whisper_window(now) or override == "whisper":
+            profile.update(
+                {
+                    "name": "whisper_night",
+                    "voice": "aura-2-asteria-en",
+                    "pace_multiplier": 0.9,
+                    "playback_volume": 0.58,
+                }
+            )
+
+        if emotion in ("distressed", "anxious", "dream_negative"):
+            profile["pace_multiplier"] *= 0.92
+            profile["playback_volume"] *= 0.9
+        elif emotion in ("motivated", "excited", "dream_positive"):
+            profile["pace_multiplier"] *= 1.04
+
+        profile["playback_volume"] = max(0.2, min(1.0, float(profile["playback_volume"])))
+        return profile
 
     def _resolve_deepgram_model(self, voice_name: str) -> str:
         value = str(voice_name or "").strip().lower()
@@ -142,6 +185,8 @@ class TTSManager:
         filename: str = "latest_response.mp3",
         voice_override: str = "",
         pace_override: float = 1.0,
+        emotion_state: str = "neutral",
+        profile_override: str = "",
     ) -> str:
         output_path = self.output_dir / filename
         normalized_text = self._normalize_tts_text(text)
@@ -157,7 +202,12 @@ class TTSManager:
             written_path = self._write_bytes_safely(output_path, b"")
             return str(written_path)
 
-        voice_to_use = (voice_override or "").strip() or self.voice
+        runtime_profile = self.resolve_audio_profile(
+            emotion_state=emotion_state,
+            profile_override=profile_override,
+        )
+        voice_to_use = (voice_override or "").strip() or str(runtime_profile.get("voice", self.voice))
+        pace_value = max(0.5, min(2.0, pace_value * float(runtime_profile.get("pace_multiplier", 1.0))))
         deepgram_model = self._resolve_deepgram_model(voice_to_use)
         cache_path = self._cache_path_for(normalized_text, voice_to_use, pace_value)
         if cache_path.exists() and cache_path.stat().st_size > 0:

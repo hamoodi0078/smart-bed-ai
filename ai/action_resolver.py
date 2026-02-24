@@ -1,6 +1,8 @@
 import re
 from typing import Any, Dict
 
+from ai.intent_classifier import detect_implicit_intent
+
 
 TRANSLITERATION_MAP = {
     "wndwn": "wind down",
@@ -50,6 +52,18 @@ def resolve_action(user_text: str, profile: dict, context: dict | None = None) -
     if not text:
         return _result()
 
+    implicit = detect_implicit_intent(user_text)
+    if implicit:
+        slots = dict(implicit.get("slots", {}))
+        partner_line = str(implicit.get("partner_line", "")).strip()
+        if partner_line:
+            slots["partner_line"] = partner_line
+        return _result(
+            intent=str(implicit.get("intent", "")).strip().lower(),
+            slots=slots,
+            confidence=float(implicit.get("confidence", 0.0) or 0.0),
+        )
+
     if any(k in text for k in ("undo that", "revert last action", "undo last action")):
         return _result("undo_last_action", confidence=0.98)
 
@@ -69,7 +83,14 @@ def resolve_action(user_text: str, profile: dict, context: dict | None = None) -
         brightness = 0.18 if ("very" in text or "much" in text or "جدا" in text) else 0.24
         return _result(
             "set_scene",
-            slots={"scene_key": "calm_recovery", "brightness": brightness, "color": "warmwhite", "animation": "breathing"},
+            slots={
+                "scene_key": "calm_recovery",
+                "brightness": brightness,
+                "color": "warmwhite",
+                "animation": "breathing",
+                "proactive_offer": "evening_routine",
+                "partner_line": "I'll dim the lights for you. Shall we start your evening routine?",
+            },
             confidence=0.83,
         )
 

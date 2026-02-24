@@ -43,6 +43,21 @@ HUMAN_ENGAGEMENT_INSTRUCTION = (
     "For 'teach/explain/tell me about' requests, include one vivid practical example in the first reply."
 )
 
+
+def _cognitive_load_instruction(mode: str) -> str:
+    state = str(mode or "normal").strip().lower()
+    if state == "exhausted":
+        return (
+            "Cognitive load mode: exhausted. Keep reply 60-70% shorter than your default. "
+            "Use only essential comfort, one guidance step, and no extra branching."
+        )
+    if state == "reduced":
+        return (
+            "Cognitive load mode: reduced. Keep response concise and low-friction. "
+            "Prefer one key point and one practical next step."
+        )
+    return ""
+
 MOOD_LAYERS = {
     "distressed": (
         "Mood layer: user is distressed. Keep voice softer, validate first, and avoid performance pressure. "
@@ -112,6 +127,7 @@ class ConversationEngine:
         realtime_context: str,
         user_context: str,
         emotion_state: str = "neutral",
+        cognitive_load_mode: str = "normal",
     ) -> list[dict]:
         personality = personality.lower().strip()
         system_prompt = SYSTEM_PROMPTS.get(personality, SYSTEM_PROMPTS["guide"])
@@ -130,6 +146,9 @@ class ConversationEngine:
         mood_layer = MOOD_LAYERS.get(mood_key)
         if mood_layer:
             conversation_messages.append({"role": "system", "content": mood_layer})
+        load_instruction = _cognitive_load_instruction(cognitive_load_mode)
+        if load_instruction:
+            conversation_messages.append({"role": "system", "content": load_instruction})
 
         if user_context.strip():
             conversation_messages.append(
@@ -163,6 +182,7 @@ class ConversationEngine:
         realtime_context: str = "",
         user_context: str = "",
         emotion_state: str = "neutral",
+        cognitive_load_mode: str = "normal",
         quick_timeout_seconds: int = 4,
         total_timeout_seconds: int = 10,
         max_response_tokens: int = 120,
@@ -184,6 +204,7 @@ class ConversationEngine:
             realtime_context=realtime_context,
             user_context=user_context,
             emotion_state=emotion_state,
+            cognitive_load_mode=cognitive_load_mode,
         )
 
         payload = {
@@ -231,6 +252,7 @@ class ConversationEngine:
         realtime_context: str = "",
         user_context: str = "",
         emotion_state: str = "neutral",
+        cognitive_load_mode: str = "normal",
         total_timeout_seconds: int = 15,
         max_response_tokens: int = 140,
     ):
@@ -255,6 +277,7 @@ class ConversationEngine:
                 realtime_context=realtime_context,
                 user_context=user_context,
                 emotion_state=emotion_state,
+                cognitive_load_mode=cognitive_load_mode,
             ),
         }
 

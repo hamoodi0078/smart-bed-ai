@@ -34,6 +34,8 @@ class RealtimeVoicePipeline:
         text_chunks: Iterable[str],
         voice_override: str = "",
         pace_override: float = 1.0,
+        emotion_state: str = "neutral",
+        profile_override: str = "",
         should_stop: Callable[[], bool] | None = None,
     ) -> str:
         fragment_queue: queue.Queue[str | None] = queue.Queue()
@@ -59,6 +61,8 @@ class RealtimeVoicePipeline:
                     filename=filename,
                     voice_override=voice_override,
                     pace_override=pace_override,
+                    emotion_state=emotion_state,
+                    profile_override=profile_override,
                 )
                 if _stopped():
                     break

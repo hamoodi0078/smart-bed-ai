@@ -18,7 +18,7 @@ from ai.crisis_protocol import (
     command_match as crisis_command_match,
     should_run_fast_protocol,
 )
-from ai.emotion_router import detect_emotion_state, emotion_response_hint
+from ai.emotion_router import detect_emotion_state, emotion_response_hint, emotion_tts_profile
 from ai.daily_life_support import DailyLifeSupport
 from ai.environment_orchestrator import EnvironmentOrchestrator
 from ai.goal_compass import GoalCompass
@@ -1455,6 +1455,9 @@ def _execute_resolved_action(
                 "intent": intent,
                 "inverse": {"intent": "set_scene", "slots": {"scene_key": "balanced_default"}},
             }
+        partner_line = str(slots.get("partner_line", "")).strip()
+        if partner_line:
+            return f"Done — {scene_line} {partner_line}".strip(), True
         return f"Done — {scene_line}".strip(), True
 
     if intent == "play_music":
@@ -2271,6 +2274,8 @@ def play_tts_with_fast_start(
     text: str,
     voice_override: str = "",
     pace_override: float = 1.0,
+    emotion_state: str = "neutral",
+    profile_override: str = "",
 ) -> str:
     head, tail = _split_for_fast_tts_start(text)
     if not head:
@@ -2281,6 +2286,8 @@ def play_tts_with_fast_start(
             head,
             voice_override=voice_override,
             pace_override=pace_override,
+            emotion_state=emotion_state,
+            profile_override=profile_override,
         )
         tts_player.play_file(audio_path)
         return audio_path
@@ -2290,6 +2297,8 @@ def play_tts_with_fast_start(
         filename="latest_response_head.mp3",
         voice_override=voice_override,
         pace_override=pace_override,
+        emotion_state=emotion_state,
+        profile_override=profile_override,
     )
     started = tts_player.play_file(head_audio)
 
@@ -2298,6 +2307,8 @@ def play_tts_with_fast_start(
         filename="latest_response_tail.mp3",
         voice_override=voice_override,
         pace_override=pace_override,
+        emotion_state=emotion_state,
+        profile_override=profile_override,
     )
     if started and tts_player.is_playing():
         tts_player.queue_file(tail_audio)
@@ -2322,7 +2333,9 @@ def run_streaming_voice_turn(
     realtime_context: str,
     user_context: str,
     emotion_state: str,
+    cognitive_load_mode: str,
     voice_override: str,
+    profile_override: str,
     pace_override: float,
     total_timeout_seconds: int,
     max_response_tokens: int,
@@ -2358,6 +2371,8 @@ def run_streaming_voice_turn(
                         filename="thinking_filler.mp3",
                         voice_override=voice_override,
                         pace_override=1.05,
+                        emotion_state=emotion_state,
+                        profile_override=profile_override,
                     )
                     tts_player.play_file(filler_audio)
                 return
@@ -2376,6 +2391,7 @@ def run_streaming_voice_turn(
                 realtime_context=realtime_context,
                 user_context=user_context,
                 emotion_state=emotion_state,
+                cognitive_load_mode=cognitive_load_mode,
                 total_timeout_seconds=total_timeout_seconds,
                 max_response_tokens=max_response_tokens,
             ):
@@ -2390,6 +2406,8 @@ def run_streaming_voice_turn(
             _chunk_source(),
             voice_override=voice_override,
             pace_override=pace_override,
+            emotion_state=emotion_state,
+            profile_override=profile_override,
             should_stop=_should_stop,
         )
     finally:
@@ -4397,12 +4415,15 @@ def main():
             if sensor_event:
                 proactive_greeting = sensor_bridge.proactive_greeting(sensor_event, user_name=profile.get("name", ""))
                 if proactive_greeting:
+                    sensor_tts = sensor_bridge.tts_profile_for_time(datetime.now())
                     led.set_state("speaking")
                     proactive_audio = play_tts_with_fast_start(
                         tts,
                         tts_player,
                         proactive_greeting,
                         voice_override=get_personality_voice(profile),
+                        pace_override=float(sensor_tts.get("pace_multiplier", 1.0) or 1.0),
+                        profile_override=str(sensor_tts.get("profile_override", "") or ""),
                     )
                     print(f"Bed: {proactive_greeting}")
                     if proactive_audio:
@@ -4447,10 +4468,12 @@ def main():
 
         def maybe_emit_proactive() -> str:
             now = datetime.now()
+            invisible_routine = memory_store.infer_invisible_routine(now=now, days=7)
             session_state = {
                 "interrupt_count_today": runtime_orchestrator.current_interrupt_count(profile, now=now),
                 "active_goals_count": len([g for g in goal_manager.list_goals(profile) if g.get("status") == "active"]),
                 "bedtime_drift_alert": sleep_engine.bedtime_drift_alert(profile),
+                "invisible_routine": invisible_routine,
             }
             suggestions = proactive_engine.evaluate(profile, now=now, session_state=session_state)
             if not suggestions:
@@ -4462,6 +4485,22 @@ def main():
                 line = line.split(".", 1)[0].strip() + "."
             if not line:
                 return ""
+            if str(top.get("type", "")).strip().lower() == "action_bundle" and str(top.get("intent", "")).strip().lower():
+                _execute_resolved_action(
+                    {
+                        "intent": str(top.get("intent", "")).strip().lower(),
+                        "slots": top.get("slots", {}) if isinstance(top.get("slots", {}), dict) else {},
+                    },
+                    profile,
+                    led,
+                    spotify,
+                    local_music,
+                    sleep_engine,
+                    environment_orchestrator,
+                    sleep_routine,
+                    routine_engine,
+                    on_sleep_timer_finish,
+                )
             proactive_engine.mark_executed(profile, {"key": top.get("key", ""), "line": line}, now=now)
             save_profile(profile)
             led.set_state("speaking")
@@ -4690,6 +4729,9 @@ def main():
                 led.set_state("listening")
                 continue
 
+            runtime_orchestrator.record_cognitive_load_signal(profile, user_text)
+            cognitive_load_mode = runtime_orchestrator.cognitive_load_mode(profile)
+
             session_turn_count += 1
             if session_turn_count % 3 == 0:
                 proactive_interrupt = maybe_emit_proactive()
@@ -4837,11 +4879,14 @@ def main():
             therapist_followup_prompt = get_due_therapist_followup(profile, personality, user_text)
             followup_active_turn = bool(therapist_followup_prompt)
             emotion_hint = emotion_response_hint(emotion_state)
+            prosody_profile = emotion_tts_profile(emotion_state)
             wake_quality = runtime_orchestrator.wake_quality_state(profile)
             pacing_name, pacing_speed, pacing_line = runtime_orchestrator.determine_voice_pacing(
                 emotion_state=emotion_state,
                 wake_quality=wake_quality,
             )
+            pace_override_for_turn = float(prosody_profile.get("pace_multiplier", 1.0) or 1.0) * float(pacing_speed)
+            profile_override_for_turn = str(prosody_profile.get("profile_override", "") or "")
             runtime_orchestrator.set_last_voice_pacing(profile, pacing_name)
             if wake_quality == "fragile":
                 emotion_hint = (
@@ -5028,6 +5073,7 @@ def main():
                             realtime_context=realtime_context,
                             user_context=user_context,
                             emotion_state=emotion_state,
+                            cognitive_load_mode=cognitive_load_mode,
                             quick_timeout_seconds=speed_tuning["quick_timeout"],
                             total_timeout_seconds=speed_tuning["total_timeout"],
                             max_response_tokens=speed_tuning["max_tokens"],
@@ -5078,8 +5124,10 @@ def main():
                                 realtime_context=realtime_context,
                                 user_context=user_context,
                                 emotion_state=emotion_state,
+                                cognitive_load_mode=cognitive_load_mode,
                                 voice_override=tts_voice_for_turn,
-                                pace_override=pacing_speed,
+                                profile_override=profile_override_for_turn,
+                                pace_override=pace_override_for_turn,
                                 total_timeout_seconds=speed_tuning["total_timeout"],
                                 max_response_tokens=speed_tuning["max_tokens"],
                             )
@@ -5093,6 +5141,7 @@ def main():
                                 realtime_context=realtime_context,
                                 user_context=user_context,
                                 emotion_state=emotion_state,
+                                cognitive_load_mode=cognitive_load_mode,
                                 quick_timeout_seconds=speed_tuning["quick_timeout"],
                                 total_timeout_seconds=speed_tuning["total_timeout"],
                                 max_response_tokens=speed_tuning["max_tokens"],
@@ -5128,6 +5177,13 @@ def main():
                         detailed_mode=detailed_mode,
                         response_style=response_style,
                     )
+                    response_text, brevity_tag = runtime_orchestrator.apply_cognitive_brevity(
+                        profile,
+                        response_text=response_text,
+                        emotion_state=emotion_state,
+                    )
+                    if brevity_tag:
+                        quality_tag = brevity_tag
                     if followup_active_turn and therapist_followup_prompt.lower() not in response_text.lower():
                         response_text = f"{therapist_followup_prompt} {response_text}".strip()
                     if quality_tag:
@@ -5179,7 +5235,9 @@ def main():
                     tts_player,
                     response_text,
                     voice_override=tts_voice_for_turn,
-                    pace_override=pacing_speed,
+                    pace_override=pace_override_for_turn,
+                    emotion_state=emotion_state,
+                    profile_override=profile_override_for_turn,
                 )
                 print(f"Bed: {response_text}")
                 print(f"Bed: Audio saved at {audio_file}")

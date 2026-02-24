@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -44,6 +45,21 @@ class TestTTSManager(unittest.TestCase):
         self.assertTrue(first.endswith(".mp3"))
         self.assertIn("tts_cache_", second)
         self.assertEqual(mock_post.call_count, 1)
+
+    def test_resolve_audio_profile_uses_whisper_window(self):
+        manager = TTSManager(api_key="key")
+
+        profile = manager.resolve_audio_profile(now=datetime(2026, 2, 25, 1, 30), emotion_state="neutral")
+
+        self.assertEqual(profile.get("name"), "whisper_night")
+        self.assertLess(float(profile.get("pace_multiplier", 1.0)), 1.0)
+
+    def test_resolve_audio_profile_distressed_reduces_pace(self):
+        manager = TTSManager(api_key="key")
+
+        profile = manager.resolve_audio_profile(now=datetime(2026, 2, 25, 14, 0), emotion_state="distressed")
+
+        self.assertLess(float(profile.get("pace_multiplier", 1.0)), 1.0)
 
 
 if __name__ == "__main__":
