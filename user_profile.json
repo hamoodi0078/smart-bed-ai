@@ -1,0 +1,845 @@
+{
+  "name": "amjad",
+  "age": "15",
+  "gender": null,
+  "education": null,
+  "preferences": {
+    "favorite_color": "blue",
+    "personality": "therapist",
+    "language": "auto",
+    "audio_output_mode": "bed_speaker",
+    "bluetooth_speaker_name": "",
+    "bluetooth_speaker_mac": "",
+    "user_strip_animation": "solid",
+    "music_lights_enabled": true,
+    "music_lights_mode": "pulse",
+    "music_lights_energy": "calm",
+    "music_lights_target": "both",
+    "music_lights_brightness_percent": 35,
+    "music_lights_night_brightness_percent": 35,
+    "data_retention_days": 14,
+    "thinking_ack_mode": "minimal",
+    "response_style": "balanced",
+    "engagement_level": "high",
+    "speed_mode": "normal",
+    "guide_level": "beginner",
+    "quiet_window": "",
+    "sleep_target_hours": 8.0,
+    "adaptive_wake_enabled": true,
+    "goal_checkin_last_date": "",
+    "morning_brief_last_date": "",
+    "evening_brief_last_date": "",
+    "bed_nickname": "bobo",
+    "wake_aliases": [],
+    "therapist_followup_tone": "soft"
+  },
+  "progress": {
+    "sessions_count": 10,
+    "goals_created": 0,
+    "goals_completed": 0,
+    "last_session_date": "2026-02-22",
+    "last_goal_completion_date": "",
+    "current_streak_days": 0,
+    "best_streak_days": 0,
+    "completion_history_dates": []
+  },
+  "hardware": {
+    "user_strip_pin": 18,
+    "state_strip_pin": 13,
+    "user_strip_led_count": 120,
+    "state_strip_led_count": 60
+  },
+  "sleep": {
+    "bedtime_history": [],
+    "wake_history": [],
+    "recovery_mode": false,
+    "recovery_reason": "",
+    "challenge_level": 1,
+    "challenge_last_adjust_date": "",
+    "wind_down_enabled": true,
+    "wind_down_minutes": 45,
+    "night_wake_count": 0,
+    "last_night_wake_date": "",
+    "last_decompression_date": "",
+    "last_weekly_insights_date": "",
+    "last_bedtime_drift_alert_date": "",
+    "last_recovery_score_card_date": "",
+    "partner_mode": {
+      "enabled": false,
+      "profiles": [
+        {
+          "name": "Partner 1",
+          "wake_style": "gentle"
+        },
+        {
+          "name": "Partner 2",
+          "wake_style": "balanced"
+        }
+      ]
+    }
+  },
+  "onboarding": {
+    "first_boot_completed": true,
+    "first_boot_completed_at": "2026-02-20T18:50:03",
+    "help_hints_seen": [],
+    "optional_profile_pending": true,
+    "optional_profile_prompts_asked": [],
+    "bed_phase_completed": false,
+    "bed_phase_completed_at": "",
+    "bed_guide_completed": true
+  },
+  "goals": [],
+  "daily_life": {
+    "overthinking_entries": [],
+    "last_mood_bundle": "",
+    "last_coaching_tone": "",
+    "emotional_followups": [],
+    "followup_opt_out": false,
+    "last_emotional_followup_date": ""
+  },
+  "goal_compass": {
+    "monthly_objective": "",
+    "updated_at": ""
+  },
+  "goal_strategy": {
+    "miss_history": [],
+    "cause_counts": {},
+    "pending_miss_goal_id": "",
+    "last_recovery_prompt_date": ""
+  },
+  "environment": {
+    "last_scene_key": "balanced_default",
+    "last_scene_applied_at": "2026-02-22T20:06:39"
+  },
+  "personality_runtime": {
+    "emotion_history": [
+      {
+        "ts": "2026-02-20T18:50:47",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T18:51:18",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T18:51:56",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T18:52:05",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T18:52:33",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T18:52:45",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T18:54:06",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T18:54:31",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T18:55:03",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T18:55:26",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T18:56:31",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:04:03",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:04:42",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:05:36",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:06:23",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:07:10",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:07:46",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:08:07",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:10:14",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:11:01",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:11:41",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:12:07",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:13:04",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:13:35",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:14:25",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:14:42",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:15:11",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:15:42",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:16:45",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:17:11",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:17:43",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:18:21",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:19:07",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:19:23",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-20T19:19:29",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T00:52:50",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T00:53:13",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T00:53:44",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T01:57:47",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T01:58:03",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T01:58:37",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T12:29:03",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T12:34:44",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T12:46:23",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T13:21:56",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T13:29:36",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T13:29:57",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T13:30:19",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T13:30:36",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T13:30:45",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T13:31:24",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-21T13:31:56",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-22T00:03:23",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-22T00:03:36",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-22T20:06:39",
+        "state": "neutral"
+      }
+    ],
+    "priority_reminder_last_date": "",
+    "wake_phrases": [
+      {
+        "ts": "2026-02-20T18:50:17",
+        "text": "wake"
+      },
+      {
+        "ts": "2026-02-20T19:00:08",
+        "text": "ishfaq"
+      },
+      {
+        "ts": "2026-02-20T19:02:08",
+        "text": "wake"
+      },
+      {
+        "ts": "2026-02-20T19:03:32",
+        "text": "wake"
+      },
+      {
+        "ts": "2026-02-21T00:51:37",
+        "text": "wake"
+      },
+      {
+        "ts": "2026-02-21T01:56:32",
+        "text": "wake"
+      },
+      {
+        "ts": "2026-02-21T12:28:43",
+        "text": "wake"
+      },
+      {
+        "ts": "2026-02-21T12:33:15",
+        "text": "wake"
+      },
+      {
+        "ts": "2026-02-21T19:11:39",
+        "text": "hey bobo"
+      },
+      {
+        "ts": "2026-02-22T20:06:25",
+        "text": "wake"
+      },
+      {
+        "ts": "2026-02-22T20:15:38",
+        "text": "exit"
+      },
+      {
+        "ts": "2026-02-22T20:17:18",
+        "text": "exit"
+      },
+      {
+        "ts": "2026-02-22T20:21:00",
+        "text": "exit"
+      },
+      {
+        "ts": "2026-02-22T20:21:43",
+        "text": "exit"
+      },
+      {
+        "ts": "2026-02-22T20:24:00",
+        "text": "wake"
+      },
+      {
+        "ts": "2026-02-22T20:38:20",
+        "text": "exit"
+      }
+    ],
+    "interrupt_count_today": 1,
+    "interrupt_count_date": "2026-02-22",
+    "quality_samples": 55,
+    "quality_running_avg": 0.7496969696969696,
+    "continuity_by_personality": {},
+    "last_voice_pacing": "balanced"
+  },
+  "runtime_flags": {
+    "breathing_offer_active": false,
+    "bed_guide_active": false,
+    "bed_guide_step_index": 6,
+    "awaiting_bed_nickname": false,
+    "last_action": {},
+    "pending_action_resolve": {}
+  },
+  "adaptive_personality": {
+    "enabled": true,
+    "manual_override": "",
+    "history": [
+      {
+        "ts": "2026-02-20T18:50:50",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "what color is the sun"
+      },
+      {
+        "ts": "2026-02-20T18:51:21",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "what is the exact size of jupiter"
+      },
+      {
+        "ts": "2026-02-20T18:51:57",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "i want to give u a nickname"
+      },
+      {
+        "ts": "2026-02-20T18:52:06",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ishfaaq"
+      },
+      {
+        "ts": "2026-02-20T18:52:34",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "idk some random insta reel"
+      },
+      {
+        "ts": "2026-02-20T18:52:47",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ye"
+      },
+      {
+        "ts": "2026-02-20T18:54:08",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ive heard that we have been getting wrong info on jupiters size if thats true then all of the planet"
+      },
+      {
+        "ts": "2026-02-20T18:54:35",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "?"
+      },
+      {
+        "ts": "2026-02-20T18:55:05",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "it will?"
+      },
+      {
+        "ts": "2026-02-20T18:55:29",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "tell me abot ton-15"
+      },
+      {
+        "ts": "2026-02-20T18:56:34",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "tell me the names of every blackhole and there size 1 by 1"
+      },
+      {
+        "ts": "2026-02-20T19:04:07",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "tell me about ton 618"
+      },
+      {
+        "ts": "2026-02-20T19:04:51",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "tell me about pheonix A"
+      },
+      {
+        "ts": "2026-02-20T19:05:46",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "how many earths can fit in pheonix A"
+      },
+      {
+        "ts": "2026-02-20T19:06:27",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "what is a quasar"
+      },
+      {
+        "ts": "2026-02-20T19:07:14",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "how many mars can fit in pheonix A"
+      },
+      {
+        "ts": "2026-02-20T19:07:50",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "how many humans can fit in a pheonix A"
+      },
+      {
+        "ts": "2026-02-20T19:08:11",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "calculate then"
+      },
+      {
+        "ts": "2026-02-20T19:10:23",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "is there a similar sun out there in the galaxy"
+      },
+      {
+        "ts": "2026-02-20T19:11:05",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ive heard that the sun had a twin?"
+      },
+      {
+        "ts": "2026-02-20T19:11:45",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "can u repeat in simpler words"
+      },
+      {
+        "ts": "2026-02-20T19:12:23",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "where is it now?"
+      },
+      {
+        "ts": "2026-02-20T19:13:06",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "tell me a qoute"
+      },
+      {
+        "ts": "2026-02-20T19:13:37",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "tell me a deep quote"
+      },
+      {
+        "ts": "2026-02-20T19:14:27",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "shyri karo bro"
+      },
+      {
+        "ts": "2026-02-20T19:14:44",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ha bolo"
+      },
+      {
+        "ts": "2026-02-20T19:15:13",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "lets have a roast battle"
+      },
+      {
+        "ts": "2026-02-20T19:15:44",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "you are so fake that even barbie is jealous"
+      },
+      {
+        "ts": "2026-02-20T19:16:49",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ur so stupid u stared at orange juice bec it had concentrate writen on it"
+      },
+      {
+        "ts": "2026-02-20T19:17:13",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ur so fat that u can sell shade"
+      },
+      {
+        "ts": "2026-02-20T19:17:44",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ur so slow that a snail is faster then u"
+      },
+      {
+        "ts": "2026-02-20T19:18:23",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "you are so slow that a snail called u slowpoke"
+      },
+      {
+        "ts": "2026-02-20T19:19:08",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ur so fat when u walk africe comes underwater"
+      },
+      {
+        "ts": "2026-02-20T19:19:24",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "nah i need to go"
+      },
+      {
+        "ts": "2026-02-20T19:19:31",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "sleep"
+      },
+      {
+        "ts": "2026-02-21T00:52:52",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "did you enjoyed talking to me?"
+      },
+      {
+        "ts": "2026-02-21T00:53:15",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "rosting battle"
+      },
+      {
+        "ts": "2026-02-21T00:53:46",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "no"
+      },
+      {
+        "ts": "2026-02-21T01:57:50",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "islamic"
+      },
+      {
+        "ts": "2026-02-21T01:58:07",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "dua"
+      },
+      {
+        "ts": "2026-02-21T01:58:40",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ease my pain"
+      },
+      {
+        "ts": "2026-02-21T12:29:05",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "next"
+      },
+      {
+        "ts": "2026-02-21T12:34:46",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "next step"
+      },
+      {
+        "ts": "2026-02-21T12:46:25",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "moye moye"
+      },
+      {
+        "ts": "2026-02-21T13:21:58",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "hello bobo"
+      },
+      {
+        "ts": "2026-02-21T13:29:38",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "okay"
+      },
+      {
+        "ts": "2026-02-21T13:29:58",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "nothing just building you"
+      },
+      {
+        "ts": "2026-02-21T13:30:21",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "your responses"
+      },
+      {
+        "ts": "2026-02-21T13:30:38",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "yeah"
+      },
+      {
+        "ts": "2026-02-21T13:30:46",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "i am making a smart bed"
+      },
+      {
+        "ts": "2026-02-21T13:31:28",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "first i will set the nick name of the bed to bobo sounds fimilier?"
+      },
+      {
+        "ts": "2026-02-21T13:32:00",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "i dont know you suggest me"
+      },
+      {
+        "ts": "2026-02-22T00:03:26",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "hello love"
+      },
+      {
+        "ts": "2026-02-22T00:03:38",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "good"
+      },
+      {
+        "ts": "2026-02-22T20:06:42",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "hello bed"
+      }
+    ],
+    "last_selected": "guide"
+  },
+  "web_device_controls": {
+    "usr_7CcWx99tc4E": {
+      "lights_on": true,
+      "audio_on": true,
+      "alarm_on": false,
+      "light_level": 75
+    }
+  },
+  "web_settings": {
+    "usr_7CcWx99tc4E": {
+      "response_style": "balanced",
+      "engagement_level": "high",
+      "wind_down_minutes": 45,
+      "partner_mode_enabled": true
+    }
+  },
+  "spotify_oauth_state": {},
+  "spotify_tokens": {
+    "usr_7CcWx99tc4E": {
+      "access_token": "BQA78txSmazkSkraw7NDealcYcd8T3OViHUuNzJ-ImSDp4Ci022UC_CwTj9QsyCwrQr4y8zC_qzIZNgTSwRrT3sdJP8ktli9f5o-HOKpP874zi6_56IzWBdvhwveVGTc5Exbym0bqKR1hhHKqFOvL4htyEWWShVLSZTO5WzpuJMcSW_NQgNsg3ZMTex0hrDSWUZhEHRQjA3gVXH4ZdM4bJLz7nZUyMLISYhrBzpOVawPH77ObpODH1uaOx-imG7egIUdHGwj",
+      "refresh_token": "AQBHga0uj01l1PXrKKybI7e874PEbwBhPaLWp2vbs3DooWDbrCcPVpQbz5w6Fxumpvb7rdiNM6VfjK9k4Z3ihGSFDKqeMYJPpc8BMH0h0IaH6ht_aynhBj7vicOsMrlHexQ",
+      "expires_at": "2026-02-24T01:34:54.017477+00:00",
+      "scope": "user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-email user-read-private",
+      "token_type": "Bearer",
+      "spotify_user_id": "31fgiqcme26xc2r5np3sa7kelkmq",
+      "spotify_email": "hamoodi0078@gmail.com",
+      "updated_at": "2026-02-24T00:35:24.017512+00:00"
+    }
+  },
+  "proactive": {
+    "sent_keys": [],
+    "history": [],
+    "verbosity": "normal"
+  }
+}

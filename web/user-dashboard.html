@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dana abuhalifa | User Dashboard</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-badge"></div>
+        <div>
+          <h1>Dana abuhalifa</h1>
+          <p>Dana abuhalifa premium bed intelligence</p>
+        </div>
+      </div>
+
+      <div class="nav-title">User Portal</div>
+      <button class="nav-link active" data-href="user-dashboard.html">Dashboard</button>
+      <button class="nav-link">Devices</button>
+      <button class="nav-link">Sleep Insights</button>
+      <button class="nav-link">Routines</button>
+      <button class="nav-link">Music</button>
+      <button class="nav-link">Billing</button>
+      <button class="nav-link">Settings</button>
+
+      <div class="nav-title">Operations</div>
+      <button class="nav-link" data-href="admin-panel.html">Open Admin Panel</button>
+
+      <p class="contact-strip" id="contact-strip"></p>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h2>User Dashboard</h2>
+          <p class="muted">Dana abuhalifa chat-first bed control, daily recovery, and automation in one place.</p>
+        </div>
+        <div class="topbar-actions">
+          <span id="session-role" class="pill">Role: User</span>
+          <span id="session-user" class="pill">User</span>
+          <span class="pill">Device status: Online | Firmware v1.0.0</span>
+          <button id="logout-btn" class="btn alt" type="button">Logout</button>
+        </div>
+      </div>
+
+      <section class="grid grid-4">
+        <article class="card">
+          <p class="muted">Sleep Recovery</p>
+          <p id="metric-recovery" class="metric">83/100</p>
+          <p class="muted">Weekly score card</p>
+        </article>
+        <article class="card">
+          <p class="muted">Sleep Consistency</p>
+          <p id="metric-consistency" class="metric">74%</p>
+          <div class="progress"><span id="metric-consistency-bar" style="width: 74%"></span></div>
+        </article>
+        <article class="card">
+          <p class="muted">Automation Health</p>
+          <p id="metric-health" class="metric">6 / 7</p>
+          <p class="muted">Pilot checks passing</p>
+        </article>
+        <article class="card">
+          <p class="muted">Partner Mode</p>
+          <p id="metric-partner" class="metric">ON</p>
+          <p class="muted">Conflict-safe routine enabled</p>
+        </article>
+      </section>
+
+      <section class="grid grid-3" style="margin-top: 14px;">
+        <article class="card">
+          <p class="muted">Wind-down Target</p>
+          <p id="metric-winddown" class="metric">45 min</p>
+          <p class="muted">Default pre-sleep automation window</p>
+        </article>
+        <article class="card">
+          <p class="muted">Assistant Style</p>
+          <p id="metric-style" class="metric">balanced</p>
+          <p class="muted">Current response tone profile</p>
+        </article>
+        <article class="card">
+          <p class="muted">User Location</p>
+          <p id="metric-location" class="metric">Kuwait</p>
+          <p class="muted">Regional defaults and weather routines</p>
+        </article>
+      </section>
+
+      <section class="grid grid-2" style="margin-top: 14px;">
+        <article class="card">
+          <h3>Quick Bed Actions</h3>
+          <div class="grid" style="margin-top: 10px;">
+            <div class="row"><span>Start wind-down autopilot</span><button id="user-action-winddown" class="btn" type="button">Start</button></div>
+            <div class="row"><span>Optimize room for sleep</span><button id="user-action-optimize-room" class="btn" type="button">Run</button></div>
+            <div class="row"><span>Night wake recovery mode</span><button id="user-action-wake-recovery" class="btn alt" type="button">Trigger</button></div>
+            <div class="row"><span>Enable music-reactive lights</span><button id="user-action-reactive-lights" class="btn alt" type="button">Enable</button></div>
+          </div>
+          <p id="user-actions-status" class="muted" style="margin-top: 10px;">Action center ready.</p>
+        </article>
+
+        <article class="card">
+          <h3>Today Timeline</h3>
+          <table class="table">
+            <tbody id="user-timeline-body">
+              <tr><td>22:30</td><td>Bedtime routine scheduled</td><td><span class="status good">Ready</span></td></tr>
+              <tr><td>23:10</td><td>Predictive drift alert</td><td><span class="status warn">Review</span></td></tr>
+              <tr><td>07:00</td><td>Adaptive wake plan</td><td><span class="status good">Active</span></td></tr>
+              <tr><td>Anytime</td><td>Floating AI chat control</td><td><span class="status good">Available</span></td></tr>
+            </tbody>
+          </table>
+        </article>
+      </section>
+
+      <section class="grid grid-2" style="margin-top: 14px;">
+        <article class="card">
+          <h3>Sleep Trends (Last 7 Days)</h3>
+          <p class="muted">See your recent night pattern and why your score moved.</p>
+          <div id="insight-bars" class="insight-bars" style="margin-top: 10px;">
+            <div class="insight-day"><span>Mon</span><i id="insight-bar-1" style="height: 64%"></i></div>
+            <div class="insight-day"><span>Tue</span><i id="insight-bar-2" style="height: 71%"></i></div>
+            <div class="insight-day"><span>Wed</span><i id="insight-bar-3" style="height: 58%"></i></div>
+            <div class="insight-day"><span>Thu</span><i id="insight-bar-4" style="height: 76%"></i></div>
+            <div class="insight-day"><span>Fri</span><i id="insight-bar-5" style="height: 82%"></i></div>
+            <div class="insight-day"><span>Sat</span><i id="insight-bar-6" style="height: 73%"></i></div>
+            <div class="insight-day"><span>Sun</span><i id="insight-bar-7" style="height: 78%"></i></div>
+          </div>
+          <div class="insight-breakdown" style="margin-top: 12px;">
+            <div class="row"><span>Duration quality</span><span id="insight-duration" class="status good">Strong</span></div>
+            <div class="row"><span>Bedtime consistency</span><span id="insight-consistency" class="status warn">Needs anchor</span></div>
+            <div class="row"><span>Night wake impact</span><span id="insight-wakes" class="status good">Low</span></div>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Device Controls</h3>
+          <p id="device-control-status" class="muted">Device controls synced. Choose quick actions below.</p>
+          <div class="device-controls" style="margin-top: 12px;">
+            <div class="row"><span>Ambient lights</span><button id="device-toggle-lights" class="btn alt" type="button">Turn On</button></div>
+            <div class="row"><span>Sleep audio loop</span><button id="device-toggle-audio" class="btn alt" type="button">Play</button></div>
+            <div class="row"><span>Smart alarm</span><button id="device-toggle-alarm" class="btn" type="button">Enable</button></div>
+            <label class="settings-field" style="margin-top: 8px;">
+              Light intensity
+              <input id="device-light-level" type="range" min="10" max="100" value="65" />
+            </label>
+            <hr class="auth-divider" />
+            <div class="row">
+              <span>Spotify account</span>
+              <div class="settings-actions">
+                <button id="spotify-connect-btn" class="btn" type="button" onclick="window.location.href='/v1/mobile/spotify/connect';">Connect Spotify</button>
+                <button id="spotify-disconnect-btn" class="btn alt" type="button">Disconnect</button>
+              </div>
+            </div>
+            <p id="spotify-connect-status" class="muted">Spotify not connected.</p>
+            <div class="row">
+              <span>Playback controls</span>
+              <div class="settings-actions">
+                <button id="spotify-play-btn" class="btn" type="button">Play</button>
+                <button id="spotify-pause-btn" class="btn alt" type="button">Pause</button>
+                <button id="spotify-next-btn" class="btn alt" type="button">Next</button>
+                <button id="spotify-prev-btn" class="btn alt" type="button">Previous</button>
+              </div>
+            </div>
+            <label class="settings-field">
+              Spotify volume
+              <input id="spotify-volume-input" type="range" min="0" max="100" value="45" />
+            </label>
+            <div class="settings-actions">
+              <button id="spotify-volume-apply-btn" class="btn alt" type="button">Set Volume</button>
+            </div>
+            <p id="spotify-playback-status" class="muted">No active Spotify playback detected.</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="grid grid-2" style="margin-top: 14px;">
+        <article class="card">
+          <h3>Personalization Quick Tuning</h3>
+          <p class="muted">Save your preferred assistant style and routine defaults for this browser session.</p>
+          <form id="user-settings-form" class="settings-grid" style="margin-top: 12px;">
+            <label class="settings-field">
+              Response style
+              <select id="setting-response-style">
+                <option value="balanced">Balanced</option>
+                <option value="coaching">Coaching</option>
+                <option value="calm">Calm</option>
+              </select>
+            </label>
+            <label class="settings-field">
+              Engagement level
+              <select id="setting-engagement-level">
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
+            <label class="settings-field">
+              Wind-down minutes
+              <input id="setting-wind-down" type="number" min="15" max="120" step="5" value="45" />
+            </label>
+            <label class="settings-field settings-toggle">
+              <input id="setting-partner-mode" type="checkbox" />
+              <span>Partner mode default enabled</span>
+            </label>
+            <div class="settings-actions">
+              <button class="btn" type="submit">Save Preferences</button>
+              <button id="settings-reset" class="btn alt" type="button">Reset</button>
+            </div>
+            <p id="settings-status" class="muted">No local changes saved yet.</p>
+          </form>
+        </article>
+
+        <article class="card">
+          <h3>Tonight Focus Plan</h3>
+          <p class="muted">Generated from your current mode and profile.</p>
+          <ul id="focus-plan" class="focus-plan" style="margin-top: 10px;">
+            <li>Hold sleep/wake anchor within ±20 minutes.</li>
+            <li>Start wind-down autopilot 45 minutes before bedtime.</li>
+            <li>Use AI chat for quick checks if routine drifts.</li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="grid grid-2" style="margin-top: 14px;">
+        <article class="card">
+          <h3>Daily Routines Planner</h3>
+          <p class="muted">Set your preferred sleep/wake anchors and automation defaults.</p>
+          <form id="routine-form" class="settings-grid" style="margin-top: 12px;">
+            <label class="settings-field">
+              Night routine time
+              <input id="routine-bedtime" type="time" value="22:30" />
+            </label>
+            <label class="settings-field">
+              Morning wake target
+              <input id="routine-wake" type="time" value="07:00" />
+            </label>
+            <label class="settings-field settings-toggle">
+              <input id="routine-weekends" type="checkbox" checked />
+              <span>Apply same schedule on weekends</span>
+            </label>
+            <div class="settings-actions">
+              <button class="btn" type="submit">Save Routine</button>
+              <button id="routine-reset" class="btn alt" type="button">Reset</button>
+            </div>
+            <p id="routine-status" class="muted">Routine defaults ready.</p>
+          </form>
+        </article>
+
+        <article class="card">
+          <h3>Profile & Account</h3>
+          <p class="muted">Update your identity and notification preferences.</p>
+          <form id="profile-form" class="settings-grid" style="margin-top: 12px;">
+            <label class="settings-field">
+              Display name
+              <input id="profile-display-name" type="text" value="User" />
+            </label>
+            <label class="settings-field">
+              Timezone
+              <select id="profile-timezone">
+                <option value="Asia/Kuwait">Asia/Kuwait</option>
+                <option value="UTC">UTC</option>
+                <option value="Europe/London">Europe/London</option>
+              </select>
+            </label>
+            <label class="settings-field settings-toggle">
+              <input id="profile-push" type="checkbox" checked />
+              <span>Push alerts for drift and recovery updates</span>
+            </label>
+            <label class="settings-field settings-toggle">
+              <input id="profile-email" type="checkbox" />
+              <span>Email summary every morning</span>
+            </label>
+            <div class="settings-actions">
+              <button class="btn" type="submit">Save Profile</button>
+            </div>
+            <p id="profile-status" class="muted">Profile synced to this device session.</p>
+          </form>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div class="chat-fab">
+    <button id="chat-toggle" class="chat-toggle">AI</button>
+    <div id="chat-panel" class="chat-panel">
+      <div id="chat-log" class="chat-log">
+        <div class="bubble bot">Hi, I can help with bed controls and quick guidance.</div>
+      </div>
+      <div class="chat-quick-prompts">
+        <button class="chat-chip" data-prompt="Start my wind-down routine now" type="button">Start wind-down</button>
+        <button class="chat-chip" data-prompt="How is my recovery score today?" type="button">Recovery check</button>
+        <button class="chat-chip" data-prompt="Set calm sleep music and dim lights" type="button">Sleep scene</button>
+      </div>
+      <div class="chat-input-row">
+        <input id="chat-input" placeholder="Ask your bed assistant..." />
+        <button id="chat-send">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./assets/app.js"></script>
+</body>
+</html>

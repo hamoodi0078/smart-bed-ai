@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dana abuhalifa | Login</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body>
+  <main class="auth-page">
+    <section class="auth-shell">
+      <div class="brand" style="margin-bottom: 14px;">
+        <div class="brand-badge"></div>
+        <div>
+          <h1>Dana abuhalifa</h1>
+          <p>Dana abuhalifa premium bed intelligence</p>
+        </div>
+      </div>
+
+      <h2 id="login-mode-title" style="margin: 8px 0;">User Login</h2>
+      <p class="muted" style="margin: 0 0 14px;">Sign in to open Dana abuhalifa user and admin experiences.</p>
+
+      <form id="login-form" class="auth-form">
+        <label>Email</label>
+        <input id="auth-email" type="email" required placeholder="you@example.com" />
+        <label>Password</label>
+        <input id="auth-password" type="password" required placeholder="******" />
+        <button class="btn" type="submit">Sign In</button>
+      </form>
+
+      <hr class="auth-divider" />
+
+      <h3 style="margin: 0 0 8px;">Create User Account</h3>
+      <form id="register-form" class="auth-form">
+        <label>Name</label>
+        <input id="reg-name" type="text" placeholder="Your name" />
+        <label>Email</label>
+        <input id="reg-email" type="email" required placeholder="you@example.com" />
+        <label>Password</label>
+        <input id="reg-password" type="password" required minlength="6" placeholder="At least 6 characters" />
+        <button class="btn alt" type="submit">Create Account</button>
+      </form>
+
+      <p id="auth-status" class="muted" style="margin-top: 12px; min-height: 20px;"></p>
+      <button id="switch-role-btn" class="btn alt" type="button" style="width: 100%; margin-top: 8px;">Switch to Admin Login</button>
+      <p class="contact-strip" id="contact-strip"></p>
+    </section>
+  </main>
+
+  <script src="./assets/app.js"></script>
+</body>
+</html>
