@@ -15,16 +15,106 @@ class LongTermMemoryStore:
     def _load(self) -> dict:
         try:
             if self.path.exists():
-                return json.loads(self.path.read_text(encoding="utf-8"))
+                payload = json.loads(self.path.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    payload.setdefault("entries", [])
+                    payload.setdefault("external_daily_events", [])
+                    return payload
         except Exception:
             pass
-        return {"entries": []}
+        return {"entries": [], "external_daily_events": []}
 
     def _save(self, payload: dict):
         try:
             self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception:
             return
+
+    @staticmethod
+    def _normalize_daily_event(entry: dict | str, source: str = "manual") -> dict:
+        if isinstance(entry, dict):
+            title = str(entry.get("title", "") or "").strip()
+            summary = str(entry.get("summary", "") or "").strip()
+            stress_level = str(entry.get("stress_level", "") or "").strip().lower()
+            event_source = str(entry.get("source", source) or source).strip().lower() or "manual"
+        else:
+            title = str(entry or "").strip()
+            summary = ""
+            stress_level = ""
+            event_source = str(source or "manual").strip().lower() or "manual"
+
+        if stress_level not in {"low", "moderate", "high"}:
+            stress_level = ""
+
+        return {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "title": title[:120],
+            "summary": summary[:220],
+            "stress_level": stress_level,
+            "source": event_source,
+        }
+
+    def inject_daily_events(self, events: list[dict | str], source: str = "manual") -> int:
+        clean_items = []
+        for row in (events or []):
+            item = self._normalize_daily_event(row, source=source)
+            if item.get("title"):
+                clean_items.append(item)
+        if not clean_items:
+            return 0
+
+        payload = self._load()
+        history = payload.get("external_daily_events", [])
+        history.extend(clean_items)
+        payload["external_daily_events"] = history[-120:]
+        self._save(payload)
+        return len(clean_items)
+
+    def latest_daily_events_summary(self, hours: int = 24, max_items: int = 3) -> str:
+        payload = self._load()
+        events = payload.get("external_daily_events", [])
+        if not events:
+            return ""
+
+        now = datetime.now()
+        cutoff = now - timedelta(hours=max(1, int(hours)))
+        lines = []
+        for item in reversed(events):
+            ts = self._parse_ts(item.get("ts", ""))
+            if ts and ts < cutoff:
+                continue
+            title = str(item.get("title", "") or "").strip()
+            if not title:
+                continue
+            stress = str(item.get("stress_level", "") or "").strip().lower()
+            source = str(item.get("source", "") or "").strip().lower()
+            hint = []
+            if stress:
+                hint.append(f"stress={stress}")
+            if source:
+                hint.append(f"source={source}")
+            suffix = f" ({', '.join(hint)})" if hint else ""
+            lines.append(f"{title}{suffix}")
+            if len(lines) >= max(1, int(max_items)):
+                break
+
+        if not lines:
+            return ""
+        return "Daily events context: " + " | ".join(lines)
+
+    def latest_memory_context(self) -> str:
+        payload = self._load()
+        entries = payload.get("entries", [])
+        if not entries:
+            return self.latest_daily_events_summary()
+
+        last = entries[-1]
+        user_line = str(last.get("user", "") or "").strip()
+        emotion = str(last.get("emotion", "neutral") or "neutral").strip().lower()
+        personality = str(last.get("personality", "guide") or "guide").strip().lower()
+        memory_line = f"Last memory turn: user='{user_line[:120]}' emotion={emotion} personality={personality}."
+        events_line = self.latest_daily_events_summary()
+        return f"{memory_line} {events_line}".strip()
 
     def record_turn(self, user_text: str, assistant_text: str, emotion_state: str, personality: str):
         user = str(user_text or "").strip()

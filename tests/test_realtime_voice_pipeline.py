@@ -60,6 +60,18 @@ class TestRealtimeVoicePipeline(unittest.TestCase):
         self.assertTrue(all(c["profile_override"] == "whisper" for c in tts.calls))
         self.assertEqual(full, "Hello there. How are you? I can help")
 
+    def test_preload_callback_fires_once_for_sleep_phase(self):
+        tts = _FakeTTS()
+        player = _FakePlayer()
+        pipeline = RealtimeVoicePipeline(tts, player)
+
+        phases = []
+        text = ["Tonight we will start a sleep routine. ", "I will guide you slowly."]
+        full = pipeline.speak_from_text_stream(text, on_preload_start=lambda p: phases.append(p))
+
+        self.assertEqual(full, "Tonight we will start a sleep routine. I will guide you slowly.")
+        self.assertEqual(phases, ["sleep"])
+
 
 if __name__ == "__main__":
     unittest.main()

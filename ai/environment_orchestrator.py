@@ -7,6 +7,8 @@ class EnvironmentOrchestrator:
         env = profile["environment"]
         env.setdefault("last_scene_key", "")
         env.setdefault("last_scene_applied_at", "")
+        env.setdefault("last_preload_phase", "")
+        env.setdefault("last_preload_at", "")
 
     def choose_scene(
         self,
@@ -108,3 +110,35 @@ class EnvironmentOrchestrator:
             "brightness": 0.35,
             "line": "Environment scene: signature default.",
         }
+
+    @staticmethod
+    def _phase_key(text: str) -> str:
+        normalized = str(text or "").strip().lower()
+        if not normalized:
+            return ""
+        if any(token in normalized for token in ("sleep", "wind down", "wind-down", "bedtime", "night")):
+            return "sleep"
+        if any(token in normalized for token in ("morning", "wake", "good morning", "sunrise")):
+            return "morning"
+        return ""
+
+    def preload_transition_for_response(self, led, profile: dict, response_text: str) -> dict:
+        self.ensure_shape(profile)
+        phase = self._phase_key(response_text)
+        if not phase:
+            return {"started": False, "phase": "", "line": ""}
+
+        if phase == "sleep":
+            led.set_user_animation("breathing")
+            led.set_color_value("warmwhite")
+            led.set_user_brightness(0.22)
+            line = "Hardware preload: started sleep transition ramp."
+        else:
+            led.set_user_animation("wave")
+            led.set_color_value("cyan")
+            led.set_user_brightness(0.34)
+            line = "Hardware preload: started morning transition ramp."
+
+        profile["environment"]["last_preload_phase"] = phase
+        profile["environment"]["last_preload_at"] = datetime.now().isoformat(timespec="seconds")
+        return {"started": True, "phase": phase, "line": line}

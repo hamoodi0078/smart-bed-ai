@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 from Storage.subscription_store import SubscriptionStore
+from ai.long_term_memory import LongTermMemoryStore
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
@@ -147,6 +148,73 @@ def _safe_profile() -> dict[str, Any]:
         return json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+def _latest_emotion_state(profile: dict[str, Any]) -> str:
+    runtime = profile.get("personality_runtime", {}) if isinstance(profile, dict) else {}
+    history = runtime.get("emotion_history", []) if isinstance(runtime.get("emotion_history", []), list) else []
+    if not history:
+        return "neutral"
+    last = history[-1] if isinstance(history[-1], dict) else {}
+    state = str(last.get("state", "neutral") or "neutral").strip().lower()
+    return state or "neutral"
+
+
+def _active_personality(profile: dict[str, Any]) -> str:
+    adaptive = profile.get("adaptive_personality", {}) if isinstance(profile, dict) else {}
+    selected = str(adaptive.get("last_selected", "") or "").strip().lower()
+    if selected:
+        return selected
+    prefs = profile.get("preferences", {}) if isinstance(profile, dict) else {}
+    fallback = str(prefs.get("personality", "guide") or "guide").strip().lower()
+    return fallback or "guide"
+
+
+def _last_memory_context() -> str:
+    try:
+        return LongTermMemoryStore(path=str(BASE_DIR / "data" / "long_term_memory.json")).latest_memory_context()
+    except Exception:
+        return ""
+
+
+def _biometric_summary(profile: dict[str, Any]) -> dict[str, Any]:
+    sleep = profile.get("sleep", {}) if isinstance(profile, dict) else {}
+    bedtime_history = sleep.get("bedtime_history", []) if isinstance(sleep.get("bedtime_history", []), list) else []
+    wake_history = sleep.get("wake_history", []) if isinstance(sleep.get("wake_history", []), list) else []
+    partner_mode = sleep.get("partner_mode", {}) if isinstance(sleep.get("partner_mode", {}), dict) else {}
+
+    return {
+        "recovery_mode": bool(sleep.get("recovery_mode", False)),
+        "challenge_level": int(sleep.get("challenge_level", 1) or 1),
+        "night_wake_count": int(sleep.get("night_wake_count", 0) or 0),
+        "bedtime_samples": len(bedtime_history),
+        "wake_samples": len(wake_history),
+        "partner_mode_enabled": bool(partner_mode.get("enabled", False)),
+        "last_bedtime_drift_alert_date": str(sleep.get("last_bedtime_drift_alert_date", "") or ""),
+    }
+
+
+def _device_health_status(profile: dict[str, Any]) -> dict[str, Any]:
+    hardware = profile.get("hardware", {}) if isinstance(profile, dict) else {}
+    environment = profile.get("environment", {}) if isinstance(profile, dict) else {}
+    runtime_flags = profile.get("runtime_flags", {}) if isinstance(profile, dict) else {}
+    spotify_tokens = profile.get("spotify_tokens", {}) if isinstance(profile, dict) else {}
+
+    return {
+        "deepgram_configured": bool(os.getenv("DEEPGRAM_API_KEY", "").strip()),
+        "openai_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
+        "spotify_connected_users": len(spotify_tokens) if isinstance(spotify_tokens, dict) else 0,
+        "led": {
+            "user_strip_pin": int(hardware.get("user_strip_pin", 18) or 18),
+            "state_strip_pin": int(hardware.get("state_strip_pin", 13) or 13),
+            "user_strip_led_count": int(hardware.get("user_strip_led_count", 120) or 120),
+            "state_strip_led_count": int(hardware.get("state_strip_led_count", 60) or 60),
+        },
+        "last_scene_key": str(environment.get("last_scene_key", "") or ""),
+        "last_preload_phase": str(environment.get("last_preload_phase", "") or ""),
+        "sensor_pressure_active": bool(runtime_flags.get("sensor_pressure_active", False)),
+        "sensor_motion_active": bool(runtime_flags.get("sensor_motion_active", False)),
+    }
 
 
 def _save_profile(payload: dict[str, Any]):
@@ -700,6 +768,26 @@ def login_page() -> FileResponse:
 @app.get("/healthz")
 def healthz() -> dict[str, Any]:
     return {"ok": True, "service": "web_runtime"}
+
+
+@app.get("/v1/bed/state")
+def bed_state_bridge(request: Request) -> dict[str, Any]:
+    if not (_cookie_user(request) or _cookie_admin(request)):
+        raise HTTPException(status_code=401, detail="Login required")
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    return {
+        "ok": True,
+        "generated_at": _now_utc_iso(),
+        "emotion_state": _latest_emotion_state(profile),
+        "active_personality": _active_personality(profile),
+        "last_memory_context": _last_memory_context(),
+        "biometric_summary": _biometric_summary(profile),
+        "device_health_status": _device_health_status(profile),
+    }
 
 
 @app.get("/user-dashboard")

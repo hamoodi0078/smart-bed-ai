@@ -404,7 +404,7 @@ def build_sleep_help() -> str:
     )
 
 
-def build_wake_greeting(profile: dict) -> str:
+def build_wake_greeting(profile: dict, runtime_orchestrator: PersonalityRuntimeOrchestrator) -> str:
     raw_name = str(profile.get("name", "") or "").strip()
     prefs = profile.get("preferences", {})
     language_pref = str(prefs.get("language", "auto") or "auto").strip().lower()
@@ -416,24 +416,44 @@ def build_wake_greeting(profile: dict) -> str:
     hour = datetime.now().hour
     if use_arabic:
         if 5 <= hour < 12:
-            intro = "صباح الخير"
+            candidates = ("صباح الخير", "أهلا صباحك جميل", "صباح النور")
+            intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_ar_morning")
         elif 12 <= hour < 18:
-            intro = "مساء الخير"
+            candidates = ("مساء الخير", "أهلا مساءك جميل", "مساء النور")
+            intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_ar_afternoon")
         else:
-            intro = "أهلا"
+            candidates = ("أهلا", "هلا", "أهلا وسهلا")
+            intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_ar_evening")
         if raw_name:
             return f"{intro} {raw_name}. أنا هنا وجاهز للمساعدة. قل 'sleep mode' لإنهاء الجلسة."
         return f"{intro}. أنا هنا وجاهز للمساعدة. قل 'sleep mode' لإنهاء الجلسة."
 
     if 5 <= hour < 12:
-        intro = "Good morning"
+        candidates = ("Good morning", "Morning", "Good morning and welcome back")
+        intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_en_morning")
     elif 12 <= hour < 18:
-        intro = "Good afternoon"
+        candidates = ("Good afternoon", "Hey, good afternoon", "Welcome back this afternoon")
+        intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_en_afternoon")
     else:
-        intro = "Good evening"
+        candidates = ("Good evening", "Evening", "Good evening, welcome back")
+        intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_en_evening")
     if raw_name:
         return f"{intro}, {raw_name}. I am here and listening. Say 'sleep mode' to end this session."
     return f"{intro}. I am here and listening. Say 'sleep mode' to end this session."
+
+
+def build_transition_ack(profile: dict, runtime_orchestrator: PersonalityRuntimeOrchestrator) -> str:
+    candidates = (
+        "Okay, one moment.",
+        "Got it, give me a second.",
+        "Sure, I am on it.",
+        "Alright, working on that now.",
+    )
+    return runtime_orchestrator.choose_unique_phrase(
+        profile,
+        list(candidates),
+        phrase_kind="transition_ack",
+    )
 
 
 def should_use_local_music_fallback(message: str) -> bool:
@@ -2328,6 +2348,8 @@ def run_streaming_voice_turn(
     tts: TTSManager,
     tts_player: AudioPlaybackController,
     led: LEDController,
+    environment_orchestrator: EnvironmentOrchestrator,
+    profile: dict,
     user_text_for_ai: str,
     personality: str,
     realtime_context: str,
@@ -2384,6 +2406,10 @@ def run_streaming_voice_turn(
     barge_in_monitor.start(_on_barge_in)
     response_text = ""
     try:
+        def _on_preload_phase(phase: str):
+            if phase:
+                environment_orchestrator.preload_transition_for_response(led, profile, phase)
+
         def _chunk_source():
             for chunk in chat.generate_response_stream(
                 user_text_for_ai,
@@ -2409,6 +2435,7 @@ def run_streaming_voice_turn(
             emotion_state=emotion_state,
             profile_override=profile_override,
             should_stop=_should_stop,
+            on_preload_start=_on_preload_phase,
         )
     finally:
         watch_stop.set()
@@ -2546,6 +2573,7 @@ def handle_local_commands(
     signature_engine: SignatureExperienceEngine,
     tts: TTSManager,
     wake_word_manager: WakeWordManager,
+    memory_store: LongTermMemoryStore,
 ):
     lower = user_text.lower().strip()
     normalized_lower = re.sub(r"[^a-z0-9\s']+", " ", lower)
@@ -4051,6 +4079,26 @@ def handle_local_commands(
             save_profile(profile)
         return message, True
 
+    if lower.startswith("log daily event "):
+        title = user_text.split("log daily event", 1)[1].strip(" :.-")
+        if not title:
+            return "Use: log daily event <what happened today>", True
+        stress_level = ""
+        lowered_title = title.lower()
+        if any(k in lowered_title for k in ("stress", "stressed", "overwhelmed", "مضغوط", "متوتر")):
+            stress_level = "high"
+        inserted = memory_store.inject_daily_events(
+            [{"title": title, "stress_level": stress_level or "moderate", "source": "manual"}],
+            source="manual",
+        )
+        if inserted:
+            return "Saved daily event context. I will factor it into tonight responses.", True
+        return "I could not save that daily event. Try a shorter line.", True
+
+    if lower in ("daily events context", "show daily events", "stress day context"):
+        line = memory_store.latest_daily_events_summary(hours=48, max_items=4)
+        return (line or "No external daily events are saved yet."), True
+
     calendar_answer = get_online_calendar_answer(
         user_text,
         timezone="Asia/Kuwait",
@@ -4288,8 +4336,6 @@ def main():
         results = run_device_health_checks(settings, spotify, local_music, tts_player=tts_player)
         return format_health_report(results)
 
-    ack_audio_file = tts.synthesize_to_mp3(ACK_TEXT_DEFAULT, filename="ack_quick.mp3")
-
     def on_sleep_timer_finish():
         spotify.pause()
         local_music.pause()
@@ -4441,7 +4487,8 @@ def main():
             print("Bed: Waiting for wake word...")
             continue
 
-        greeting_line = build_wake_greeting(profile)
+        greeting_line = build_wake_greeting(profile, runtime_orchestrator)
+        environment_orchestrator.preload_transition_for_response(led, profile, greeting_line)
         led.set_state("speaking")
         print(f"Bed: {greeting_line}")
         greeting_audio = play_tts_with_fast_start(
@@ -4787,12 +4834,14 @@ def main():
                 signature_engine,
                 tts,
                 wake_word_manager,
+                memory_store,
             )
             if handled:
                 if not (local_response or "").strip():
                     led.set_state("listening")
                     continue
                 print(f"Bed: {local_response}")
+                environment_orchestrator.preload_transition_for_response(led, profile, local_response)
                 led.set_state("speaking")
                 audio_file = tts.synthesize_to_mp3(
                     local_response,
@@ -4834,6 +4883,7 @@ def main():
             quick_response, quick_handled = offline_pack.handle(user_text)
             if quick_handled:
                 response_text = quick_response
+                environment_orchestrator.preload_transition_for_response(led, profile, response_text)
                 led.set_state("speaking")
                 audio_file = play_tts_with_fast_start(
                     tts,
@@ -5035,6 +5085,12 @@ def main():
                 else:
                     should_play_ack = effective_realtime_query or detailed_mode
                 if should_play_ack and tts_player.is_ready():
+                    ack_text = build_transition_ack(profile, runtime_orchestrator)
+                    ack_audio_file = tts.synthesize_to_mp3(
+                        ack_text,
+                        filename="ack_quick.mp3",
+                        voice_override=tts_voice_for_turn,
+                    )
                     tts_player.play_file(ack_audio_file)
 
                 memory_context_line = memory_store.memory_prompt_line(user_text)
@@ -5062,6 +5118,9 @@ def main():
                 )
                 if memory_context_line:
                     user_context = (user_context + "\n" + memory_context_line).strip()
+                daily_events_line = memory_store.latest_daily_events_summary(hours=36, max_items=3)
+                if daily_events_line:
+                    user_context = (user_context + "\n" + daily_events_line).strip()
                 if (not settings.openai_api_key) or (not settings.use_api_first):
                     offline_response, handled_offline = offline_pack.handle(user_text)
                     if handled_offline:
@@ -5119,6 +5178,8 @@ def main():
                                 tts=tts,
                                 tts_player=tts_player,
                                 led=led,
+                                environment_orchestrator=environment_orchestrator,
+                                profile=profile,
                                 user_text_for_ai=user_text_for_ai,
                                 personality=personality,
                                 realtime_context=realtime_context,
@@ -5230,6 +5291,7 @@ def main():
                 if tts_player.is_playing():
                     print("Bed: Streaming response audio now.")
             else:
+                environment_orchestrator.preload_transition_for_response(led, profile, response_text)
                 audio_file = play_tts_with_fast_start(
                     tts,
                     tts_player,

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 
 
@@ -17,6 +17,79 @@ class PersonalityRuntimeOrchestrator:
         pr.setdefault("last_voice_pacing", "balanced")
         pr.setdefault("cognitive_load_samples", [])
         pr.setdefault("brevity_mode", "normal")
+        pr.setdefault("phrase_history", [])
+
+    @staticmethod
+    def _normalize_phrase(text: str) -> str:
+        return " ".join(str(text or "").strip().lower().split())
+
+    @staticmethod
+    def _safe_parse_ts(value: str) -> datetime | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(raw)
+        except Exception:
+            return None
+
+    def choose_unique_phrase(
+        self,
+        profile: dict,
+        candidates: List[str],
+        phrase_kind: str,
+        within_hours: int = 48,
+        now: datetime | None = None,
+    ) -> str:
+        self.ensure_shape(profile)
+        now = now or datetime.now()
+        cutoff = now - timedelta(hours=max(1, int(within_hours)))
+
+        history = profile["personality_runtime"].get("phrase_history", [])
+        recent_keys: set[str] = set()
+        for item in history:
+            if str(item.get("kind", "")).strip().lower() != str(phrase_kind or "").strip().lower():
+                continue
+            ts = self._safe_parse_ts(item.get("ts", ""))
+            if not ts or ts < cutoff:
+                continue
+            normalized = self._normalize_phrase(item.get("text", ""))
+            if normalized:
+                recent_keys.add(normalized)
+
+        clean_candidates = [str(x or "").strip() for x in candidates if str(x or "").strip()]
+        for phrase in clean_candidates:
+            if self._normalize_phrase(phrase) not in recent_keys:
+                self.record_phrase_usage(profile, phrase, phrase_kind=phrase_kind, now=now)
+                return phrase
+
+        # All candidates were used recently; pick the first to keep output deterministic.
+        fallback = clean_candidates[0] if clean_candidates else ""
+        if fallback:
+            self.record_phrase_usage(profile, fallback, phrase_kind=phrase_kind, now=now)
+        return fallback
+
+    def record_phrase_usage(
+        self,
+        profile: dict,
+        phrase: str,
+        phrase_kind: str = "generic",
+        now: datetime | None = None,
+    ):
+        self.ensure_shape(profile)
+        text = str(phrase or "").strip()
+        if not text:
+            return
+        now = now or datetime.now()
+        items = profile["personality_runtime"].get("phrase_history", [])
+        items.append(
+            {
+                "ts": now.isoformat(timespec="seconds"),
+                "kind": str(phrase_kind or "generic").strip().lower(),
+                "text": text[:180],
+            }
+        )
+        profile["personality_runtime"]["phrase_history"] = items[-220:]
 
     def record_cognitive_load_signal(self, profile: dict, user_text: str, speech_seconds: float | None = None):
         self.ensure_shape(profile)

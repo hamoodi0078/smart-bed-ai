@@ -29,6 +29,17 @@ class RealtimeVoicePipeline:
         remainder = text[consumed:].strip()
         return fragments, remainder
 
+    @staticmethod
+    def _phase_key(text: str) -> str:
+        normalized = str(text or "").strip().lower()
+        if not normalized:
+            return ""
+        if any(token in normalized for token in ("sleep", "wind down", "wind-down", "bedtime", "night")):
+            return "sleep"
+        if any(token in normalized for token in ("morning", "wake", "good morning", "sunrise")):
+            return "morning"
+        return ""
+
     def speak_from_text_stream(
         self,
         text_chunks: Iterable[str],
@@ -37,10 +48,12 @@ class RealtimeVoicePipeline:
         emotion_state: str = "neutral",
         profile_override: str = "",
         should_stop: Callable[[], bool] | None = None,
+        on_preload_start: Callable[[str], None] | None = None,
     ) -> str:
         fragment_queue: queue.Queue[str | None] = queue.Queue()
         playback_started = threading.Event()
         full_parts: list[str] = []
+        preload_phase_started = ""
 
         def _stopped() -> bool:
             return bool(should_stop and should_stop())
@@ -86,6 +99,14 @@ class RealtimeVoicePipeline:
             if not piece:
                 continue
             full_parts.append(piece)
+            if (not preload_phase_started) and callable(on_preload_start):
+                candidate = self._phase_key("".join(full_parts))
+                if candidate:
+                    preload_phase_started = candidate
+                    try:
+                        on_preload_start(candidate)
+                    except Exception:
+                        pass
             buffer += piece
             ready, buffer = self._split_sentences(buffer)
             for fragment in ready:

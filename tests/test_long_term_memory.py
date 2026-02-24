@@ -64,6 +64,30 @@ class TestLongTermMemoryStore(unittest.TestCase):
             self.assertTrue(bool(routine.get("prep_window_active", False)))
             self.assertIn("guide", str(routine.get("offer_line", "")).lower())
 
+    def test_inject_daily_events_updates_summary_and_latest_context(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "memory.json"
+            store = LongTermMemoryStore(path=str(path))
+            inserted = store.inject_daily_events(
+                [
+                    {
+                        "title": "High-pressure school presentation",
+                        "summary": "big audience",
+                        "stress_level": "high",
+                    }
+                ],
+                source="calendar",
+            )
+
+            self.assertEqual(inserted, 1)
+            summary = store.latest_daily_events_summary(hours=48, max_items=2)
+            self.assertIn("High-pressure school presentation", summary)
+            self.assertIn("stress=high", summary)
+            self.assertIn("source=calendar", summary)
+
+            latest_context = store.latest_memory_context()
+            self.assertIn("Daily events context", latest_context)
+
 
 if __name__ == "__main__":
     unittest.main()
