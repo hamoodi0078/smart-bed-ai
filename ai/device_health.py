@@ -25,9 +25,9 @@ def run_device_health_checks(settings, spotify, local_music, tts_player=None) ->
 
     results.append(
         HealthCheckResult(
-            "OPENAI_API_KEY",
-            bool(settings.openai_api_key),
-            "Configured" if settings.openai_api_key else "Missing OPENAI_API_KEY",
+            "DEEPGRAM_API_KEY",
+            bool(settings.deepgram_api_key),
+            "Configured" if settings.deepgram_api_key else "Missing DEEPGRAM_API_KEY",
         )
     )
 

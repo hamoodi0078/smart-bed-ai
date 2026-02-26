@@ -10,7 +10,7 @@ class _MockResponse:
         return None
 
     def json(self):
-        return {"choices": [{"message": {"content": "ok"}}]}
+        return {"output": {"text": "ok"}}
 
 
 class TestConversationEngineTemporalGrounding(unittest.TestCase):
@@ -37,6 +37,15 @@ class TestConversationEngineTemporalGrounding(unittest.TestCase):
         temporal_msg = temporal_messages[0]
         self.assertIn("Current local year=", temporal_msg)
         self.assertIn(f"Current local year={datetime.now().year}", temporal_msg)
+
+        headers = mock_post.call_args.kwargs.get("headers", {})
+        self.assertEqual(headers.get("Authorization"), "Token test-key")
+
+    def test_fallback_mentions_deepgram_voice_agent(self):
+        engine = ConversationEngine(api_key="")
+        text = engine.generate_response("hello", personality="guide")
+        self.assertIn("Deepgram fallback", text)
+        self.assertIn("Deepgram Voice Agent", text)
 
 
 if __name__ == "__main__":

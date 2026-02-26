@@ -262,15 +262,8 @@ class WakeWordManager:
                     phrase_time_limit=phrase_limit_seconds,
                 )
             result = None
-            if self.enforce_local_wake or local_only:
-                try:
-                    local_text = self._recognizer.recognize_sphinx(audio)
-                    local_text = str(local_text or "").strip()
-                    if local_text:
-                        return local_text, self._estimate_text_confidence(local_text)
-                except Exception:
-                    if local_only:
-                        return "", 0.0
+            # Skip Sphinx - it requires full PocketSphinx install which often fails silently.
+            # Use Google Speech Recognition directly for reliability.
 
             try:
                 result = self._recognizer.recognize_google(audio, show_all=True)

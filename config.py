@@ -36,11 +36,13 @@ def _env_int(name: str, default: int) -> int:
 
 @dataclass
 class Settings:
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     deepgram_api_key: str = os.getenv("DEEPGRAM_API_KEY", "")
-    chat_model: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+    deepgram_tts_api_key: str = os.getenv("DEEPGRAM_TTS_API_KEY", os.getenv("TTS_API_KEY", os.getenv("DEEPGRAM_API_KEY", "")))
+    deepgram_voice_agent_model: str = os.getenv("DEEPGRAM_VOICE_AGENT_MODEL", "voice-agent-conversational")
+    deepgram_voice_agent_url: str = os.getenv("DEEPGRAM_VOICE_AGENT_URL", "https://agent.deepgram.com/v1/agent/converse")
     stt_model: str = os.getenv("DEEPGRAM_STT_MODEL", "nova-2")
     stt_mode: str = os.getenv("STT_MODE", "api")
+    stt_require_api_stream: bool = os.getenv("STT_REQUIRE_API_STREAM", "0") == "1"
     stt_local_model_size: str = os.getenv("STT_LOCAL_MODEL_SIZE", "small")
     stt_local_device: str = os.getenv("STT_LOCAL_DEVICE", "cpu")
     stt_local_compute_type: str = os.getenv("STT_LOCAL_COMPUTE_TYPE", "int8")
@@ -49,7 +51,7 @@ class Settings:
     tts_voice_therapist: str = os.getenv("DEEPGRAM_TTS_VOICE_THERAPIST", "aura-2-thalia-en")
     tts_voice_coach: str = os.getenv("DEEPGRAM_TTS_VOICE_COACH", "aura-2-orion-en")
     tts_voice_guide: str = os.getenv("DEEPGRAM_TTS_VOICE_GUIDE", "aura-2-asteria-en")
-    openai_timeout_seconds: int = int(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
+    ai_timeout_seconds: int = int(os.getenv("AI_TIMEOUT_SECONDS", "20"))
     chat_quick_timeout_seconds: int = int(os.getenv("CHAT_QUICK_TIMEOUT_SECONDS", "4"))
     chat_total_timeout_seconds: int = int(os.getenv("CHAT_TOTAL_TIMEOUT_SECONDS", "10"))
     chat_max_response_tokens: int = int(os.getenv("CHAT_MAX_RESPONSE_TOKENS", "120"))

@@ -163,6 +163,9 @@ class TTSManager:
             }
         worker.start()
         started.wait(timeout=max(0.05, float(start_wait_seconds)))
+        # Wait for full audio generation to complete before returning control to main loop.
+        # This prevents microphone from hearing the bed's own TTS voice.
+        done.wait(timeout=self.timeout_seconds)
         return str(output_path)
 
     def _write_bytes_safely(self, output_path: Path, content: bytes) -> Path:

@@ -113,12 +113,92 @@ SESSION_ARC_INSTRUCTION = (
 
 
 class ConversationEngine:
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", timeout_seconds: int = 20):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "voice-agent-conversational",
+        timeout_seconds: int = 20,
+        voice_agent_url: str = "https://agent.deepgram.com/v1/agent/converse",
+    ):
         self.api_key = api_key
         self.model = model
         self.timeout_seconds = timeout_seconds
+        self.voice_agent_url = voice_agent_url
         self.max_history_turns = 6
         self.history = []
+
+    @staticmethod
+    def _extract_text_from_response(payload: dict) -> str:
+        if not isinstance(payload, dict):
+            return ""
+
+        output = payload.get("output")
+        if isinstance(output, dict):
+            text = str(output.get("text", "") or "").strip()
+            if text:
+                return text
+
+        response_text = str(payload.get("response", "") or "").strip()
+        if response_text:
+            return response_text
+
+        message = payload.get("message")
+        if isinstance(message, dict):
+            content = str(message.get("content", "") or "").strip()
+            if content:
+                return content
+
+        choices = payload.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0] if isinstance(choices[0], dict) else {}
+            message = first.get("message") if isinstance(first, dict) else {}
+            if isinstance(message, dict):
+                content = str(message.get("content", "") or "").strip()
+                if content:
+                    return content
+
+        results = payload.get("results")
+        if isinstance(results, list) and results:
+            first = results[0] if isinstance(results[0], dict) else {}
+            content = str(first.get("content", "") or "").strip()
+            if content:
+                return content
+
+        return ""
+
+    def _build_voice_agent_payload(
+        self,
+        *,
+        user_text: str,
+        personality: str,
+        realtime_context: str,
+        user_context: str,
+        emotion_state: str,
+        cognitive_load_mode: str,
+        max_response_tokens: int,
+        stream: bool,
+    ) -> dict:
+        conversation_messages = self._build_messages(
+            user_text=user_text,
+            personality=personality,
+            realtime_context=realtime_context,
+            user_context=user_context,
+            emotion_state=emotion_state,
+            cognitive_load_mode=cognitive_load_mode,
+        )
+        return {
+            "model": self.model,
+            "stream": bool(stream),
+            "max_output_tokens": max(40, int(max_response_tokens)),
+            "messages": conversation_messages,
+            "context": {
+                "personality": personality,
+                "emotion_state": str(emotion_state or "neutral"),
+                "cognitive_load_mode": str(cognitive_load_mode or "normal"),
+                "has_realtime_context": bool(str(realtime_context or "").strip()),
+                "has_user_context": bool(str(user_context or "").strip()),
+            },
+        }
 
     def _build_messages(
         self,
@@ -192,27 +272,20 @@ class ConversationEngine:
         if not self.api_key:
             return self._fallback_response(user_text, personality)
 
-        url = "https://api.openai.com/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Token {self.api_key}",
             "Content-Type": "application/json",
         }
-
-        conversation_messages = self._build_messages(
+        payload = self._build_voice_agent_payload(
             user_text=user_text,
             personality=personality,
             realtime_context=realtime_context,
             user_context=user_context,
             emotion_state=emotion_state,
             cognitive_load_mode=cognitive_load_mode,
+            max_response_tokens=max_response_tokens,
+            stream=False,
         )
-
-        payload = {
-            "model": self.model,
-            "temperature": 0.6,
-            "max_tokens": max(40, int(max_response_tokens)),
-            "messages": conversation_messages,
-        }
 
         timeouts = [
             max(1, int(quick_timeout_seconds)),
@@ -222,14 +295,16 @@ class ConversationEngine:
         for timeout_seconds in timeouts:
             try:
                 response = requests.post(
-                    url,
+                    self.voice_agent_url,
                     headers=headers,
                     json=payload,
                     timeout=timeout_seconds,
                 )
                 response.raise_for_status()
                 data = response.json()
-                assistant_text = data["choices"][0]["message"]["content"].strip()
+                assistant_text = self._extract_text_from_response(data)
+                if not assistant_text:
+                    continue
                 self._append_history(user_text, assistant_text)
                 return assistant_text
             except Exception:
@@ -261,30 +336,25 @@ class ConversationEngine:
             yield self._fallback_response(user_text, personality)
             return
 
-        url = "https://api.openai.com/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Token {self.api_key}",
             "Content-Type": "application/json",
         }
-        payload = {
-            "model": self.model,
-            "temperature": 0.6,
-            "max_tokens": max(40, int(max_response_tokens)),
-            "stream": True,
-            "messages": self._build_messages(
-                user_text=user_text,
-                personality=personality,
-                realtime_context=realtime_context,
-                user_context=user_context,
-                emotion_state=emotion_state,
-                cognitive_load_mode=cognitive_load_mode,
-            ),
-        }
+        payload = self._build_voice_agent_payload(
+            user_text=user_text,
+            personality=personality,
+            realtime_context=realtime_context,
+            user_context=user_context,
+            emotion_state=emotion_state,
+            cognitive_load_mode=cognitive_load_mode,
+            max_response_tokens=max_response_tokens,
+            stream=True,
+        )
 
         collected = []
         try:
             with requests.post(
-                url,
+                self.voice_agent_url,
                 headers=headers,
                 json=payload,
                 timeout=max(4, int(total_timeout_seconds)),
@@ -307,18 +377,35 @@ class ConversationEngine:
                     except Exception:
                         continue
 
-                    choices = event.get("choices") or []
-                    if not choices:
-                        continue
-
-                    delta = choices[0].get("delta") or {}
-                    chunk = str(delta.get("content", "") or "")
+                    chunk = ""
+                    event_type = str(event.get("type", "") or "").strip().lower()
+                    if event_type in ("content.delta", "response.output_text.delta", "delta"):
+                        chunk = str(
+                            event.get("delta")
+                            or event.get("text")
+                            or event.get("content")
+                            or ""
+                        )
+                    else:
+                        choices = event.get("choices") or []
+                        if choices and isinstance(choices[0], dict):
+                            delta = choices[0].get("delta") or {}
+                            chunk = str(delta.get("content", "") or "")
+                        if not chunk:
+                            chunk = str(
+                                event.get("delta")
+                                or event.get("text")
+                                or event.get("content")
+                                or ""
+                            )
                     if not chunk:
                         continue
                     collected.append(chunk)
                     yield chunk
         except Exception:
-            yield self._fallback_response(user_text, personality)
+            fallback = self._fallback_response(user_text, personality)
+            if not collected:
+                yield fallback
             return
 
         assistant_text = "".join(collected).strip()
@@ -328,6 +415,6 @@ class ConversationEngine:
     @staticmethod
     def _fallback_response(user_text: str, personality: str) -> str:
         return (
-            f"(Offline fallback - {personality}) I heard: '{user_text}'. "
-            "I can respond better once API access is available."
+            f"(Deepgram fallback - {personality}) I heard: '{user_text}'. "
+            "I can respond better once Deepgram Voice Agent access is available."
         )

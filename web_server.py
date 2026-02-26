@@ -202,7 +202,6 @@ def _device_health_status(profile: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "deepgram_configured": bool(os.getenv("DEEPGRAM_API_KEY", "").strip()),
-        "openai_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
         "spotify_connected_users": len(spotify_tokens) if isinstance(spotify_tokens, dict) else 0,
         "led": {
             "user_strip_pin": int(hardware.get("user_strip_pin", 18) or 18),

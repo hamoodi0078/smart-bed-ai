@@ -72,6 +72,18 @@ class TestRealtimeVoicePipeline(unittest.TestCase):
         self.assertEqual(full, "Tonight we will start a sleep routine. I will guide you slowly.")
         self.assertEqual(phases, ["sleep"])
 
+    def test_voice_agent_stream_is_passed_through_without_sentence_split(self):
+        tts = _FakeTTS()
+        player = _FakePlayer()
+        pipeline = RealtimeVoicePipeline(tts, player)
+
+        chunks = ["Hello", " there", " friend"]
+        full = pipeline.speak_from_voice_agent_stream(chunks)
+
+        rendered = [c["text"] for c in tts.calls]
+        self.assertEqual(rendered, ["Hello", "there", "friend"])
+        self.assertEqual(full, "Hello there friend")
+
 
 if __name__ == "__main__":
     unittest.main()

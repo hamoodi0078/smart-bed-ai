@@ -3,9 +3,12 @@ from unittest.mock import patch
 
 from ai.wake_word_manager import WakeWordManager
 from main import (
+    _is_llm_fallback_response,
     _is_scene_clarification_candidate,
     _is_session_end_command,
     _is_simple_yes,
+    _is_wake_only_utterance,
+    _looks_like_echo_capture,
     _resolve_scene_clarification_followup,
     get_query_text,
 )
@@ -38,6 +41,38 @@ class _FakeSTTManager:
 
     def transcribe_file_with_confidence(self, _audio_path):
         return self.transcript, self.confidence
+
+
+class _FakeStreamingSTTManager:
+    def __init__(self):
+        self.calls = []
+
+    def transcribe_microphone_with_interim(
+        self,
+        mic_device_index=None,
+        timeout_seconds=5,
+        max_phrase_seconds=16.0,
+        silence_end_seconds=0.8,
+        interim_callback=None,
+    ):
+        _ = (timeout_seconds, max_phrase_seconds, silence_end_seconds, interim_callback)
+        self.calls.append(mic_device_index)
+        if mic_device_index is None:
+            return "how are you today", 0.91
+        return "", 0.0
+
+
+class _FakeVoiceWakeWordManager(_FakeWakeWordManager):
+    def __init__(self, mic_index=1):
+        super().__init__(voice_available=True)
+        self.voice_timeout_seconds = 5
+        self._mic_index = mic_index
+
+    def get_voice_phrase_limit_seconds(self):
+        return 0
+
+    def get_active_mic_index(self):
+        return self._mic_index
 
 
 class TestListeningConfidence(unittest.TestCase):
@@ -107,6 +142,16 @@ class TestListeningConfidence(unittest.TestCase):
         self.assertEqual(text, "set alarm for 6 30")
         self.assertGreaterEqual(confidence, 0.58)
 
+    def test_strict_stream_retries_default_microphone_when_index_fails(self):
+        wake = _FakeVoiceWakeWordManager(mic_index=1)
+        stt = _FakeStreamingSTTManager()
+
+        text, confidence = get_query_text(stt, wake, require_api_stream=True)
+
+        self.assertEqual(text, "how are you today")
+        self.assertAlmostEqual(confidence, 0.91)
+        self.assertEqual(stt.calls, [1, None])
+
     def test_voice_low_confidence_yes_confirms_original_text(self):
         wake = _FakeWakeWordManager(
             voice_available=True,
@@ -146,6 +191,38 @@ class TestListeningConfidence(unittest.TestCase):
     def test_wake_word_manager_accepts_hello(self):
         manager = WakeWordManager(mode="keyboard", wake_word="hey smart bed")
         self.assertTrue(manager.matches_wake_text("hello"))
+
+    def test_wake_only_utterance_filter_accepts_pure_wake_phrase(self):
+        manager = WakeWordManager(
+            mode="keyboard",
+            wake_word="hey smart bed",
+            wake_aliases=["hello smart bed"],
+        )
+        self.assertTrue(_is_wake_only_utterance(manager, "hey smart bed please"))
+        self.assertTrue(_is_wake_only_utterance(manager, "hello smart bed"))
+
+    def test_wake_only_utterance_filter_rejects_real_command(self):
+        manager = WakeWordManager(mode="keyboard", wake_word="hey smart bed")
+        self.assertFalse(_is_wake_only_utterance(manager, "hey smart bed turn on blue light"))
+
+    def test_echo_capture_detector_flags_replayed_assistant_phrase(self):
+        user_text = "getting cozy can really help you relax"
+        last_assistant = "Getting cozy can really help you relax. Do you want me to start wind-down now with dim lights and calm audio?"
+        self.assertTrue(_looks_like_echo_capture(user_text, last_assistant, confidence=0.62))
+
+    def test_echo_capture_detector_ignores_valid_new_query(self):
+        user_text = "how are you today"
+        last_assistant = "Do you want me to start wind-down now with dim lights and calm audio?"
+        self.assertFalse(_looks_like_echo_capture(user_text, last_assistant, confidence=0.93))
+
+    def test_llm_fallback_detector_supports_deepgram_prefix(self):
+        self.assertTrue(
+            _is_llm_fallback_response(
+                "(Deepgram fallback - guide) I heard: 'hello'. I can respond better once Deepgram Voice Agent access is available."
+            )
+        )
+        self.assertTrue(_is_llm_fallback_response("(Offline fallback - guide) legacy"))
+        self.assertFalse(_is_llm_fallback_response("Normal response"))
 
 
 if __name__ == "__main__":

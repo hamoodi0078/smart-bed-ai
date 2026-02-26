@@ -34,10 +34,10 @@
     "therapist_followup_tone": "soft"
   },
   "progress": {
-    "sessions_count": 12,
+    "sessions_count": 20,
     "goals_created": 0,
     "goals_completed": 0,
-    "last_session_date": "2026-02-24",
+    "last_session_date": "2026-02-25",
     "last_goal_completion_date": "",
     "current_streak_days": 0,
     "best_streak_days": 0,
@@ -109,9 +109,9 @@
   },
   "environment": {
     "last_scene_key": "balanced_default",
-    "last_scene_applied_at": "2026-02-24T20:25:48",
+    "last_scene_applied_at": "2026-02-25T02:19:39",
     "last_preload_phase": "sleep",
-    "last_preload_at": "2026-02-24T21:53:40"
+    "last_preload_at": "2026-02-25T02:53:50"
   },
   "personality_runtime": {
     "emotion_history": [
@@ -342,6 +342,22 @@
       {
         "ts": "2026-02-24T20:25:48",
         "state": "neutral"
+      },
+      {
+        "ts": "2026-02-25T00:39:26",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-25T00:39:33",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-25T00:39:40",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-25T02:19:39",
+        "state": "neutral"
       }
     ],
     "priority_reminder_last_date": "",
@@ -421,6 +437,38 @@
       {
         "ts": "2026-02-24T21:53:40",
         "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-02-25T00:39:12",
+        "text": "bobo"
+      },
+      {
+        "ts": "2026-02-25T02:09:04",
+        "text": "hey bobo"
+      },
+      {
+        "ts": "2026-02-25T02:12:27",
+        "text": "hey bobo"
+      },
+      {
+        "ts": "2026-02-25T02:19:20",
+        "text": "hey bobo"
+      },
+      {
+        "ts": "2026-02-25T02:39:26",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-02-25T02:42:58",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-02-25T02:48:51",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-02-25T02:53:40",
+        "text": "hey smart bed"
       }
     ],
     "interrupt_count_today": 1,
@@ -429,11 +477,150 @@
     "quality_running_avg": 0.7496969696969696,
     "continuity_by_personality": {},
     "last_voice_pacing": "balanced",
-    "cognitive_load_samples": [],
+    "cognitive_load_samples": [
+      {
+        "ts": "2026-02-25T00:39:26",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-02-25T00:39:33",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-02-25T00:39:40",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-02-25T02:19:39",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-02-25T02:19:53",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-02-25T02:20:03",
+        "word_count": 7,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-02-25T02:39:35",
+        "word_count": 12,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-02-25T02:39:47",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-02-25T02:39:57",
+        "word_count": 7,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-02-25T02:43:08",
+        "word_count": 12,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-02-25T02:43:17",
+        "word_count": 12,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-02-25T02:49:01",
+        "word_count": 7,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-02-25T02:53:50",
+        "word_count": 7,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-02-25T02:53:59",
+        "word_count": 7,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      }
+    ],
     "brevity_mode": "normal",
     "phrase_history": [
       {
         "ts": "2026-02-24T21:53:40",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-02-25T00:39:12",
+        "kind": "greeting_en_evening",
+        "text": "Evening"
+      },
+      {
+        "ts": "2026-02-25T02:09:04",
+        "kind": "greeting_en_evening",
+        "text": "Good evening, welcome back"
+      },
+      {
+        "ts": "2026-02-25T02:12:27",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-02-25T02:19:20",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-02-25T02:39:26",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-02-25T02:42:58",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-02-25T02:48:51",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-02-25T02:53:40",
         "kind": "greeting_en_evening",
         "text": "Good evening"
       }
@@ -445,7 +632,15 @@
     "bed_guide_step_index": 6,
     "awaiting_bed_nickname": false,
     "last_action": {},
-    "pending_action_resolve": {},
+    "pending_action_resolve": {
+      "intent": "start_wind_down",
+      "slots": {
+        "minutes": 30
+      },
+      "confidence": 0.6,
+      "requires_confirmation": true,
+      "clarify_question": "Do you want me to start wind-down now with dim lights and calm audio?"
+    },
     "sensor_pressure_active": false,
     "sensor_motion_active": false
   },
@@ -851,9 +1046,37 @@
         "emotion": "neutral",
         "score": 0.8,
         "sample": "what is my name ?"
+      },
+      {
+        "ts": "2026-02-25T00:39:29",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "what is my name"
+      },
+      {
+        "ts": "2026-02-25T00:39:37",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Kali Kurti"
+      },
+      {
+        "ts": "2026-02-25T00:39:44",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "guide mode"
+      },
+      {
+        "ts": "2026-02-25T02:19:43",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Hava y\u00fcr\u00fcd\u00fcler"
       }
     ],
-    "last_selected": "guide"
+    "last_selected": "therapist"
   },
   "web_device_controls": {
     "usr_7CcWx99tc4E": {
@@ -874,14 +1097,14 @@
   "spotify_oauth_state": {},
   "spotify_tokens": {
     "usr_7CcWx99tc4E": {
-      "access_token": "BQA78txSmazkSkraw7NDealcYcd8T3OViHUuNzJ-ImSDp4Ci022UC_CwTj9QsyCwrQr4y8zC_qzIZNgTSwRrT3sdJP8ktli9f5o-HOKpP874zi6_56IzWBdvhwveVGTc5Exbym0bqKR1hhHKqFOvL4htyEWWShVLSZTO5WzpuJMcSW_NQgNsg3ZMTex0hrDSWUZhEHRQjA3gVXH4ZdM4bJLz7nZUyMLISYhrBzpOVawPH77ObpODH1uaOx-imG7egIUdHGwj",
+      "access_token": "BQBJyCoWqfyiocsv88ytmoNp4gMHdThA8N_SFGGjrF-eFHZePtDtbwtVs9nq80iO77mfpnjbTty230fqlMwNd52KpsUqOBQ_sm01dOLKc245-xqpZLkgyPNhkuDXjpGk7XJ59Gaqc4Tb9znryaRdlOsROtLLXo3eCDZDNIsE-yOfYogSl4jxNdnAvEMcL40vSj7BAGvWufnGfhYsEEnYSC2AodTEcWj_k7X6xPk0f7HA-CfnkfTI4zU_toE4gfWhvu0aDF4f",
       "refresh_token": "AQBHga0uj01l1PXrKKybI7e874PEbwBhPaLWp2vbs3DooWDbrCcPVpQbz5w6Fxumpvb7rdiNM6VfjK9k4Z3ihGSFDKqeMYJPpc8BMH0h0IaH6ht_aynhBj7vicOsMrlHexQ",
-      "expires_at": "2026-02-24T01:34:54.017477+00:00",
+      "expires_at": "2026-02-25T16:31:34.901268+00:00",
       "scope": "user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-email user-read-private",
       "token_type": "Bearer",
       "spotify_user_id": "31fgiqcme26xc2r5np3sa7kelkmq",
       "spotify_email": "hamoodi0078@gmail.com",
-      "updated_at": "2026-02-24T00:35:24.017512+00:00"
+      "updated_at": "2026-02-25T15:32:04.901305+00:00"
     }
   },
   "proactive": {

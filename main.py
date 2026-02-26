@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from difflib import SequenceMatcher
 import re
 import threading
 import time
@@ -603,6 +604,26 @@ def normalize_for_intent(text: str) -> str:
 
 def has_any(text: str, words: tuple[str, ...]) -> bool:
     return any(w in text for w in words)
+
+
+def _is_llm_fallback_response(text: str) -> bool:
+    value = str(text or "").strip()
+    return value.startswith("(Deepgram fallback -") or value.startswith("(Offline fallback -")
+
+
+def _looks_like_echo_capture(user_text: str, last_assistant_response: str, confidence: float) -> bool:
+    user_norm = normalize_for_intent(user_text)
+    assistant_norm = normalize_for_intent(last_assistant_response)
+    if (not user_norm) or (not assistant_norm):
+        return False
+
+    if len(user_norm) < 12:
+        return False
+
+    score = SequenceMatcher(None, user_norm, assistant_norm).ratio()
+    likely_clip = (len(user_norm) >= 24) and (user_norm in assistant_norm)
+    is_low_conf = float(confidence or 0.0) < 0.78
+    return is_low_conf and (score >= 0.88 or likely_clip)
 
 
 ARABIC_COLOR_MAP = {
@@ -1945,6 +1966,38 @@ def _is_session_end_command(text: str) -> bool:
     )
 
 
+def _is_wake_only_utterance(wake_word_manager: WakeWordManager, text: str) -> bool:
+    normalized = normalize_for_intent(text)
+    if not normalized:
+        return False
+
+    filler_tokens = {
+        "hey",
+        "hi",
+        "hello",
+        "wake",
+        "ok",
+        "okay",
+        "yo",
+        "please",
+        "يا",
+        "لو",
+        "طيب",
+    }
+    wake_tokens = {token for token in normalize_for_intent(wake_word_manager.wake_word).split() if token}
+    for alias in wake_word_manager.get_wake_phrases():
+        wake_tokens.update(token for token in normalize_for_intent(alias).split() if token)
+
+    utterance_tokens = [token for token in normalized.split() if token]
+    if not utterance_tokens:
+        return False
+
+    allowed_tokens = wake_tokens | filler_tokens
+    if all(token in allowed_tokens for token in utterance_tokens):
+        return True
+    return False
+
+
 def _resolve_scene_clarification_followup(user_text: str) -> dict | None:
     normalized = normalize_for_intent(user_text)
     if not normalized:
@@ -2428,7 +2481,7 @@ def run_streaming_voice_turn(
                     first_chunk_seen.set()
                     yield text_chunk
 
-        response_text = realtime_voice_pipeline.speak_from_text_stream(
+        response_text = realtime_voice_pipeline.speak_from_voice_agent_stream(
             _chunk_source(),
             voice_override=voice_override,
             pace_override=pace_override,
@@ -2449,6 +2502,7 @@ def get_query_text(
     stt_manager: STTManager,
     wake_word_manager: WakeWordManager,
     interim_intent_callback=None,
+    require_api_stream: bool = False,
 ) -> tuple[str, float]:
     if wake_word_manager.is_voice_available():
         text, confidence = "", 0.0
@@ -2458,6 +2512,7 @@ def get_query_text(
             max_phrase_seconds = float(phrase_limit) if isinstance(phrase_limit, int) and phrase_limit > 0 else 16.0
             last_interim = {"text": ""}
             last_hint = {"key": ""}
+            active_mic_index = wake_word_manager.get_active_mic_index()
 
             def _on_interim(interim_text: str, _score: float):
                 cleaned = str(interim_text or "").strip()
@@ -2480,14 +2535,41 @@ def get_query_text(
                 interim_intent_callback(hint)
 
             text, confidence = stream_capture(
-                mic_device_index=wake_word_manager.get_active_mic_index(),
+                mic_device_index=active_mic_index,
                 timeout_seconds=wake_word_manager.voice_timeout_seconds,
                 max_phrase_seconds=max_phrase_seconds,
                 silence_end_seconds=0.8,
                 interim_callback=_on_interim,
             )
 
+            should_retry_default_mic = (
+                (not text)
+                and require_api_stream
+                and isinstance(active_mic_index, int)
+                and active_mic_index >= 0
+            )
+            if should_retry_default_mic:
+                print("Bed: Deepgram live STT retrying on default microphone...")
+                text, confidence = stream_capture(
+                    mic_device_index=None,
+                    timeout_seconds=wake_word_manager.voice_timeout_seconds,
+                    max_phrase_seconds=max_phrase_seconds,
+                    silence_end_seconds=0.8,
+                    interim_callback=_on_interim,
+                )
+            if text:
+                print("Bed: STT source -> Deepgram live stream.")
+            elif require_api_stream:
+                now = time.time()
+                last_warning_at = float(getattr(get_query_text, "_strict_stt_last_warning_at", 0.0) or 0.0)
+                if now - last_warning_at >= 4.0:
+                    print("Bed: Deepgram live STT did not capture speech. Strict stream mode is enabled, so fallback STT is disabled.")
+                    setattr(get_query_text, "_strict_stt_last_warning_at", now)
+                time.sleep(0.18)
+                return "", 0.0
+
         if not text:
+            print("Bed: STT source -> Wake-word fallback recognizer.")
             text, confidence = wake_word_manager.get_user_text_with_confidence()
         if not text:
             return "", 0.0
@@ -4102,7 +4184,7 @@ def handle_local_commands(
     calendar_answer = get_online_calendar_answer(
         user_text,
         timezone="Asia/Kuwait",
-        timeout_seconds=settings.openai_timeout_seconds,
+        timeout_seconds=settings.ai_timeout_seconds,
     )
     if calendar_answer:
         return calendar_answer, True
@@ -4295,7 +4377,7 @@ def main():
     stt = STTManager(
         api_key=settings.deepgram_api_key,
         model=settings.stt_model,
-        timeout_seconds=settings.openai_timeout_seconds,
+        timeout_seconds=settings.ai_timeout_seconds,
         language_hint=settings.language_hint,
         mode=settings.stt_mode,
         local_model_size=settings.stt_local_model_size,
@@ -4303,15 +4385,16 @@ def main():
         local_compute_type=settings.stt_local_compute_type,
     )
     chat = ConversationEngine(
-        api_key=settings.openai_api_key,
-        model=settings.chat_model,
-        timeout_seconds=settings.openai_timeout_seconds,
+        api_key=settings.deepgram_api_key,
+        model=settings.deepgram_voice_agent_model,
+        timeout_seconds=settings.ai_timeout_seconds,
+        voice_agent_url=settings.deepgram_voice_agent_url,
     )
     tts = TTSManager(
-        api_key=settings.deepgram_api_key,
+        api_key=settings.deepgram_tts_api_key,
         model=settings.tts_model,
         voice=settings.tts_voice,
-        timeout_seconds=settings.openai_timeout_seconds,
+        timeout_seconds=settings.ai_timeout_seconds,
     )
     realtime_voice_pipeline = RealtimeVoicePipeline(tts, tts_player)
     barge_in_monitor = ContinuousBargeInMonitor(wake_word_manager)
@@ -4323,13 +4406,13 @@ def main():
     spotify = SpotifyManager(
         access_token=settings.spotify_access_token,
         device_id=settings.spotify_device_id,
-        timeout_seconds=settings.openai_timeout_seconds,
+        timeout_seconds=settings.ai_timeout_seconds,
     )
     backend_client = BedBackendClient(
         base_url=settings.app_backend_base_url,
         device_id=settings.bed_device_id,
         firmware_version=settings.bed_firmware_version,
-        timeout_seconds=settings.openai_timeout_seconds,
+        timeout_seconds=settings.ai_timeout_seconds,
     )
 
     def build_health_report() -> str:
@@ -4370,8 +4453,10 @@ def main():
                     apply_music_led_preferences(led, profile, active=True)
                 led.set_state("listening")
 
-    if not settings.openai_api_key:
-        print("[WARN] OPENAI_API_KEY is missing. Running with fallback responses.")
+    if not settings.deepgram_api_key:
+        print("[WARN] DEEPGRAM_API_KEY is missing. Running with fallback responses.")
+    if not settings.deepgram_tts_api_key:
+        print("[WARN] DEEPGRAM_TTS_API_KEY/TTS_API_KEY is missing. TTS audio may be unavailable.")
     if not spotify.is_configured():
         print("[WARN] Spotify is not configured. Music commands will not work yet.")
     if not local_music.is_ready():
@@ -4500,7 +4585,11 @@ def main():
         if greeting_audio:
             print(f"Bed: Audio saved at {greeting_audio}")
         interrupt_text = wake_word_manager.capture_barge_in_text()
-        if interrupt_text:
+        if interrupt_text and _is_wake_only_utterance(wake_word_manager, interrupt_text):
+            print("Bed: Wake word acknowledged. I am already listening.")
+            pending_user_text = ""
+            led.set_state("listening")
+        elif interrupt_text:
             tts_player.stop()
             led.set_state("listening")
             pending_user_text = interrupt_text
@@ -4756,9 +4845,20 @@ def main():
                     stt,
                     wake_word_manager,
                     interim_intent_callback=_capture_interim_hint,
+                    require_api_stream=settings.stt_require_api_stream,
                 )
             pending_user_text = ""
             lower_text = user_text.lower().strip()
+
+            if _is_wake_only_utterance(wake_word_manager, user_text):
+                print("Bed: I am already awake. Please tell me your command.")
+                led.set_state("listening")
+                continue
+
+            if _looks_like_echo_capture(user_text, last_assistant_response, _query_confidence):
+                print("Bed: Ignoring likely speaker-echo capture. Please speak again.")
+                led.set_state("listening")
+                continue
 
             if _is_app_exit_command(user_text):
                 routine_engine.stop_breathing_guide_routine()
@@ -4980,7 +5080,7 @@ def main():
             if effective_realtime_query:
                 led.set_state("thinking")
                 realtime_context = fetch_realtime_context(
-                    user_text, timeout_seconds=settings.openai_timeout_seconds
+                    user_text, timeout_seconds=settings.ai_timeout_seconds
                 )
 
             detailed_mode = (not preparsed_control_turn) and wants_detailed_answer(user_text)
@@ -5121,7 +5221,7 @@ def main():
                 daily_events_line = memory_store.latest_daily_events_summary(hours=36, max_items=3)
                 if daily_events_line:
                     user_context = (user_context + "\n" + daily_events_line).strip()
-                if (not settings.openai_api_key) or (not settings.use_api_first):
+                if (not settings.deepgram_api_key) or (not settings.use_api_first):
                     offline_response, handled_offline = offline_pack.handle(user_text)
                     if handled_offline:
                         response_text = offline_response
@@ -5208,7 +5308,7 @@ def main():
                                 max_response_tokens=speed_tuning["max_tokens"],
                             )
 
-                        if response_text.startswith("(Offline fallback -"):
+                        if _is_llm_fallback_response(response_text):
                             offline_response, handled_offline = offline_pack.handle(user_text)
                             if handled_offline:
                                 response_text = offline_response
@@ -5266,7 +5366,7 @@ def main():
                     and (not ultra_short_mode)
                     and (not long_prompt_mode)
                     and (not followup_active_turn)
-                    and (not response_text.startswith("(Offline fallback -"))
+                    and (not _is_llm_fallback_response(response_text))
                 ):
                     cache.set(user_text, response_text, personality)
 

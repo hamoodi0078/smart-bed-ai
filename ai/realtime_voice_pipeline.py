@@ -49,6 +49,7 @@ class RealtimeVoicePipeline:
         profile_override: str = "",
         should_stop: Callable[[], bool] | None = None,
         on_preload_start: Callable[[str], None] | None = None,
+        source_is_voice_agent: bool = False,
     ) -> str:
         fragment_queue: queue.Queue[str | None] = queue.Queue()
         playback_started = threading.Event()
@@ -107,10 +108,15 @@ class RealtimeVoicePipeline:
                         on_preload_start(candidate)
                     except Exception:
                         pass
-            buffer += piece
-            ready, buffer = self._split_sentences(buffer)
-            for fragment in ready:
-                fragment_queue.put(fragment)
+            if source_is_voice_agent:
+                fragment = piece.strip()
+                if fragment:
+                    fragment_queue.put(fragment)
+            else:
+                buffer += piece
+                ready, buffer = self._split_sentences(buffer)
+                for fragment in ready:
+                    fragment_queue.put(fragment)
 
         if (not _stopped()) and buffer.strip():
             fragment_queue.put(buffer.strip())
@@ -118,3 +124,29 @@ class RealtimeVoicePipeline:
         fragment_queue.put(None)
         worker.join(timeout=8.0)
         return "".join(full_parts).strip()
+
+    def speak_from_voice_agent_stream(
+        self,
+        text_chunks: Iterable[str],
+        voice_override: str = "",
+        pace_override: float = 1.0,
+        emotion_state: str = "neutral",
+        profile_override: str = "",
+        should_stop: Callable[[], bool] | None = None,
+        on_preload_start: Callable[[str], None] | None = None,
+    ) -> str:
+        """
+        Deepgram Voice Agent already performs turn-level language generation,
+        so the realtime pipeline can treat incoming chunks as playback-ready
+        fragments instead of re-segmenting every sentence.
+        """
+        return self.speak_from_text_stream(
+            text_chunks,
+            voice_override=voice_override,
+            pace_override=pace_override,
+            emotion_state=emotion_state,
+            profile_override=profile_override,
+            should_stop=should_stop,
+            on_preload_start=on_preload_start,
+            source_is_voice_agent=True,
+        )

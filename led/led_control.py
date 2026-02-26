@@ -131,6 +131,14 @@ class LEDController:
             self.set_color_name(text.lower())
             return
 
+        normalized = " ".join(
+            part for part in "".join(ch.lower() if (ch.isalnum() or ch.isspace()) else " " for ch in text).split() if part
+        )
+        for name in self.NAMED_COLORS:
+            if f" {name} " in f" {normalized} ":
+                self.set_color_name(name)
+                return
+
         print(
             "[LED] Unsupported color format. Use name, #RRGGBB, or rgb(r,g,b)."
         )

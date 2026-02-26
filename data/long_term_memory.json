@@ -13,6 +13,35 @@
       "assistant": "Your name is Amjad! How can I assist you today?",
       "emotion": "neutral",
       "personality": "guide"
+    },
+    {
+      "ts": "2026-02-25T00:39:29",
+      "user": "what is my name",
+      "assistant": "Your name is Amjad. How are you feeling today?",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-02-25T00:39:37",
+      "user": "Kali Kurti",
+      "assistant": "It sounds like you might be referencing something significant or personal. Can you share what \"Kali Kurti\" means to you or why it's on your mind?",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-02-25T00:39:44",
+      "user": "guide mode",
+      "assistant": "It seems like you're looking for some direction or support. What specific area or topic would you like guidance on right now?",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-02-25T02:19:43",
+      "user": "Hava yürüdüler",
+      "assistant": "Anladım, \"Hava yürüdüler\" ifadesiyle bir şeylerin hareket ettiğinden ya da değiştiğinden bahsediyorsun. Bu durum seni nasıl hissettiriyor? Belki dışarıda yürüyüş yaparak biraz zaman geçirebilirsin. Bu, ruh halini iyileştirebilir.",
+      "emotion": "neutral",
+      "personality": "therapist"
     }
-  ]
+  ],
+  "external_daily_events": []
 }

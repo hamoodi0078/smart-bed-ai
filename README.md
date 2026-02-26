@@ -7,7 +7,7 @@ Production-ready backend runtime for the Smart Bed voice assistant, with realtim
 ### 1) Prerequisites
 - Python 3.11+
 - Windows PowerShell
-- `.env` configured (at minimum `DEEPGRAM_API_KEY` and optionally `OPENAI_API_KEY`)
+- `.env` configured (at minimum `DEEPGRAM_API_KEY`)
 
 ### 2) Install dependencies
 ```powershell
@@ -21,8 +21,9 @@ Copy and edit:
 - `.env.example` -> `.env`
 
 Important keys:
-- `DEEPGRAM_API_KEY` (required for STT/TTS)
-- `OPENAI_API_KEY` (required for cloud LLM responses)
+- `DEEPGRAM_API_KEY` (required for STT, TTS, and Voice Agent conversation)
+- `DEEPGRAM_VOICE_AGENT_MODEL` (LLM/agent model id)
+- `DEEPGRAM_VOICE_AGENT_URL` (Voice Agent endpoint)
 - `WAKE_WORD_MODE` (`keyboard` for desktop testing, voice mode on device)
 - `APP_BASE_URL` / `APP_BACKEND_BASE_URL` if web/mobile clients are external
 
@@ -74,7 +75,6 @@ Unified state snapshot for website/mobile clients to render the AI and device ru
   },
   "device_health_status": {
     "deepgram_configured": true,
-    "openai_configured": true,
     "spotify_connected_users": 1,
     "led": {
       "user_strip_pin": 18,

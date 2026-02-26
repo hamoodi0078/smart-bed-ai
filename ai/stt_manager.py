@@ -286,16 +286,19 @@ class STTManager:
 
         try:
             connection.on(LiveTranscriptionEvents.Transcript, _on_transcript)
-            options = LiveOptions(
-                model=str(self.model or "nova-2").strip() or "nova-2",
-                interim_results=True,
-                punctuate=True,
-                smart_format=True,
-                language=self._normalized_language_hint(),
-                sample_rate=max(8000, int(sample_rate_hz)),
-                encoding="linear16",
-                channels=1,
-            )
+            options_payload = {
+                "model": str(self.model or "nova-2").strip() or "nova-2",
+                "interim_results": True,
+                "punctuate": True,
+                "smart_format": True,
+                "sample_rate": max(8000, int(sample_rate_hz)),
+                "encoding": "linear16",
+                "channels": 1,
+            }
+            language_hint = self._normalized_language_hint()
+            if language_hint:
+                options_payload["language"] = language_hint
+            options = LiveOptions(**options_payload)
             if not connection.start(options):
                 return "", 0.0
 
@@ -317,6 +320,44 @@ class STTManager:
             return state["latest_interim"], state["latest_interim_confidence"]
         return "", 0.0
 
+    def _transcribe_microphone_once_via_api(
+        self,
+        mic_device_index: int | None = None,
+        timeout_seconds: int = 5,
+        max_phrase_seconds: float = 16.0,
+    ) -> tuple[str, float]:
+        if sr is None or not self.api_key:
+            return "", 0.0
+
+        try:
+            recognizer = sr.Recognizer()
+            with sr.Microphone(device_index=mic_device_index) as source:
+                recognizer.adjust_for_ambient_noise(source, duration=0.2)
+                audio = recognizer.listen(
+                    source,
+                    timeout=max(1.0, float(timeout_seconds)),
+                    phrase_time_limit=max(1.0, float(max_phrase_seconds)),
+                )
+            wav_bytes = audio.get_wav_data()
+            if not wav_bytes:
+                return "", 0.0
+
+            url = self._build_deepgram_listen_url()
+            headers = {
+                "Authorization": f"Token {self.api_key}",
+                "Content-Type": "audio/wav",
+            }
+            response = requests.post(
+                url,
+                headers=headers,
+                data=wav_bytes,
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+            return self._extract_deepgram_result(response.json())
+        except Exception:
+            return "", 0.0
+
     def transcribe_microphone_with_interim(
         self,
         mic_device_index: int | None = None,
@@ -334,55 +375,72 @@ class STTManager:
         if not self._is_api_mode():
             return "", 0.0
 
-        try:
-            recognizer = sr.Recognizer()
-            with sr.Microphone(device_index=mic_device_index, sample_rate=16000) as source:
-                recognizer.adjust_for_ambient_noise(source, duration=0.2)
-                chunk_size = int(getattr(source, "CHUNK", 1024) or 1024)
-                sample_rate = int(getattr(source, "SAMPLE_RATE", 16000) or 16000)
-                sample_width = int(getattr(source, "SAMPLE_WIDTH", 2) or 2)
-                frame_duration = max(0.01, float(chunk_size) / float(max(1, sample_rate)))
-                ambient_threshold = float(getattr(recognizer, "energy_threshold", 180.0) or 180.0)
-                speech_threshold = max(80.0, ambient_threshold * 1.25)
+        for attempt in range(2):
+            try:
+                recognizer = sr.Recognizer()
+                with sr.Microphone(device_index=mic_device_index, sample_rate=16000) as source:
+                    recognizer.adjust_for_ambient_noise(source, duration=0.2)
+                    chunk_size = int(getattr(source, "CHUNK", 1024) or 1024)
+                    sample_rate = int(getattr(source, "SAMPLE_RATE", 16000) or 16000)
+                    sample_width = int(getattr(source, "SAMPLE_WIDTH", 2) or 2)
+                    frame_duration = max(0.01, float(chunk_size) / float(max(1, sample_rate)))
+                    ambient_threshold = float(getattr(recognizer, "energy_threshold", 180.0) or 180.0)
+                    speech_threshold = max(80.0, ambient_threshold * 1.25)
 
-                hard_start = time.monotonic() + max(1.0, float(timeout_seconds))
-                hard_deadline = hard_start + max(3.0, float(max_phrase_seconds))
-                speaking_started = False
-                silence_duration = 0.0
+                    hard_start = time.monotonic() + max(1.0, float(timeout_seconds))
+                    hard_deadline = hard_start + max(3.0, float(max_phrase_seconds))
+                    speaking_started = False
+                    silence_duration = 0.0
 
-                def _chunks():
-                    nonlocal speaking_started, silence_duration
-                    while True:
-                        now = time.monotonic()
-                        if now >= hard_deadline:
-                            break
+                    def _chunks():
+                        nonlocal speaking_started, silence_duration
+                        while True:
+                            now = time.monotonic()
+                            if now >= hard_deadline:
+                                break
 
-                        raw = source.stream.read(chunk_size, exception_on_overflow=False)
-                        if not raw:
-                            continue
+                            raw = source.stream.read(chunk_size, exception_on_overflow=False)
+                            if not raw:
+                                continue
 
-                        rms = self._pcm_rms(raw, sample_width)
-                        if rms >= speech_threshold:
-                            speaking_started = True
-                            silence_duration = 0.0
-                        elif speaking_started:
-                            silence_duration += frame_duration
+                            rms = self._pcm_rms(raw, sample_width)
+                            if rms >= speech_threshold:
+                                speaking_started = True
+                                silence_duration = 0.0
+                            elif speaking_started:
+                                silence_duration += frame_duration
 
-                        if not speaking_started and now >= hard_start:
-                            break
+                            if not speaking_started and now >= hard_start:
+                                break
 
-                        yield raw
+                            yield raw
 
-                        if speaking_started and silence_duration >= max(0.25, float(silence_end_seconds)):
-                            break
+                            if speaking_started and silence_duration >= max(0.25, float(silence_end_seconds)):
+                                break
 
-                return self.transcribe_stream_with_interim(
-                    audio_chunks=_chunks(),
-                    interim_callback=interim_callback,
-                    sample_rate_hz=sample_rate,
-                )
-        except Exception:
-            return "", 0.0
+                    text, confidence = self.transcribe_stream_with_interim(
+                        audio_chunks=_chunks(),
+                        interim_callback=interim_callback,
+                        sample_rate_hz=sample_rate,
+                    )
+                    if text:
+                        return text, confidence
+            except Exception:
+                pass
+
+            # Keep strict API mode reliable even when websocket stream setup fails.
+            text, confidence = self._transcribe_microphone_once_via_api(
+                mic_device_index=mic_device_index,
+                timeout_seconds=timeout_seconds,
+                max_phrase_seconds=max_phrase_seconds,
+            )
+            if text:
+                return text, confidence
+
+            if attempt == 0:
+                time.sleep(0.12)
+
+        return "", 0.0
 
     def transcribe_file_with_confidence(self, audio_path: str) -> tuple[str, float]:
         path = Path(audio_path)
