@@ -58,6 +58,7 @@ from Storage.user_profile import delete_profile, load_profile, save_profile
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 ACK_TEXT_DEFAULT = "Okay, one moment."
 LISTEN_CONFIDENCE_CONFIRM_THRESHOLD = 0.58
+LISTEN_CONFIDENCE_MIN_ACCEPT_THRESHOLD = 0.50
 THERAPIST_DISTRESS_KEYWORDS = (
     "sad",
     "upset",
@@ -2576,28 +2577,13 @@ def get_query_text(
 
         print(f"Bed (voice): {text}")
 
+        if confidence < LISTEN_CONFIDENCE_MIN_ACCEPT_THRESHOLD:
+            print("Bed: I did not catch that clearly. Please repeat your command.")
+            return "", 0.0
+
         if confidence >= LISTEN_CONFIDENCE_CONFIRM_THRESHOLD:
             return text, confidence
-
-        print(f"Bed: I heard '{text}'. Is that right? Say yes or no.")
-        confirm_text = wake_word_manager.get_user_text()
-        if not confirm_text:
-            print("Bed: I did not hear that. Please say yes, no, or repeat your command.")
-            confirm_text = wake_word_manager.get_user_text()
-        if _is_simple_yes(confirm_text):
-            return text, max(confidence, LISTEN_CONFIDENCE_CONFIRM_THRESHOLD)
-        if _is_simple_no(confirm_text):
-            print("Bed: Okay, please repeat your command.")
-            retry_text, retry_confidence = wake_word_manager.get_user_text_with_confidence()
-            return retry_text, retry_confidence
-
-        # If the user says a full phrase instead of yes/no, treat it as a corrected command.
-        corrected = str(confirm_text or "").strip()
-        if corrected:
-            return corrected, LISTEN_CONFIDENCE_CONFIRM_THRESHOLD
-
-        print("Bed: I did not catch that confirmation. Please repeat your command.")
-        return "", 0.0
+        return text, max(confidence, LISTEN_CONFIDENCE_CONFIRM_THRESHOLD)
 
     print("Bed: Say your command as text, or type audio:<path-to-wav>")
     raw = input("You: ").strip()
@@ -2607,19 +2593,10 @@ def get_query_text(
         text, confidence = stt_manager.transcribe_file_with_confidence(audio_path)
         if text:
             print(f"Bed (STT): {text}")
-            if confidence >= LISTEN_CONFIDENCE_CONFIRM_THRESHOLD:
-                return text, confidence
-
-            confirm = input(f"Bed: I heard '{text}'. Is that correct? (yes/no): ").strip()
-            if _is_simple_yes(confirm):
-                return text, max(confidence, LISTEN_CONFIDENCE_CONFIRM_THRESHOLD)
-            if _is_simple_no(confirm):
-                retry = input("You (repeat text command): ").strip()
-                return retry, 1.0 if retry else 0.0
-            corrected = str(confirm or "").strip()
-            if corrected:
-                return corrected, LISTEN_CONFIDENCE_CONFIRM_THRESHOLD
-            return "", 0.0
+            if confidence < LISTEN_CONFIDENCE_MIN_ACCEPT_THRESHOLD:
+                print("Bed: STT confidence is low. Please repeat your command.")
+                return "", 0.0
+            return text, max(confidence, LISTEN_CONFIDENCE_CONFIRM_THRESHOLD)
         print("Bed: STT failed. Please type your command.")
         retry = input("You (text fallback): ").strip()
         return retry, 1.0 if retry else 0.0
@@ -4377,7 +4354,7 @@ def main():
     stt = STTManager(
         api_key=settings.deepgram_api_key,
         model=settings.stt_model,
-        timeout_seconds=settings.ai_timeout_seconds,
+        timeout_seconds=max(10, int(settings.ai_timeout_seconds)),
         language_hint=settings.language_hint,
         mode=settings.stt_mode,
         local_model_size=settings.stt_local_model_size,

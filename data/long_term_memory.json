@@ -41,6 +41,20 @@
       "assistant": "Anladım, \"Hava yürüdüler\" ifadesiyle bir şeylerin hareket ettiğinden ya da değiştiğinden bahsediyorsun. Bu durum seni nasıl hissettiriyor? Belki dışarıda yürüyüş yaparak biraz zaman geçirebilirsin. Bu, ruh halini iyileştirebilir.",
       "emotion": "neutral",
       "personality": "therapist"
+    },
+    {
+      "ts": "2026-02-26T05:24:09",
+      "user": "Allô.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Allô.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-02-26T05:25:06",
+      "user": "헬로우.",
+      "assistant": "(Deepgram fallback - therapist) I heard: '헬로우.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
     }
   ],
   "external_daily_events": []

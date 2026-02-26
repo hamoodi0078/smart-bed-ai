@@ -12,17 +12,27 @@ class AudioPlaybackController:
         if pygame is None:
             return
 
+        self._try_init_mixer()
+
+    def _try_init_mixer(self) -> bool:
+        if pygame is None:
+            self._ready = False
+            return False
+        if self._ready:
+            return True
         try:
             pygame.mixer.init()
             self._ready = True
+            return True
         except Exception:
             self._ready = False
+            return False
 
     def is_ready(self) -> bool:
-        return self._ready
+        return self._ready or self._try_init_mixer()
 
     def play_file(self, file_path: str) -> bool:
-        if not self._ready:
+        if not self.is_ready():
             return False
 
         path = Path(file_path)
@@ -37,7 +47,7 @@ class AudioPlaybackController:
             return False
 
     def queue_file(self, file_path: str) -> bool:
-        if not self._ready:
+        if not self.is_ready():
             return False
 
         path = Path(file_path)
@@ -53,7 +63,7 @@ class AudioPlaybackController:
             return False
 
     def is_playing(self) -> bool:
-        if not self._ready:
+        if not self.is_ready():
             return False
         try:
             return bool(pygame.mixer.music.get_busy())
@@ -61,7 +71,7 @@ class AudioPlaybackController:
             return False
 
     def stop(self):
-        if self._ready:
+        if self.is_ready():
             try:
                 if pygame.mixer.music.get_busy():
                     pygame.mixer.music.fadeout(120)
@@ -71,9 +81,9 @@ class AudioPlaybackController:
                 pygame.mixer.music.stop()
 
     def pause(self):
-        if self._ready:
+        if self.is_ready():
             pygame.mixer.music.pause()
 
     def resume(self):
-        if self._ready:
+        if self.is_ready():
             pygame.mixer.music.unpause()

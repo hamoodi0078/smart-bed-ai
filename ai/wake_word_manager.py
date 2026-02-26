@@ -255,7 +255,9 @@ class WakeWordManager:
 
         try:
             with sr.Microphone(device_index=self._active_mic_index) as source:
-                self._recognizer.adjust_for_ambient_noise(source, duration=0.2)
+                self._recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                self._recognizer.energy_threshold = 300
+                self._recognizer.dynamic_energy_threshold = True
                 audio = self._recognizer.listen(
                     source,
                     timeout=timeout_seconds,

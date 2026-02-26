@@ -34,10 +34,10 @@
     "therapist_followup_tone": "soft"
   },
   "progress": {
-    "sessions_count": 20,
+    "sessions_count": 22,
     "goals_created": 0,
     "goals_completed": 0,
-    "last_session_date": "2026-02-25",
+    "last_session_date": "2026-02-26",
     "last_goal_completion_date": "",
     "current_streak_days": 0,
     "best_streak_days": 0,
@@ -109,9 +109,9 @@
   },
   "environment": {
     "last_scene_key": "balanced_default",
-    "last_scene_applied_at": "2026-02-25T02:19:39",
+    "last_scene_applied_at": "2026-02-26T05:25:03",
     "last_preload_phase": "sleep",
-    "last_preload_at": "2026-02-25T02:53:50"
+    "last_preload_at": "2026-02-26T05:23:21"
   },
   "personality_runtime": {
     "emotion_history": [
@@ -358,6 +358,14 @@
       {
         "ts": "2026-02-25T02:19:39",
         "state": "neutral"
+      },
+      {
+        "ts": "2026-02-26T05:24:06",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-02-26T05:25:03",
+        "state": "neutral"
       }
     ],
     "priority_reminder_last_date": "",
@@ -469,6 +477,14 @@
       {
         "ts": "2026-02-25T02:53:40",
         "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-02-26T04:07:33",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-02-26T05:23:21",
+        "text": "hey bobo"
       }
     ],
     "interrupt_count_today": 1,
@@ -575,6 +591,27 @@
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": false
+      },
+      {
+        "ts": "2026-02-26T05:24:06",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-02-26T05:24:37",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-02-26T05:25:03",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
       }
     ],
     "brevity_mode": "normal",
@@ -623,6 +660,16 @@
         "ts": "2026-02-25T02:53:40",
         "kind": "greeting_en_evening",
         "text": "Good evening"
+      },
+      {
+        "ts": "2026-02-26T04:07:33",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-02-26T05:23:21",
+        "kind": "greeting_en_morning",
+        "text": "Good morning"
       }
     ]
   },
@@ -1073,7 +1120,21 @@
         "personality": "therapist",
         "emotion": "neutral",
         "score": 0.8,
-        "sample": "Hava y\u00fcr\u00fcd\u00fcler"
+        "sample": "Hava yürüdüler"
+      },
+      {
+        "ts": "2026-02-26T05:24:09",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Allô."
+      },
+      {
+        "ts": "2026-02-26T05:25:06",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "헬로우."
       }
     ],
     "last_selected": "therapist"
@@ -1108,8 +1169,21 @@
     }
   },
   "proactive": {
-    "sent_keys": [],
-    "history": [],
+    "sent_keys": [
+      {
+        "key": "adaptive_morning_ramp",
+        "date": "2026-02-26",
+        "window": "morning"
+      }
+    ],
+    "history": [
+      {
+        "key": "adaptive_morning_ramp",
+        "line": "Morning ramp is ready: gentle light progression and a soft wake sequence.",
+        "executed_at": "2026-02-26T05:23:24",
+        "window": "morning"
+      }
+    ],
     "verbosity": "normal"
   },
   "safety_valve": {

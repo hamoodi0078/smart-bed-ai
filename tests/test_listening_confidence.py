@@ -152,41 +152,39 @@ class TestListeningConfidence(unittest.TestCase):
         self.assertAlmostEqual(confidence, 0.91)
         self.assertEqual(stt.calls, [1, None])
 
-    def test_voice_low_confidence_yes_confirms_original_text(self):
+    def test_voice_low_confidence_returns_empty_for_retry(self):
         wake = _FakeWakeWordManager(
             voice_available=True,
             heard=[("play calm music", 0.4)],
-            confirmations=["yes"],
         )
         stt = _FakeSTTManager()
 
         text, confidence = get_query_text(stt, wake)
 
-        self.assertEqual(text, "play calm music")
-        self.assertGreaterEqual(confidence, 0.58)
+        self.assertEqual(text, "")
+        self.assertEqual(confidence, 0.0)
 
-    def test_voice_low_confidence_no_retries_capture(self):
+    def test_voice_low_confidence_no_longer_uses_confirmation_retry(self):
         wake = _FakeWakeWordManager(
             voice_available=True,
             heard=[("set timer", 0.33), ("set timer for 20 minutes", 0.74)],
-            confirmations=["no"],
         )
         stt = _FakeSTTManager()
 
         text, confidence = get_query_text(stt, wake)
 
-        self.assertEqual(text, "set timer for 20 minutes")
-        self.assertAlmostEqual(confidence, 0.74)
+        self.assertEqual(text, "")
+        self.assertEqual(confidence, 0.0)
 
-    @patch("builtins.input", side_effect=["audio:test.wav", "no", "set lights warm"])
-    def test_audio_low_confidence_no_falls_back_to_typed_retry(self, _mock_input):
+    @patch("builtins.input", side_effect=["audio:test.wav"])
+    def test_audio_low_confidence_returns_empty_for_retry(self, _mock_input):
         wake = _FakeWakeWordManager(voice_available=False)
         stt = _FakeSTTManager(transcript="set lights", confidence=0.31)
 
         text, confidence = get_query_text(stt, wake)
 
-        self.assertEqual(text, "set lights warm")
-        self.assertEqual(confidence, 1.0)
+        self.assertEqual(text, "")
+        self.assertEqual(confidence, 0.0)
 
     def test_wake_word_manager_accepts_hello(self):
         manager = WakeWordManager(mode="keyboard", wake_word="hey smart bed")
