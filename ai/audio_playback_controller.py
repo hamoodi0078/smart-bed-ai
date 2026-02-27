@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 try:
     import pygame
@@ -42,7 +43,11 @@ class AudioPlaybackController:
         try:
             pygame.mixer.music.load(str(path))
             pygame.mixer.music.play()
-            return True
+            # Wait a short time to ensure audio starts playing
+            start_time = time.time()
+            while not pygame.mixer.music.get_busy() and (time.time() - start_time) < 0.5:
+                time.sleep(0.01)
+            return pygame.mixer.music.get_busy()
         except Exception:
             return False
 
@@ -78,12 +83,21 @@ class AudioPlaybackController:
                 else:
                     pygame.mixer.music.stop()
             except Exception:
-                pygame.mixer.music.stop()
+                try:
+                    pygame.mixer.music.stop()
+                except Exception:
+                    pass
 
     def pause(self):
         if self.is_ready():
-            pygame.mixer.music.pause()
+            try:
+                pygame.mixer.music.pause()
+            except Exception:
+                pass
 
     def resume(self):
         if self.is_ready():
-            pygame.mixer.music.unpause()
+            try:
+                pygame.mixer.music.unpause()
+            except Exception:
+                pass

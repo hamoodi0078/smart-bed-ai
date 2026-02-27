@@ -231,11 +231,17 @@ class TTSManager:
             "text": normalized_text,
         }
 
-        return self._stream_speech_to_files(
-            url=url,
-            headers=headers,
-            payload=payload,
-            output_path=output_path,
-            cache_path=cache_path,
-            cache_key=cache_key,
-        )
+        try:
+            result_path = self._stream_speech_to_files(
+                url=url,
+                headers=headers,
+                payload=payload,
+                output_path=output_path,
+                cache_path=cache_path,
+                cache_key=cache_key,
+            )
+            return str(result_path)
+        except Exception as e:
+            print(f"TTS synthesis failed: {str(e)}")
+            self._write_bytes_safely(output_path, b"")
+            return str(output_path)
