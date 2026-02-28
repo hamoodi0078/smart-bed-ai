@@ -55,6 +55,34 @@
       "assistant": "(Deepgram fallback - therapist) I heard: '헬로우.'. I can respond better once Deepgram Voice Agent access is available.",
       "emotion": "neutral",
       "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T00:54:16",
+      "user": "What is currently going on between Iran and Israel?",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'What is currently going on b...",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T02:41:52",
+      "user": "कहीं भी कर दें",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'कहीं भी कर दें'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T02:43:23",
+      "user": "की video जारी कर दी है. यह वह video है जो America के लिए जारी की गई है. इराक पर खुदाई हमले की video America ने जारी कर दी हैं अमरीकी सैनिकों की video जारी की गई हैं",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'की video जारी कर दी है. यह वह video है जो America के लिए जारी की गई है. इराक पर खुदाई हमले की video America ने जारी कर दी हैं अमरीकी सैनिकों की video जारी की गई हैं'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T03:57:22",
+      "user": "वह नहीं वह chicken बनाएंगे",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'वह नहीं वह chicken बनाएंगे'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
     }
   ],
   "external_daily_events": []

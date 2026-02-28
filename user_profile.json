@@ -34,10 +34,10 @@
     "therapist_followup_tone": "soft"
   },
   "progress": {
-    "sessions_count": 22,
+    "sessions_count": 24,
     "goals_created": 0,
     "goals_completed": 0,
-    "last_session_date": "2026-02-26",
+    "last_session_date": "2026-03-01",
     "last_goal_completion_date": "",
     "current_streak_days": 0,
     "best_streak_days": 0,
@@ -57,7 +57,7 @@
     "challenge_level": 1,
     "challenge_last_adjust_date": "",
     "wind_down_enabled": true,
-    "wind_down_minutes": 45,
+    "wind_down_minutes": 30,
     "night_wake_count": 0,
     "last_night_wake_date": "",
     "last_decompression_date": "",
@@ -109,9 +109,9 @@
   },
   "environment": {
     "last_scene_key": "balanced_default",
-    "last_scene_applied_at": "2026-02-26T05:25:03",
+    "last_scene_applied_at": "2026-03-01T03:57:19",
     "last_preload_phase": "sleep",
-    "last_preload_at": "2026-02-26T05:23:21"
+    "last_preload_at": "2026-03-01T02:44:33"
   },
   "personality_runtime": {
     "emotion_history": [
@@ -366,6 +366,22 @@
       {
         "ts": "2026-02-26T05:25:03",
         "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T00:54:12",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T02:41:49",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T02:43:20",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T03:57:19",
+        "state": "neutral"
       }
     ],
     "priority_reminder_last_date": "",
@@ -485,12 +501,20 @@
       {
         "ts": "2026-02-26T05:23:21",
         "text": "hey bobo"
+      },
+      {
+        "ts": "2026-03-01T00:53:51",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-03-01T02:41:34",
+        "text": "hello"
       }
     ],
     "interrupt_count_today": 1,
     "interrupt_count_date": "2026-02-22",
-    "quality_samples": 55,
-    "quality_running_avg": 0.7496969696969696,
+    "quality_samples": 56,
+    "quality_running_avg": 0.7511904761904761,
     "continuity_by_personality": {},
     "last_voice_pacing": "balanced",
     "cognitive_load_samples": [
@@ -612,9 +636,51 @@
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T00:54:00",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T00:54:12",
+        "word_count": 9,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-01T02:41:49",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T02:43:20",
+        "word_count": 38,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-01T02:44:32",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T03:57:19",
+        "word_count": 5,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
       }
     ],
-    "brevity_mode": "normal",
+    "brevity_mode": "cognitive_load",
     "phrase_history": [
       {
         "ts": "2026-02-24T21:53:40",
@@ -670,6 +736,21 @@
         "ts": "2026-02-26T05:23:21",
         "kind": "greeting_en_morning",
         "text": "Good morning"
+      },
+      {
+        "ts": "2026-03-01T00:53:51",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-03-01T00:54:12",
+        "kind": "transition_ack",
+        "text": "Okay, one moment."
+      },
+      {
+        "ts": "2026-03-01T02:41:34",
+        "kind": "greeting_en_evening",
+        "text": "Evening"
       }
     ]
   },
@@ -678,16 +759,14 @@
     "bed_guide_active": false,
     "bed_guide_step_index": 6,
     "awaiting_bed_nickname": false,
-    "last_action": {},
-    "pending_action_resolve": {
+    "last_action": {
       "intent": "start_wind_down",
-      "slots": {
-        "minutes": 30
-      },
-      "confidence": 0.6,
-      "requires_confirmation": true,
-      "clarify_question": "Do you want me to start wind-down now with dim lights and calm audio?"
+      "inverse": {
+        "intent": "disable_wind_down",
+        "slots": {}
+      }
     },
+    "pending_action_resolve": {},
     "sensor_pressure_active": false,
     "sensor_motion_active": false
   },
@@ -1135,6 +1214,34 @@
         "emotion": "neutral",
         "score": 0.8,
         "sample": "헬로우."
+      },
+      {
+        "ts": "2026-03-01T00:54:16",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "What is currently going on between Iran and Israel?"
+      },
+      {
+        "ts": "2026-03-01T02:41:52",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "कहीं भी कर दें"
+      },
+      {
+        "ts": "2026-03-01T02:43:23",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "की video जारी कर दी है. यह वह video है जो America के लिए जारी की गई है. इराक पर खुदाई हमले की video "
+      },
+      {
+        "ts": "2026-03-01T03:57:22",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "वह नहीं वह chicken बनाएंगे"
       }
     ],
     "last_selected": "therapist"
