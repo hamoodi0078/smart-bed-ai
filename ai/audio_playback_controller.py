@@ -43,11 +43,14 @@ class AudioPlaybackController:
         try:
             pygame.mixer.music.load(str(path))
             pygame.mixer.music.play()
-            # Wait a short time to ensure audio starts playing
+            # Wait for audio to start (max 0.5 seconds)
             start_time = time.time()
             while not pygame.mixer.music.get_busy() and (time.time() - start_time) < 0.5:
                 time.sleep(0.01)
-            return pygame.mixer.music.get_busy()
+            # Block until audio fully finishes playing
+            while pygame.mixer.music.get_busy():
+                time.sleep(0.1)
+            return True
         except Exception:
             return False
 
