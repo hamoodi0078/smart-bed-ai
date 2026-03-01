@@ -109,7 +109,7 @@
   },
   "environment": {
     "last_scene_key": "balanced_default",
-    "last_scene_applied_at": "2026-03-01T03:57:19",
+    "last_scene_applied_at": "2026-03-01T15:50:08",
     "last_preload_phase": "sleep",
     "last_preload_at": "2026-03-01T02:44:33"
   },
@@ -382,6 +382,74 @@
       {
         "ts": "2026-03-01T03:57:19",
         "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T03:59:15",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T03:59:38",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T03:59:49",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T04:00:51",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T04:03:15",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T04:06:54",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T04:33:13",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T04:48:34",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T04:54:45",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T15:36:49",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T15:38:53",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T15:39:05",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T15:39:17",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T15:39:29",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T15:49:47",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T15:49:57",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T15:50:08",
+        "state": "neutral"
       }
     ],
     "priority_reminder_last_date": "",
@@ -512,7 +580,7 @@
       }
     ],
     "interrupt_count_today": 1,
-    "interrupt_count_date": "2026-02-22",
+    "interrupt_count_date": "2026-03-01",
     "quality_samples": 56,
     "quality_running_avg": 0.7511904761904761,
     "continuity_by_personality": {},
@@ -678,6 +746,125 @@
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-01T03:59:15",
+        "word_count": 11,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-01T03:59:38",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T03:59:49",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T04:00:51",
+        "word_count": 11,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-01T04:03:15",
+        "word_count": 8,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-01T04:06:54",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T04:33:13",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T04:48:34",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T04:54:45",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T15:36:49",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T15:38:53",
+        "word_count": 10,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-01T15:39:05",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T15:39:17",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T15:39:29",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T15:49:47",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T15:49:57",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-01T15:50:08",
+        "word_count": 5,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
       }
     ],
     "brevity_mode": "cognitive_load",
@@ -768,7 +955,8 @@
     },
     "pending_action_resolve": {},
     "sensor_pressure_active": false,
-    "sensor_motion_active": false
+    "sensor_motion_active": false,
+    "music_playback_active": false
   },
   "adaptive_personality": {
     "enabled": true,
@@ -1242,9 +1430,121 @@
         "emotion": "neutral",
         "score": 0.8,
         "sample": "वह नहीं वह chicken बनाएंगे"
+      },
+      {
+        "ts": "2026-03-01T03:59:18",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "लेकिन चाल ना. तो gate hub पर क्या कर रहा है?"
+      },
+      {
+        "ts": "2026-03-01T03:59:41",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Click here."
+      },
+      {
+        "ts": "2026-03-01T03:59:52",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Alkuun sivuuteen."
+      },
+      {
+        "ts": "2026-03-01T04:00:54",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "You get it. It's a funny job of ours, I think."
+      },
+      {
+        "ts": "2026-03-01T04:03:19",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "जिसमें बनाना है वह भी साफ कर दे."
+      },
+      {
+        "ts": "2026-03-01T04:06:57",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Yeah."
+      },
+      {
+        "ts": "2026-03-01T04:33:17",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "मछली."
+      },
+      {
+        "ts": "2026-03-01T04:48:37",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Thank you."
+      },
+      {
+        "ts": "2026-03-01T04:54:49",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Ya, ya."
+      },
+      {
+        "ts": "2026-03-01T15:36:55",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Погоди!"
+      },
+      {
+        "ts": "2026-03-01T15:38:56",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "तो gas को लेकर बुला के करवा लेना था काम."
+      },
+      {
+        "ts": "2026-03-01T15:39:07",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Office."
+      },
+      {
+        "ts": "2026-03-01T15:39:23",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Coffee. Smell"
+      },
+      {
+        "ts": "2026-03-01T15:39:31",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Bayrak ve Balgenigindir."
+      },
+      {
+        "ts": "2026-03-01T15:50:02",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Rani tune"
+      },
+      {
+        "ts": "2026-03-01T15:50:16",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "तू ना पास मेरे अंदर."
       }
     ],
-    "last_selected": "therapist"
+    "last_selected": "guide"
   },
   "web_device_controls": {
     "usr_7CcWx99tc4E": {

@@ -83,6 +83,118 @@
       "assistant": "(Deepgram fallback - therapist) I heard: 'वह नहीं वह chicken बनाएंगे'. I can respond better once Deepgram Voice Agent access is available.",
       "emotion": "neutral",
       "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T03:59:18",
+      "user": "लेकिन चाल ना. तो gate hub पर क्या कर रहा है?",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'लेकिन चाल ना. तो gate hub पर क्या कर रहा है?'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T03:59:41",
+      "user": "Click here.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Click here.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T03:59:52",
+      "user": "Alkuun sivuuteen.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Alkuun sivuuteen.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T04:00:54",
+      "user": "You get it. It's a funny job of ours, I think.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'You get it. It's a funny job of ours, I think.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T04:03:19",
+      "user": "जिसमें बनाना है वह भी साफ कर दे.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'जिसमें बनाना है वह भी साफ कर दे.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T04:06:57",
+      "user": "Yeah.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Topic from previous user turn: जिसमें बनाना है वह भी साफ कर दे.\nUser acknowledgement/follow-up: Yeah.\nReply on the same topic in 1 concise practical line. Do not ask a new follow-up question.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T04:33:17",
+      "user": "मछली.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'मछली.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T04:48:37",
+      "user": "Thank you.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Thank you.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T04:54:49",
+      "user": "Ya, ya.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Ya, ya.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-01T15:36:55",
+      "user": "Погоди!",
+      "assistant": "(Deepgram fallback - guide) I heard: 'Погоди!'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "guide"
+    },
+    {
+      "ts": "2026-03-01T15:38:56",
+      "user": "तो gas को लेकर बुला के करवा लेना था काम.",
+      "assistant": "(Deepgram fallback - guide) I heard: 'तो gas को लेकर बुला के करवा लेना था काम.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "guide"
+    },
+    {
+      "ts": "2026-03-01T15:39:07",
+      "user": "Office.",
+      "assistant": "(Deepgram fallback - guide) I heard: 'Office.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "guide"
+    },
+    {
+      "ts": "2026-03-01T15:39:23",
+      "user": "Coffee. Smell",
+      "assistant": "(Deepgram fallback - guide) I heard: 'Coffee. Smell'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "guide"
+    },
+    {
+      "ts": "2026-03-01T15:39:31",
+      "user": "Bayrak ve Balgenigindir.",
+      "assistant": "(Deepgram fallback - guide) I heard: 'Bayrak ve Balgenigindir.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "guide"
+    },
+    {
+      "ts": "2026-03-01T15:50:02",
+      "user": "Rani tune",
+      "assistant": "(Deepgram fallback - guide) I heard: 'Previous assistant reply being interrupted: (Deepgram fallback - guide) I heard: 'Bayrak ve Balgenigindir.'. I can respond better once Deepgram Voice Agent access is available.\nUser interruption request: Rani tune\nTreat this as a high-priority follow-up. Stop prior topic expansion and answer this interruption directly first. If it is a control/action request, keep the reply short and actionable.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "guide"
+    },
+    {
+      "ts": "2026-03-01T15:50:16",
+      "user": "तू ना पास मेरे अंदर.",
+      "assistant": "(Deepgram fallback - guide) I heard: 'तू ना पास मेरे अंदर.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "guide"
     }
   ],
   "external_daily_events": []
