@@ -5,6 +5,8 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
+import requests
+
 from ai.audio_output_manager import AudioOutputManager
 from ai.action_resolver import resolve_action
 from ai.acoustic_echo_guard import AcousticEchoGuard
@@ -610,6 +612,118 @@ def has_any(text: str, words: tuple[str, ...]) -> bool:
 def _is_llm_fallback_response(text: str) -> bool:
     value = str(text or "").strip()
     return value.startswith("(Deepgram fallback -") or value.startswith("(Offline fallback -")
+
+
+def _extract_openai_chat_text(payload: dict) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    first = choices[0] if isinstance(choices[0], dict) else {}
+    message = first.get("message") if isinstance(first, dict) else {}
+    content = message.get("content") if isinstance(message, dict) else ""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            text_value = item.get("text")
+            if text_value:
+                parts.append(str(text_value))
+        return "".join(parts).strip()
+    return ""
+
+
+def _build_gpt_route_diagnostics(backend_client: BedBackendClient | None) -> dict:
+    issues: list[str] = []
+    backend_proxy_enabled = bool(settings.use_backend_ai_proxy)
+    backend_configured = bool(backend_client is not None and backend_client.is_configured())
+    openai_direct_enabled = bool(settings.use_openai_direct)
+    openai_api_key_present = bool(str(settings.openai_api_key or "").strip())
+    openai_model_present = bool(str(settings.openai_chat_model or "").strip())
+
+    backend_ready = backend_proxy_enabled and backend_configured
+    openai_ready = openai_direct_enabled and openai_api_key_present and openai_model_present
+
+    if openai_direct_enabled and (not openai_api_key_present):
+        issues.append("OPENAI_API_KEY is missing while USE_OPENAI_DIRECT=1.")
+    if openai_direct_enabled and (not openai_model_present):
+        issues.append("OPENAI_CHAT_MODEL is missing while USE_OPENAI_DIRECT=1.")
+    if backend_proxy_enabled and (not backend_configured):
+        issues.append("APP_BACKEND_BASE_URL or BED_DEVICE_ID is missing for backend GPT route.")
+    if (not openai_direct_enabled) and (not backend_proxy_enabled):
+        issues.append("Both USE_OPENAI_DIRECT and USE_BACKEND_AI_PROXY are disabled.")
+
+    return {
+        "openai_ready": openai_ready,
+        "backend_ready": backend_ready,
+        "openai_direct_enabled": openai_direct_enabled,
+        "backend_proxy_enabled": backend_proxy_enabled,
+        "issues": issues,
+    }
+
+
+def _request_openai_chat_reply(
+    *,
+    user_text_for_ai: str,
+    personality: str,
+    user_context: str,
+    realtime_context: str,
+    max_response_tokens: int,
+) -> tuple[bool, str]:
+    api_key = str(settings.openai_api_key or "").strip()
+    model = str(settings.openai_chat_model or "").strip()
+    if not api_key:
+        return False, "OPENAI_API_KEY is missing."
+    if not model:
+        return False, "OPENAI_CHAT_MODEL is missing."
+
+    base_url = str(settings.openai_base_url or "https://api.openai.com/v1").strip().rstrip("/")
+    url = f"{base_url}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are Smart Bed's conversational assistant. "
+                f"Personality mode: {personality}. Keep replies practical, natural, and concise."
+            ),
+        }
+    ]
+    if user_context.strip():
+        messages.append({"role": "system", "content": f"User context:\n{user_context.strip()}"})
+    if realtime_context.strip():
+        messages.append({"role": "system", "content": f"Realtime context:\n{realtime_context.strip()}"})
+    messages.append({"role": "user", "content": str(user_text_for_ai or "").strip()})
+    payload = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max(40, int(max_response_tokens)),
+        "temperature": 0.7,
+    }
+
+    try:
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=max(6, int(settings.ai_timeout_seconds)),
+        )
+        if not response.ok:
+            body_preview = str(response.text or "").replace("\n", " ").strip()[:260]
+            return False, f"OpenAI chat failed ({response.status_code}): {body_preview}"
+        text = _extract_openai_chat_text(response.json())
+        if not text:
+            return False, "OpenAI chat returned an empty response."
+        return True, text
+    except Exception as e:
+        return False, f"OpenAI chat request error: {e}"
 
 
 def _looks_like_echo_capture(user_text: str, last_assistant_response: str, confidence: float) -> bool:
@@ -3161,12 +3275,29 @@ def handle_local_commands(
         return f"Language mode: {lang}.", True
 
     if lower in ("cloud status", "entitlement status", "subscription cloud status"):
-        if not settings.use_backend_ai_proxy:
-            return "Cloud proxy mode is disabled.", True
-        if (backend_client is None) or (not backend_client.is_configured()):
-            return "Cloud runtime not configured. Set APP_BACKEND_BASE_URL and BED_DEVICE_ID.", True
-        backend_client.fetch_entitlement()
-        return backend_client.status_line(), True
+        diag = _build_gpt_route_diagnostics(backend_client)
+        lines = []
+        if diag["openai_direct_enabled"]:
+            if diag["openai_ready"]:
+                lines.append(f"Direct OpenAI GPT route: ready (model={settings.openai_chat_model}).")
+            else:
+                lines.append("Direct OpenAI GPT route: not ready.")
+        else:
+            lines.append("Direct OpenAI GPT route: disabled (USE_OPENAI_DIRECT=0).")
+
+        if diag["backend_proxy_enabled"] and (backend_client is not None) and backend_client.is_configured():
+            backend_client.fetch_entitlement()
+            lines.append(f"Backend GPT route: {backend_client.status_line()}")
+            if not backend_client.is_feature_allowed("cloud_chat"):
+                lines.append("Backend feature gate: cloud_chat is disabled for this device/subscription.")
+        elif diag["backend_proxy_enabled"]:
+            lines.append("Backend GPT route: not configured (set APP_BACKEND_BASE_URL and BED_DEVICE_ID).")
+        else:
+            lines.append("Backend GPT route: disabled (USE_BACKEND_AI_PROXY=0).")
+
+        if diag["issues"]:
+            lines.append("Missing/blocked: " + " | ".join(diag["issues"]))
+        return " ".join(lines), True
 
     if lower in ("audio output status", "speaker status", "show audio output"):
         return audio_output.output_status(profile), True
@@ -4425,6 +4556,7 @@ def main():
             "Falling back to keyboard mode. Try setting WAKE_WORD_MIC_INDEX in .env (use -1 for default)."
         )
 
+    gpt_diag = _build_gpt_route_diagnostics(backend_client)
     if settings.use_backend_ai_proxy:
         if not backend_client.is_configured():
             print("[WARN] Backend AI proxy is enabled but APP_BACKEND_BASE_URL/BED_DEVICE_ID is not configured.")
@@ -4432,6 +4564,17 @@ def main():
             backend_client.ensure_session()
             backend_client.fetch_entitlement()
             print(f"Bed: {backend_client.status_line()}")
+            if not backend_client.is_feature_allowed("cloud_chat"):
+                print("[WARN] Backend GPT route blocked: cloud_chat feature is disabled for this entitlement.")
+    if settings.use_openai_direct:
+        if not str(settings.openai_api_key or "").strip():
+            print("[WARN] USE_OPENAI_DIRECT=1 but OPENAI_API_KEY is missing.")
+        if not str(settings.openai_chat_model or "").strip():
+            print("[WARN] USE_OPENAI_DIRECT=1 but OPENAI_CHAT_MODEL is missing.")
+        if str(settings.openai_api_key or "").strip() and str(settings.openai_chat_model or "").strip():
+            print(f"Bed: Direct OpenAI GPT route enabled (model={settings.openai_chat_model}).")
+    if gpt_diag["issues"]:
+        print("[WARN] GPT route diagnostics -> " + " | ".join(gpt_diag["issues"]))
 
     print("Bed: Startup health -> " + build_health_report())
 
@@ -5177,97 +5320,60 @@ def main():
                 daily_events_line = memory_store.latest_daily_events_summary(hours=36, max_items=3)
                 if daily_events_line:
                     user_context = (user_context + "\n" + daily_events_line).strip()
-                if (not settings.deepgram_api_key) or (not settings.use_api_first):
+                gpt_diag = _build_gpt_route_diagnostics(backend_client)
+                if not effective_realtime_query:
+                    led.set_state("thinking")
+                print(f"[FLOW] STT text: {user_text}")
+                print("[FLOW] Open-question route -> GPT completion")
+
+                response_text = ""
+                if gpt_diag["openai_ready"]:
+                    print(f"[FLOW] GPT provider: direct OpenAI API (model={settings.openai_chat_model}).")
+                    ok_openai, openai_text = _request_openai_chat_reply(
+                        user_text_for_ai=user_text_for_ai,
+                        personality=personality,
+                        user_context=user_context,
+                        realtime_context=realtime_context,
+                        max_response_tokens=speed_tuning["max_tokens"],
+                    )
+                    if ok_openai:
+                        response_text = str(openai_text or "").strip()
+                        print(f"[FLOW] GPT reply text: {response_text}")
+                    else:
+                        print(f"[FLOW][WARN] Direct OpenAI GPT failed: {openai_text}")
+
+                if (not response_text) and gpt_diag["backend_ready"] and (backend_client is not None):
+                    ent_ok, _ = backend_client.fetch_entitlement()
+                    if (not ent_ok) or (not backend_client.is_feature_allowed("cloud_chat")):
+                        print("[FLOW][WARN] Backend GPT route unavailable: cloud_chat entitlement is inactive.")
+                    else:
+                        print("[FLOW] GPT provider: backend cloud_chat proxy.")
+                        ok_cloud, cloud_text, _ = backend_client.request_ai_chat(
+                            text=user_text_for_ai,
+                            personality=personality,
+                            user_context=user_context,
+                            realtime_context=realtime_context,
+                            max_response_tokens=speed_tuning["max_tokens"],
+                        )
+                        if ok_cloud:
+                            response_text = str(cloud_text or "").strip()
+                            print(f"[FLOW] GPT reply text: {response_text}")
+                        else:
+                            print(f"[FLOW][WARN] Backend GPT request failed: {cloud_text}")
+                            offline_response, handled_offline = offline_pack.handle(user_text)
+                            response_text = offline_response if handled_offline else str(cloud_text or "").strip()
+
+                if not response_text:
                     offline_response, handled_offline = offline_pack.handle(user_text)
                     if handled_offline:
                         response_text = offline_response
                     else:
-                        response_text = chat.generate_response(
-                            user_text_for_ai,
-                            personality=personality,
-                            realtime_context=realtime_context,
-                            user_context=user_context,
-                            emotion_state=emotion_state,
-                            cognitive_load_mode=cognitive_load_mode,
-                            quick_timeout_seconds=speed_tuning["quick_timeout"],
-                            total_timeout_seconds=speed_tuning["total_timeout"],
-                            max_response_tokens=speed_tuning["max_tokens"],
+                        missing = " | ".join(gpt_diag["issues"]) if gpt_diag["issues"] else "no GPT route is currently available"
+                        response_text = (
+                            "GPT route is unavailable right now. "
+                            f"{missing}"
                         )
-                else:
-                    use_backend_chat = settings.use_backend_ai_proxy and backend_client.is_configured()
-                    if use_backend_chat:
-                        ent_ok, _ = backend_client.fetch_entitlement()
-                        if (not ent_ok) or (not backend_client.is_feature_allowed("cloud_chat")):
-                            offline_response, handled_offline = offline_pack.handle(user_text)
-                            if handled_offline:
-                                response_text = offline_response
-                            else:
-                                response_text = (
-                                    "Cloud subscription is inactive or quota reached. "
-                                    "I will keep helping in local mode for this turn."
-                                )
-                        else:
-                            if not effective_realtime_query:
-                                led.set_state("thinking")
-                            ok_cloud, cloud_text, _ = backend_client.request_ai_chat(
-                                text=user_text_for_ai,
-                                personality=personality,
-                                user_context=user_context,
-                                realtime_context=realtime_context,
-                                max_response_tokens=speed_tuning["max_tokens"],
-                            )
-                            if ok_cloud:
-                                response_text = cloud_text
-                            else:
-                                offline_response, handled_offline = offline_pack.handle(user_text)
-                                response_text = offline_response if handled_offline else cloud_text
-                    else:
-                        can_stream_this_turn = not effective_realtime_query
-                        if can_stream_this_turn:
-                            led.set_state("speaking")
-                            response_text, stream_interrupt_text = run_streaming_voice_turn(
-                                chat=chat,
-                                realtime_voice_pipeline=realtime_voice_pipeline,
-                                filler_manager=filler_manager,
-                                barge_in_monitor=barge_in_monitor,
-                                echo_guard=echo_guard,
-                                tts=tts,
-                                tts_player=tts_player,
-                                led=led,
-                                environment_orchestrator=environment_orchestrator,
-                                profile=profile,
-                                user_text_for_ai=user_text_for_ai,
-                                personality=personality,
-                                realtime_context=realtime_context,
-                                user_context=user_context,
-                                emotion_state=emotion_state,
-                                cognitive_load_mode=cognitive_load_mode,
-                                voice_override=tts_voice_for_turn,
-                                profile_override=profile_override_for_turn,
-                                pace_override=pace_override_for_turn,
-                                total_timeout_seconds=speed_tuning["total_timeout"],
-                                max_response_tokens=speed_tuning["max_tokens"],
-                            )
-                            if response_text:
-                                response_audio_already_played = True
-                        else:
-                            led.set_state("thinking")
-                            response_text = chat.generate_response(
-                                user_text_for_ai,
-                                personality=personality,
-                                realtime_context=realtime_context,
-                                user_context=user_context,
-                                emotion_state=emotion_state,
-                                cognitive_load_mode=cognitive_load_mode,
-                                quick_timeout_seconds=speed_tuning["quick_timeout"],
-                                total_timeout_seconds=speed_tuning["total_timeout"],
-                                max_response_tokens=speed_tuning["max_tokens"],
-                            )
-
-                        if _is_llm_fallback_response(response_text):
-                            offline_response, handled_offline = offline_pack.handle(user_text)
-                            if handled_offline:
-                                response_text = offline_response
+                    print(f"[FLOW][WARN] GPT route unavailable. {response_text}")
 
                 if stream_interrupt_text:
                     runtime_orchestrator.record_interrupt(profile)
@@ -5348,6 +5454,7 @@ def main():
                     print("Bed: Streaming response audio now.")
             else:
                 environment_orchestrator.preload_transition_for_response(led, profile, response_text)
+                print("[FLOW] Routing GPT reply -> TTS -> pygame playback")
                 audio_file = play_tts_with_fast_start(
                     tts,
                     tts_player,

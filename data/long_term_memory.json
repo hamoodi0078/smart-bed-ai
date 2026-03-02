@@ -958,6 +958,83 @@
       "assistant": "(Deepgram fallback - therapist) I heard: 'Better once Deepgram voice agent access is available.'. I can respond better once Deepgram Voice Agent access is available.",
       "emotion": "neutral",
       "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:15:38",
+      "user": "Ahoj.",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:16:49",
+      "user": "Halo",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:18:26",
+      "user": "Ahoriu.",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:21:44",
+      "user": "Delete, tunicaragem, bilhete e o perior.",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:22:34",
+      "user": "ま な",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:23:07",
+      "user": "Vamos lá?",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:23:17",
+      "user": "Kitna hoga",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:23:28",
+      "user": "depend karta hai",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:23:43",
+      "user": "abhi Jis Tarah Tu Jo kam",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:25:58",
+      "user": "Пагану, заскивайте.",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:27:58",
+      "user": "दिखा अपना मुंह.",
+      "assistant": "Cloud subscription is inactive or quota reached.",
+      "emotion": "neutral",
+      "personality": "therapist"
     }
   ],
   "external_daily_events": []

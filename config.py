@@ -84,6 +84,10 @@ class Settings:
     bed_device_id: str = os.getenv("BED_DEVICE_ID", "")
     bed_firmware_version: str = os.getenv("BED_FIRMWARE_VERSION", "1.0.0")
     use_backend_ai_proxy: bool = os.getenv("USE_BACKEND_AI_PROXY", "1") == "1"
+    use_openai_direct: bool = os.getenv("USE_OPENAI_DIRECT", "0") == "1"
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_chat_model: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+    openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     user_strip_pin: int = int(os.getenv("USER_STRIP_PIN", "18"))
     state_strip_pin: int = int(os.getenv("STATE_STRIP_PIN", "13"))
     user_strip_led_count: int = int(os.getenv("USER_STRIP_LED_COUNT", "120"))

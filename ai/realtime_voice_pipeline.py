@@ -136,10 +136,10 @@ class RealtimeVoicePipeline:
         on_preload_start: Callable[[str], None] | None = None,
     ) -> str:
         """
-        Deepgram Voice Agent already performs turn-level language generation,
-        so the realtime pipeline can treat incoming chunks as playback-ready
-        fragments instead of re-segmenting every sentence.
+        Compatibility wrapper: open-question routing now uses GPT text generation,
+        so we process chunks with the normal sentence splitter path.
         """
+        print("[FLOW] Realtime pipeline voice-agent mode disabled; using generic text stream path.")
         return self.speak_from_text_stream(
             text_chunks,
             voice_override=voice_override,
@@ -148,5 +148,5 @@ class RealtimeVoicePipeline:
             profile_override=profile_override,
             should_stop=should_stop,
             on_preload_start=on_preload_start,
-            source_is_voice_agent=True,
+            source_is_voice_agent=False,
         )

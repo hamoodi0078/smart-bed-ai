@@ -34,7 +34,7 @@
     "therapist_followup_tone": "soft"
   },
   "progress": {
-    "sessions_count": 30,
+    "sessions_count": 32,
     "goals_created": 0,
     "goals_completed": 0,
     "last_session_date": "2026-03-03",
@@ -109,56 +109,12 @@
   },
   "environment": {
     "last_scene_key": "balanced_default",
-    "last_scene_applied_at": "2026-03-03T01:51:28",
+    "last_scene_applied_at": "2026-03-03T02:27:56",
     "last_preload_phase": "sleep",
-    "last_preload_at": "2026-03-03T01:49:46"
+    "last_preload_at": "2026-03-03T02:17:52"
   },
   "personality_runtime": {
     "emotion_history": [
-      {
-        "ts": "2026-02-24T20:25:15",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-24T20:25:48",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-25T00:39:26",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-25T00:39:33",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-25T00:39:40",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-25T02:19:39",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-26T05:24:06",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-26T05:25:03",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-03-01T00:54:12",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-03-01T02:41:49",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-03-01T02:43:20",
-        "state": "neutral"
-      },
       {
         "ts": "2026-03-01T03:57:19",
         "state": "neutral"
@@ -594,6 +550,50 @@
       {
         "ts": "2026-03-03T01:51:28",
         "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:15:36",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:16:47",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:18:24",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:21:42",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:22:32",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:23:05",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:23:15",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:23:26",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:23:41",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:25:56",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T02:27:56",
+        "state": "neutral"
       }
     ],
     "priority_reminder_last_date": "",
@@ -749,99 +749,23 @@
       {
         "ts": "2026-03-03T01:49:46",
         "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-03-03T02:09:42",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-03-03T02:17:52",
+        "text": "hey smart bed"
       }
     ],
-    "interrupt_count_today": 1,
+    "interrupt_count_today": 4,
     "interrupt_count_date": "2026-03-03",
-    "quality_samples": 57,
-    "quality_running_avg": 0.7526315789473684,
+    "quality_samples": 68,
+    "quality_running_avg": 0.7333333333333333,
     "continuity_by_personality": {},
-    "last_voice_pacing": "balanced",
+    "last_voice_pacing": "slow_calm",
     "cognitive_load_samples": [
-      {
-        "ts": "2026-03-02T02:42:55",
-        "word_count": 1,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-02T02:43:22",
-        "word_count": 14,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:45:24",
-        "word_count": 36,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:45:46",
-        "word_count": 6,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:46:11",
-        "word_count": 13,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:46:38",
-        "word_count": 32,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:46:46",
-        "word_count": 6,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-02T02:47:23",
-        "word_count": 5,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-02T03:31:09",
-        "word_count": 4,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-02T03:31:20",
-        "word_count": 6,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T03:31:41",
-        "word_count": 6,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T03:32:05",
-        "word_count": 3,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
       {
         "ts": "2026-03-02T03:32:51",
         "word_count": 4,
@@ -1037,6 +961,90 @@
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-03T02:15:36",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T02:15:58",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-03T02:16:47",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T02:18:24",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T02:21:42",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-03T02:22:32",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T02:23:05",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T02:23:15",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T02:23:26",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T02:23:41",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T02:25:56",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T02:27:43",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
       }
     ],
     "brevity_mode": "cognitive_load",
@@ -1145,6 +1153,16 @@
         "ts": "2026-03-03T01:49:46",
         "kind": "greeting_en_evening",
         "text": "Good evening"
+      },
+      {
+        "ts": "2026-03-03T02:09:42",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-03-03T02:17:52",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
       }
     ]
   },
@@ -1169,83 +1187,6 @@
     "enabled": true,
     "manual_override": "",
     "history": [
-      {
-        "ts": "2026-02-20T19:13:37",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "tell me a deep quote"
-      },
-      {
-        "ts": "2026-02-20T19:14:27",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "shyri karo bro"
-      },
-      {
-        "ts": "2026-02-20T19:14:44",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "ha bolo"
-      },
-      {
-        "ts": "2026-02-20T19:15:13",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "lets have a roast battle"
-      },
-      {
-        "ts": "2026-02-20T19:15:44",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "you are so fake that even barbie is jealous"
-      },
-      {
-        "ts": "2026-02-20T19:16:49",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "ur so stupid u stared at orange juice bec it had concentrate writen on it"
-      },
-      {
-        "ts": "2026-02-20T19:17:13",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "ur so fat that u can sell shade"
-      },
-      {
-        "ts": "2026-02-20T19:17:44",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "ur so slow that a snail is faster then u"
-      },
-      {
-        "ts": "2026-02-20T19:18:23",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "you are so slow that a snail called u slowpoke"
-      },
-      {
-        "ts": "2026-02-20T19:19:08",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "ur so fat when u walk africe comes underwater"
-      },
-      {
-        "ts": "2026-02-20T19:19:24",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "nah i need to go"
-      },
       {
         "ts": "2026-02-20T19:19:31",
         "personality": "guide",
@@ -2218,6 +2159,83 @@
         "emotion": "neutral",
         "score": 0.8,
         "sample": "Better once Deepgram voice agent access is available."
+      },
+      {
+        "ts": "2026-03-03T02:15:38",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "Ahoj."
+      },
+      {
+        "ts": "2026-03-03T02:16:49",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "Halo"
+      },
+      {
+        "ts": "2026-03-03T02:18:26",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "Ahoriu."
+      },
+      {
+        "ts": "2026-03-03T02:21:44",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "Delete, tunicaragem, bilhete e o perior."
+      },
+      {
+        "ts": "2026-03-03T02:22:34",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "ま な"
+      },
+      {
+        "ts": "2026-03-03T02:23:07",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "Vamos lá?"
+      },
+      {
+        "ts": "2026-03-03T02:23:17",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "Kitna hoga"
+      },
+      {
+        "ts": "2026-03-03T02:23:28",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "depend karta hai"
+      },
+      {
+        "ts": "2026-03-03T02:23:43",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "abhi Jis Tarah Tu Jo kam"
+      },
+      {
+        "ts": "2026-03-03T02:25:58",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "Пагану, заскивайте."
+      },
+      {
+        "ts": "2026-03-03T02:27:58",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "दिखा अपना मुंह."
       }
     ],
     "last_selected": "therapist"
@@ -2257,6 +2275,11 @@
         "key": "adaptive_morning_ramp",
         "date": "2026-02-26",
         "window": "morning"
+      },
+      {
+        "key": "overload_simplification_prompt",
+        "date": "2026-03-03",
+        "window": "general"
       }
     ],
     "history": [
@@ -2265,9 +2288,15 @@
         "line": "Morning ramp is ready: gentle light progression and a soft wake sequence.",
         "executed_at": "2026-02-26T05:23:24",
         "window": "morning"
+      },
+      {
+        "key": "overload_simplification_prompt",
+        "line": "I will keep tonight simple: one tiny priority, calm lighting, and fewer prompts unless you ask.",
+        "executed_at": "2026-03-03T02:27:43",
+        "window": "general"
       }
     ],
-    "verbosity": "normal"
+    "verbosity": "minimal"
   },
   "safety_valve": {
     "distress_streak": 0,
