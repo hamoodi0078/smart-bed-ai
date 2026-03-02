@@ -34,10 +34,10 @@
     "therapist_followup_tone": "soft"
   },
   "progress": {
-    "sessions_count": 24,
+    "sessions_count": 25,
     "goals_created": 0,
     "goals_completed": 0,
-    "last_session_date": "2026-03-01",
+    "last_session_date": "2026-03-02",
     "last_goal_completion_date": "",
     "current_streak_days": 0,
     "best_streak_days": 0,
@@ -109,184 +109,12 @@
   },
   "environment": {
     "last_scene_key": "balanced_default",
-    "last_scene_applied_at": "2026-03-01T15:50:08",
+    "last_scene_applied_at": "2026-03-02T04:02:30",
     "last_preload_phase": "sleep",
-    "last_preload_at": "2026-03-01T02:44:33"
+    "last_preload_at": "2026-03-02T03:30:56"
   },
   "personality_runtime": {
     "emotion_history": [
-      {
-        "ts": "2026-02-20T18:50:47",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T18:51:18",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T18:51:56",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T18:52:05",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T18:52:33",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T18:52:45",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T18:54:06",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T18:54:31",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T18:55:03",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T18:55:26",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T18:56:31",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:04:03",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:04:42",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:05:36",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:06:23",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:07:10",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:07:46",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:08:07",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:10:14",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:11:01",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:11:41",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:12:07",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:13:04",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:13:35",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:14:25",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:14:42",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:15:11",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:15:42",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:16:45",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:17:11",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:17:43",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:18:21",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:19:07",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:19:23",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-20T19:19:29",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T00:52:50",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T00:53:13",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T00:53:44",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T01:57:47",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T01:58:03",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T01:58:37",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T12:29:03",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T12:34:44",
-        "state": "neutral"
-      },
       {
         "ts": "2026-02-21T12:46:23",
         "state": "neutral"
@@ -450,6 +278,322 @@
       {
         "ts": "2026-03-01T15:50:08",
         "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:17:35",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:17:44",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:18:24",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:19:19",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:19:52",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:20:37",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:21:57",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:23:16",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:23:35",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:29:52",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T16:39:39",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T20:33:46",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T21:39:16",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-01T21:47:22",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T01:13:58",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T01:14:07",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T01:14:30",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T01:39:14",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T01:48:46",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T01:57:38",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:06:51",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:07:20",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:07:53",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:08:12",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:09:23",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:10:24",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:10:41",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:13:34",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:13:51",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:14:07",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:16:14",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:16:49",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:17:30",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:17:40",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:17:51",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:18:01",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:19:28",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:19:46",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:19:54",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:20:08",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:20:49",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:22:28",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:22:46",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:23:21",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:23:52",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:24:26",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:24:35",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:25:18",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:27:14",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:28:38",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:31:52",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:32:33",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:33:32",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:36:50",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:37:22",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:37:33",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:38:27",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:39:09",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:40:01",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:42:55",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:43:22",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:45:24",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:45:46",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:46:11",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:46:38",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:46:46",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T02:47:23",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:31:20",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:31:41",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:32:05",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:32:51",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:33:52",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:40:35",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:47:26",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:47:33",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:55:47",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:56:02",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T03:57:51",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-02T04:02:30",
+        "state": "neutral"
       }
     ],
     "priority_reminder_last_date": "",
@@ -577,6 +721,10 @@
       {
         "ts": "2026-03-01T02:41:34",
         "text": "hello"
+      },
+      {
+        "ts": "2026-03-02T03:30:56",
+        "text": "hey smart bed"
       }
     ],
     "interrupt_count_today": 1,
@@ -587,281 +735,281 @@
     "last_voice_pacing": "balanced",
     "cognitive_load_samples": [
       {
-        "ts": "2026-02-25T00:39:26",
-        "word_count": 4,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-02-25T00:39:33",
-        "word_count": 2,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-02-25T00:39:40",
-        "word_count": 2,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-02-25T02:19:39",
-        "word_count": 2,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-02-25T02:19:53",
-        "word_count": 4,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-02-25T02:20:03",
+        "ts": "2026-03-02T02:22:28",
         "word_count": 7,
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": false
       },
       {
-        "ts": "2026-02-25T02:39:35",
-        "word_count": 12,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-02-25T02:39:47",
-        "word_count": 4,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-02-25T02:39:57",
-        "word_count": 7,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-02-25T02:43:08",
-        "word_count": 12,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-02-25T02:43:17",
-        "word_count": 12,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-02-25T02:49:01",
-        "word_count": 7,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-02-25T02:53:50",
-        "word_count": 7,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-02-25T02:53:59",
-        "word_count": 7,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-02-26T05:24:06",
-        "word_count": 1,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-02-26T05:24:37",
-        "word_count": 6,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-02-26T05:25:03",
-        "word_count": 1,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T00:54:00",
-        "word_count": 3,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T00:54:12",
-        "word_count": 9,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-01T02:41:49",
-        "word_count": 4,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T02:43:20",
-        "word_count": 38,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-01T02:44:32",
-        "word_count": 1,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T03:57:19",
-        "word_count": 5,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-01T03:59:15",
+        "ts": "2026-03-02T02:22:46",
         "word_count": 11,
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": false
       },
       {
-        "ts": "2026-03-01T03:59:38",
-        "word_count": 2,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T03:59:49",
-        "word_count": 2,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T04:00:51",
-        "word_count": 11,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-01T04:03:15",
+        "ts": "2026-03-02T02:23:21",
         "word_count": 8,
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": false
       },
       {
-        "ts": "2026-03-01T04:06:54",
-        "word_count": 1,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T04:33:13",
-        "word_count": 1,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T04:48:34",
-        "word_count": 2,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T04:54:45",
-        "word_count": 2,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T15:36:49",
-        "word_count": 1,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-01T15:38:53",
-        "word_count": 10,
+        "ts": "2026-03-02T02:23:52",
+        "word_count": 19,
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": false
       },
       {
-        "ts": "2026-03-01T15:39:05",
-        "word_count": 1,
+        "ts": "2026-03-02T02:24:26",
+        "word_count": 16,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:24:35",
+        "word_count": 6,
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": true
       },
       {
-        "ts": "2026-03-01T15:39:17",
-        "word_count": 2,
+        "ts": "2026-03-02T02:25:18",
+        "word_count": 5,
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": true
       },
       {
-        "ts": "2026-03-01T15:39:29",
-        "word_count": 3,
+        "ts": "2026-03-02T02:27:14",
+        "word_count": 8,
         "speech_seconds": 0.0,
         "wps": 0.0,
-        "fatigue_signal": true
+        "fatigue_signal": false
       },
       {
-        "ts": "2026-03-01T15:49:47",
+        "ts": "2026-03-02T02:28:38",
         "word_count": 4,
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": true
       },
       {
-        "ts": "2026-03-01T15:49:57",
+        "ts": "2026-03-02T02:31:52",
+        "word_count": 5,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:32:33",
+        "word_count": 15,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:33:32",
+        "word_count": 10,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:36:50",
+        "word_count": 11,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:37:22",
+        "word_count": 5,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:37:33",
+        "word_count": 10,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:38:27",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T02:39:09",
+        "word_count": 5,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:40:01",
         "word_count": 2,
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": true
       },
       {
-        "ts": "2026-03-01T15:50:08",
+        "ts": "2026-03-02T02:42:55",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T02:43:22",
+        "word_count": 14,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:45:24",
+        "word_count": 36,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:45:46",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:46:11",
+        "word_count": 13,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:46:38",
+        "word_count": 32,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T02:46:46",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T02:47:23",
         "word_count": 5,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T03:31:09",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T03:31:20",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T03:31:41",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T03:32:05",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T03:32:51",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T03:33:52",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T03:40:34",
+        "word_count": 12,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T03:40:49",
+        "word_count": 14,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T03:47:26",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T03:47:33",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T03:55:47",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T03:56:02",
+        "word_count": 22,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-02T03:57:51",
+        "word_count": 5,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-02T04:02:30",
+        "word_count": 3,
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": true
@@ -938,6 +1086,11 @@
         "ts": "2026-03-01T02:41:34",
         "kind": "greeting_en_evening",
         "text": "Evening"
+      },
+      {
+        "ts": "2026-03-02T03:30:56",
+        "kind": "greeting_en_evening",
+        "text": "Good evening, welcome back"
       }
     ]
   },
@@ -962,90 +1115,6 @@
     "enabled": true,
     "manual_override": "",
     "history": [
-      {
-        "ts": "2026-02-20T18:50:50",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "what color is the sun"
-      },
-      {
-        "ts": "2026-02-20T18:51:21",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "what is the exact size of jupiter"
-      },
-      {
-        "ts": "2026-02-20T18:51:57",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "i want to give u a nickname"
-      },
-      {
-        "ts": "2026-02-20T18:52:06",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "ishfaaq"
-      },
-      {
-        "ts": "2026-02-20T18:52:34",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "idk some random insta reel"
-      },
-      {
-        "ts": "2026-02-20T18:52:47",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "ye"
-      },
-      {
-        "ts": "2026-02-20T18:54:08",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "ive heard that we have been getting wrong info on jupiters size if thats true then all of the planet"
-      },
-      {
-        "ts": "2026-02-20T18:54:35",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "?"
-      },
-      {
-        "ts": "2026-02-20T18:55:05",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "it will?"
-      },
-      {
-        "ts": "2026-02-20T18:55:29",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "tell me abot ton-15"
-      },
-      {
-        "ts": "2026-02-20T18:56:34",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "tell me the names of every blackhole and there size 1 by 1"
-      },
-      {
-        "ts": "2026-02-20T19:04:07",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "tell me about ton 618"
-      },
       {
         "ts": "2026-02-20T19:04:51",
         "personality": "guide",
@@ -1542,9 +1611,562 @@
         "emotion": "neutral",
         "score": 0.8,
         "sample": "तू ना पास मेरे अंदर."
+      },
+      {
+        "ts": "2026-03-01T16:17:39",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "His smart bed."
+      },
+      {
+        "ts": "2026-03-01T16:17:47",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Ace smart bed."
+      },
+      {
+        "ts": "2026-03-01T16:18:29",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Allô."
+      },
+      {
+        "ts": "2026-03-01T16:19:22",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "I have the call."
+      },
+      {
+        "ts": "2026-03-01T16:20:00",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Solid, कैसे बनाती हो आप यह?"
+      },
+      {
+        "ts": "2026-03-01T16:20:40",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Segue."
+      },
+      {
+        "ts": "2026-03-01T16:22:03",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "हां America classes है."
+      },
+      {
+        "ts": "2026-03-01T16:23:20",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "जब ये खतम हो जायेगा मै आपको दोबारा बता दूँ खैर हम बिस्तर हम मर जायेंगे ठीक है लेकिन हम इतना नहीं मर "
+      },
+      {
+        "ts": "2026-03-01T16:23:38",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "मैंने आपको बोला है मेरा आखिरी semester है, तो इस दफा."
+      },
+      {
+        "ts": "2026-03-01T16:29:55",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "क्या चाहिए?"
+      },
+      {
+        "ts": "2026-03-01T16:39:43",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "FluxAI can draw schematics from scratch, handle complex routing."
+      },
+      {
+        "ts": "2026-03-01T20:33:52",
+        "personality": "guide",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "John on. John on."
+      },
+      {
+        "ts": "2026-03-01T21:39:23",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "This function is for me to do something like lambda. You can pass a parameter."
+      },
+      {
+        "ts": "2026-03-01T21:47:26",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "इस बंद में रख दो तेरे साथ. रखने के बाद नहीं है."
+      },
+      {
+        "ts": "2026-03-02T01:14:01",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Alors"
+      },
+      {
+        "ts": "2026-03-02T01:14:10",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "It's for the card,"
+      },
+      {
+        "ts": "2026-03-02T01:14:34",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "What's up? They're gonna spend any IDT."
+      },
+      {
+        "ts": "2026-03-02T01:39:17",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Order."
+      },
+      {
+        "ts": "2026-03-02T01:48:49",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "That's"
+      },
+      {
+        "ts": "2026-03-02T01:57:43",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "God."
+      },
+      {
+        "ts": "2026-03-02T02:06:54",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "जिसका तुमसे वादा किया गया था."
+      },
+      {
+        "ts": "2026-03-02T02:07:26",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "कोई अंधा बहरा मानता नहीं है."
+      },
+      {
+        "ts": "2026-03-02T02:07:56",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "पुष्पना है, मददगार है."
+      },
+      {
+        "ts": "2026-03-02T02:08:15",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "मैं विशाल दिया करता हूं एक बहुत सादा Punjab के देहात की."
+      },
+      {
+        "ts": "2026-03-02T02:09:26",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Pickleball."
+      },
+      {
+        "ts": "2026-03-02T02:10:27",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "यह मेरी report खराब ना कर दे."
+      },
+      {
+        "ts": "2026-03-02T02:10:46",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ज़रा तरह से अपनी सख़्त है न उसको गरीब करवाना उनके सामने."
+      },
+      {
+        "ts": "2026-03-02T02:13:38",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Wrong."
+      },
+      {
+        "ts": "2026-03-02T02:13:54",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "मालूम हुआ कि फिरौंत अपने लश्कर समेत भाग गया. लश्कर जब चलता था तेल raftari के साथ, तो गर्तु ऊगा का जो"
+      },
+      {
+        "ts": "2026-03-02T02:14:10",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "और आज में यह दर्ज है."
+      },
+      {
+        "ts": "2026-03-02T02:16:18",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "सम्राट क्या है मेहनत नहीं."
+      },
+      {
+        "ts": "2026-03-02T02:16:52",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "दिल बांधने के लिए"
+      },
+      {
+        "ts": "2026-03-02T02:17:33",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "कोई फ़क़ीरों भर पाया तब तक तो यही कुछ करेगा."
+      },
+      {
+        "ts": "2026-03-02T02:17:43",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "तैयार होना खाने के लिए ऐसा ना हो."
+      },
+      {
+        "ts": "2026-03-02T02:17:54",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "हो जाओ. तुम्हारी हिम्मत है जवाब दे जाना, नहीं."
+      },
+      {
+        "ts": "2026-03-02T02:18:04",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "देखिये सीरत में आया कि नहीं जवाब के?"
+      },
+      {
+        "ts": "2026-03-02T02:19:32",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "एक शेर और सुनिए और यह किसका है मोहम्मद अली जौहर का"
+      },
+      {
+        "ts": "2026-03-02T02:19:50",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "मैं दूसरी जवान बैठी उसी बात पर वह बनाओगे."
+      },
+      {
+        "ts": "2026-03-02T02:19:57",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "शास्त्रीय है."
+      },
+      {
+        "ts": "2026-03-02T02:20:11",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "मैदान में आदमी साबित कदम"
+      },
+      {
+        "ts": "2026-03-02T02:20:54",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "और रहमतें हैं."
+      },
+      {
+        "ts": "2026-03-02T02:22:32",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "इस बारी तकलीफों में सब्र कर दूंगा."
+      },
+      {
+        "ts": "2026-03-02T02:22:50",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "जो अपने दावे में नहीं की जो विमान के साबित है."
+      },
+      {
+        "ts": "2026-03-02T02:23:24",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "आप झेल रहे हैं, बर्दाश्त कर रहे हैं."
+      },
+      {
+        "ts": "2026-03-02T02:23:55",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "उनके हौसले जो है वो तो बस नहीं हुए वो अगले साल आ गए तो उस पर चढ़ाई करके"
+      },
+      {
+        "ts": "2026-03-02T02:24:30",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "लाने के लिए. यानी नौजवान कितनी तादाद में अपने आपको दिन के लिए वक्त करता है."
+      },
+      {
+        "ts": "2026-03-02T02:24:38",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "खाते पीते खराब हो गए लोग."
+      },
+      {
+        "ts": "2026-03-02T02:25:21",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "और किस तरह कटवाई है?"
+      },
+      {
+        "ts": "2026-03-02T02:27:17",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "ऊपर कोई हमला जो है कर बैठे हैं."
+      },
+      {
+        "ts": "2026-03-02T02:28:41",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "इसको अल्लाह आसान करते"
+      },
+      {
+        "ts": "2026-03-02T02:31:56",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "उनके दरवाज़े कौन से है?"
+      },
+      {
+        "ts": "2026-03-02T02:32:36",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "जो है उस खुदा के शराब को धो देगा जैसे कि बाकी आपको बुझा देता"
+      },
+      {
+        "ts": "2026-03-02T02:33:35",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "So you're proud to give up my win on that."
+      },
+      {
+        "ts": "2026-03-02T02:36:53",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "पुराने मुहिम दरफ़ाज़ आए हैं वह हमारी सहेली सत्ता के मुताबिक."
+      },
+      {
+        "ts": "2026-03-02T02:37:26",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "But they would give the"
+      },
+      {
+        "ts": "2026-03-02T02:37:36",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "वहां पर अगर आदमी को बाहर, अपमान होगा, सब कुछ"
+      },
+      {
+        "ts": "2026-03-02T02:38:30",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Nee"
+      },
+      {
+        "ts": "2026-03-02T02:39:12",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "What's up? I didn't hear."
+      },
+      {
+        "ts": "2026-03-02T02:40:04",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Näinkin läpunootetaan."
+      },
+      {
+        "ts": "2026-03-02T02:42:58",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Jagare."
+      },
+      {
+        "ts": "2026-03-02T02:43:25",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "बैठ नहीं सकता एक जगह पर से सीधा काटे गाय में क्यों बैठ गया"
+      },
+      {
+        "ts": "2026-03-02T02:45:27",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "इतना सारा काम है पर कल मैं सिर्फ पूछूंगा कि कल मुझे गया था मैं मुझे access दे दूंगा. जब access देगा "
+      },
+      {
+        "ts": "2026-03-02T02:45:49",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "नहीं यह pension लगेगा दो minute."
+      },
+      {
+        "ts": "2026-03-02T02:46:13",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Application में पहले बनाकर बैठ जाता तो मैं sensors फिर दोबारा डालता सब"
+      },
+      {
+        "ts": "2026-03-02T02:46:41",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "अगर इस सौदे को मैंने free hand दिया तो फिर किसी वजह से दिए मैं चाहता हूं कि वह अपनी पूरी मेहनत कर ले"
+      },
+      {
+        "ts": "2026-03-02T02:46:49",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "तो फिर मैं आराम से handle"
+      },
+      {
+        "ts": "2026-03-02T02:47:26",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "सबरकर अभी भी नहीं है."
+      },
+      {
+        "ts": "2026-03-02T03:31:23",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "What is happening in Israel and"
+      },
+      {
+        "ts": "2026-03-02T03:31:44",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "What is happening in Israeland Iran?"
+      },
+      {
+        "ts": "2026-03-02T03:32:08",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Israel and Iran."
+      },
+      {
+        "ts": "2026-03-02T03:32:55",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Who is in Rado?"
+      },
+      {
+        "ts": "2026-03-02T03:33:55",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "I am angry."
+      },
+      {
+        "ts": "2026-03-02T03:40:38",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "I'm not her. 15 year old girl in the prime of her"
+      },
+      {
+        "ts": "2026-03-02T03:47:29",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "No way."
+      },
+      {
+        "ts": "2026-03-02T03:47:37",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Oh my god."
+      },
+      {
+        "ts": "2026-03-02T03:55:50",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Easier to use than c and"
+      },
+      {
+        "ts": "2026-03-02T03:56:05",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Something that was much safer than seeing and took care of of memory allocation and of all, sort of "
+      },
+      {
+        "ts": "2026-03-02T03:57:55",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "What do you plan on?"
+      },
+      {
+        "ts": "2026-03-02T04:02:34",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "You scaled your"
       }
     ],
-    "last_selected": "guide"
+    "last_selected": "therapist"
   },
   "web_device_controls": {
     "usr_7CcWx99tc4E": {
