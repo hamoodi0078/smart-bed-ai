@@ -4515,9 +4515,6 @@ def main():
                     print(f"Bed: {proactive_greeting}")
                     if proactive_audio:
                         print(f"Bed: Audio saved at {proactive_audio}")
-                        # Play proactive greeting and wait to finish
-                        if tts_player.is_ready():
-                            tts_player.play_file(proactive_audio)
                     led.set_state("standby")
         wake_text = wake_word_manager.wait_for_wake_text()
         runtime_orchestrator.record_wake_phrase(profile, wake_text)
@@ -4543,9 +4540,6 @@ def main():
         )
         if greeting_audio:
             print(f"Bed: Audio saved at {greeting_audio}")
-            # Play wake greeting and wait to finish
-            if tts_player.is_ready():
-                tts_player.play_file(greeting_audio)
         interrupt_text = wake_word_manager.capture_barge_in_text()
         if interrupt_text and _is_wake_only_utterance(wake_word_manager, interrupt_text):
             print("Bed: Wake word acknowledged. I am already listening.")

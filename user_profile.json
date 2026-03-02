@@ -34,10 +34,10 @@
     "therapist_followup_tone": "soft"
   },
   "progress": {
-    "sessions_count": 25,
+    "sessions_count": 30,
     "goals_created": 0,
     "goals_completed": 0,
-    "last_session_date": "2026-03-02",
+    "last_session_date": "2026-03-03",
     "last_goal_completion_date": "",
     "current_streak_days": 0,
     "best_streak_days": 0,
@@ -109,60 +109,12 @@
   },
   "environment": {
     "last_scene_key": "balanced_default",
-    "last_scene_applied_at": "2026-03-02T04:02:30",
+    "last_scene_applied_at": "2026-03-03T01:51:28",
     "last_preload_phase": "sleep",
-    "last_preload_at": "2026-03-02T03:30:56"
+    "last_preload_at": "2026-03-03T01:49:46"
   },
   "personality_runtime": {
     "emotion_history": [
-      {
-        "ts": "2026-02-21T12:46:23",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T13:21:56",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T13:29:36",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T13:29:57",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T13:30:19",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T13:30:36",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T13:30:45",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T13:31:24",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-21T13:31:56",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-22T00:03:23",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-22T00:03:36",
-        "state": "neutral"
-      },
-      {
-        "ts": "2026-02-22T20:06:39",
-        "state": "neutral"
-      },
       {
         "ts": "2026-02-24T20:25:15",
         "state": "neutral"
@@ -594,6 +546,54 @@
       {
         "ts": "2026-03-02T04:02:30",
         "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T00:49:49",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T00:51:10",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T01:21:20",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T01:21:29",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T01:25:11",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T01:38:53",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T01:39:20",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T01:39:30",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T01:39:56",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T01:50:51",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T01:51:07",
+        "state": "neutral"
+      },
+      {
+        "ts": "2026-03-03T01:51:28",
+        "state": "neutral"
       }
     ],
     "priority_reminder_last_date": "",
@@ -725,141 +725,39 @@
       {
         "ts": "2026-03-02T03:30:56",
         "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-03-03T00:48:59",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-03-03T01:24:45",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-03-03T01:29:00",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-03-03T01:38:25",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-03-03T01:43:47",
+        "text": "hey smart bed"
+      },
+      {
+        "ts": "2026-03-03T01:49:46",
+        "text": "hey smart bed"
       }
     ],
     "interrupt_count_today": 1,
-    "interrupt_count_date": "2026-03-01",
-    "quality_samples": 56,
-    "quality_running_avg": 0.7511904761904761,
+    "interrupt_count_date": "2026-03-03",
+    "quality_samples": 57,
+    "quality_running_avg": 0.7526315789473684,
     "continuity_by_personality": {},
     "last_voice_pacing": "balanced",
     "cognitive_load_samples": [
-      {
-        "ts": "2026-03-02T02:22:28",
-        "word_count": 7,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:22:46",
-        "word_count": 11,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:23:21",
-        "word_count": 8,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:23:52",
-        "word_count": 19,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:24:26",
-        "word_count": 16,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:24:35",
-        "word_count": 6,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-02T02:25:18",
-        "word_count": 5,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-02T02:27:14",
-        "word_count": 8,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:28:38",
-        "word_count": 4,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-02T02:31:52",
-        "word_count": 5,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:32:33",
-        "word_count": 15,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:33:32",
-        "word_count": 10,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:36:50",
-        "word_count": 11,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:37:22",
-        "word_count": 5,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:37:33",
-        "word_count": 10,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:38:27",
-        "word_count": 1,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
-      {
-        "ts": "2026-03-02T02:39:09",
-        "word_count": 5,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": false
-      },
-      {
-        "ts": "2026-03-02T02:40:01",
-        "word_count": 2,
-        "speech_seconds": 0.0,
-        "wps": 0.0,
-        "fatigue_signal": true
-      },
       {
         "ts": "2026-03-02T02:42:55",
         "word_count": 1,
@@ -1013,6 +911,132 @@
         "speech_seconds": 0.0,
         "wps": 0.0,
         "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T00:49:12",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T00:49:25",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T00:49:49",
+        "word_count": 10,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-03T00:50:49",
+        "word_count": 5,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-03T00:50:55",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T00:51:10",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T01:21:20",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T01:21:29",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T01:25:11",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T01:26:04",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T01:38:53",
+        "word_count": 1,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T01:39:20",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T01:39:30",
+        "word_count": 6,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-03T01:39:56",
+        "word_count": 2,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T01:50:18",
+        "word_count": 4,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T01:50:51",
+        "word_count": 3,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": true
+      },
+      {
+        "ts": "2026-03-03T01:51:07",
+        "word_count": 8,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
+      },
+      {
+        "ts": "2026-03-03T01:51:28",
+        "word_count": 8,
+        "speech_seconds": 0.0,
+        "wps": 0.0,
+        "fatigue_signal": false
       }
     ],
     "brevity_mode": "cognitive_load",
@@ -1091,6 +1115,36 @@
         "ts": "2026-03-02T03:30:56",
         "kind": "greeting_en_evening",
         "text": "Good evening, welcome back"
+      },
+      {
+        "ts": "2026-03-03T00:48:59",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-03-03T00:49:50",
+        "kind": "transition_ack",
+        "text": "Got it, give me a second."
+      },
+      {
+        "ts": "2026-03-03T01:24:45",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-03-03T01:38:25",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-03-03T01:43:47",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
+      },
+      {
+        "ts": "2026-03-03T01:49:46",
+        "kind": "greeting_en_evening",
+        "text": "Good evening"
       }
     ]
   },
@@ -1100,9 +1154,9 @@
     "bed_guide_step_index": 6,
     "awaiting_bed_nickname": false,
     "last_action": {
-      "intent": "start_wind_down",
+      "intent": "brightness_up",
       "inverse": {
-        "intent": "disable_wind_down",
+        "intent": "brightness_down",
         "slots": {}
       }
     },
@@ -1115,83 +1169,6 @@
     "enabled": true,
     "manual_override": "",
     "history": [
-      {
-        "ts": "2026-02-20T19:04:51",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "tell me about pheonix A"
-      },
-      {
-        "ts": "2026-02-20T19:05:46",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "how many earths can fit in pheonix A"
-      },
-      {
-        "ts": "2026-02-20T19:06:27",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.6,
-        "sample": "what is a quasar"
-      },
-      {
-        "ts": "2026-02-20T19:07:14",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "how many mars can fit in pheonix A"
-      },
-      {
-        "ts": "2026-02-20T19:07:50",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.6,
-        "sample": "how many humans can fit in a pheonix A"
-      },
-      {
-        "ts": "2026-02-20T19:08:11",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "calculate then"
-      },
-      {
-        "ts": "2026-02-20T19:10:23",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "is there a similar sun out there in the galaxy"
-      },
-      {
-        "ts": "2026-02-20T19:11:05",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "ive heard that the sun had a twin?"
-      },
-      {
-        "ts": "2026-02-20T19:11:45",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "can u repeat in simpler words"
-      },
-      {
-        "ts": "2026-02-20T19:12:23",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "where is it now?"
-      },
-      {
-        "ts": "2026-02-20T19:13:06",
-        "personality": "guide",
-        "emotion": "neutral",
-        "score": 0.8,
-        "sample": "tell me a qoute"
-      },
       {
         "ts": "2026-02-20T19:13:37",
         "personality": "guide",
@@ -2164,6 +2141,83 @@
         "emotion": "neutral",
         "score": 0.8,
         "sample": "You scaled your"
+      },
+      {
+        "ts": "2026-03-03T00:49:54",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.6,
+        "sample": "What is happening in between Israel and Iran right now?"
+      },
+      {
+        "ts": "2026-03-03T00:51:13",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "What is my name?"
+      },
+      {
+        "ts": "2026-03-03T01:21:23",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Net, STFU connect card."
+      },
+      {
+        "ts": "2026-03-03T01:21:32",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Varmto 3 far!"
+      },
+      {
+        "ts": "2026-03-03T01:25:14",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Who is इमरान खान?"
+      },
+      {
+        "ts": "2026-03-03T01:39:03",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Areyou"
+      },
+      {
+        "ts": "2026-03-03T01:39:40",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "kya kar raha hai Abdullah Tujhko"
+      },
+      {
+        "ts": "2026-03-03T01:40:04",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "And listening."
+      },
+      {
+        "ts": "2026-03-03T01:51:00",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Huis vaa kisaan."
+      },
+      {
+        "ts": "2026-03-03T01:51:17",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Better once Deepgram voice agent access is available."
+      },
+      {
+        "ts": "2026-03-03T01:51:38",
+        "personality": "therapist",
+        "emotion": "neutral",
+        "score": 0.8,
+        "sample": "Better once Deepgram voice agent access is available."
       }
     ],
     "last_selected": "therapist"

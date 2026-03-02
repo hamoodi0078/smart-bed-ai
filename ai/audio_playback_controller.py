@@ -34,25 +34,47 @@ class AudioPlaybackController:
 
     def play_file(self, file_path: str) -> bool:
         if not self.is_ready():
+            print("[AUDIO] pygame mixer not ready; playback skipped.")
             return False
 
         path = Path(file_path)
-        if not path.exists() or path.stat().st_size == 0:
+        resolved_path = path.resolve()
+        if not resolved_path.exists() or resolved_path.stat().st_size == 0:
+            print(f"[AUDIO] audio file missing or empty: {resolved_path}")
             return False
 
         try:
-            pygame.mixer.music.load(str(path))
+            pygame.mixer.music.load(str(resolved_path))
             pygame.mixer.music.play()
-            # Wait for audio to start (max 0.5 seconds)
-            start_time = time.time()
-            while not pygame.mixer.music.get_busy() and (time.time() - start_time) < 0.5:
-                time.sleep(0.01)
-            # Block until audio fully finishes playing
+            start_deadline = time.time() + 2.0
+            played = False
+            while time.time() < start_deadline:
+                if pygame.mixer.music.get_busy():
+                    played = True
+                    print(f"[AUDIO] pygame playback started: {resolved_path}")
+                    break
+                time.sleep(0.02)
+            if not played:
+                print(f"[AUDIO] pygame playback did not start within 2.0s: {resolved_path}")
+                return False
+
             while pygame.mixer.music.get_busy():
-                time.sleep(0.1)
-            return True
-        except Exception:
+                time.sleep(0.05)
+            print(f"[AUDIO] pygame playback ended: {resolved_path}")
+            return played
+        except Exception as e:
+            print(f"[AUDIO] pygame playback error for {resolved_path}: {e}")
             return False
+        finally:
+            # Explicitly release the file handle so the next TTS write can overwrite this path.
+            try:
+                pygame.mixer.music.stop()
+            except Exception:
+                pass
+            try:
+                pygame.mixer.music.unload()
+            except Exception:
+                pass
 
     def queue_file(self, file_path: str) -> bool:
         if not self.is_ready():

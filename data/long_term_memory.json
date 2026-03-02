@@ -881,6 +881,83 @@
       "assistant": "(Deepgram fallback - therapist) I heard: 'You scaled your'. I can respond better once Deepgram Voice Agent access is available.",
       "emotion": "neutral",
       "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T00:49:54",
+      "user": "What is happening in between Israel and Iran right now?",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'What is happening in between...",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T00:51:13",
+      "user": "What is my name?",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'What is my name?'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T01:21:23",
+      "user": "Net, STFU connect card.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Net, STFU connect card.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T01:21:32",
+      "user": "Varmto 3 far!",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Varmto 3 far!'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T01:25:14",
+      "user": "Who is इमरान खान?",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Who is इमरान खान?'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T01:39:03",
+      "user": "Areyou",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Areyou'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T01:39:40",
+      "user": "kya kar raha hai Abdullah Tujhko",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Previous assistant reply being interrupted: (Deepgram fallback - therapist) I heard: 'Areyou'. I can respond better once Deepgram Voice Agent access is available.\nUser interruption request: kya kar raha hai Abdullah Tujhko\nTreat this as a high-priority follow-up. Stop prior topic expansion and answer this interruption directly first. If it is a control/action request, keep the reply short and actionable.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T01:40:04",
+      "user": "And listening.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'And listening.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T01:51:00",
+      "user": "Huis vaa kisaan.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Huis vaa kisaan.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T01:51:17",
+      "user": "Better once Deepgram voice agent access is available.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Better once Deepgram voice agent access is available.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T01:51:38",
+      "user": "Better once Deepgram voice agent access is available.",
+      "assistant": "(Deepgram fallback - therapist) I heard: 'Better once Deepgram voice agent access is available.'. I can respond better once Deepgram Voice Agent access is available.",
+      "emotion": "neutral",
+      "personality": "therapist"
     }
   ],
   "external_daily_events": []

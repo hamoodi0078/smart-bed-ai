@@ -2,6 +2,7 @@ import hashlib
 import re
 import shutil
 import threading
+import time
 from datetime import datetime
 from urllib.parse import urlencode
 from pathlib import Path
@@ -23,6 +24,8 @@ class TTSManager:
         self.timeout_seconds = timeout_seconds
         self.output_dir = Path("output_audio")
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        # Serialize writes to the shared latest_response.mp3 path across threads.
+        self._write_lock = threading.Lock()
         self._stream_lock = threading.Lock()
         self._active_cache_streams: dict[str, dict] = {}
 
@@ -97,12 +100,10 @@ class TTSManager:
         digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()
         return self.output_dir / f"tts_cache_{digest}.mp3"
 
-    def _make_speech_url(self, model: str, pace: float) -> str:
+    def _make_speech_url(self, model: str) -> str:
         query = {
             "model": model,
             "encoding": "mp3",
-            "container": "mp3",
-            "speed": f"{pace:.2f}",
         }
         return f"https://api.deepgram.com/v1/speak?{urlencode(query)}"
 
@@ -120,9 +121,9 @@ class TTSManager:
     ) -> str:
         started = threading.Event()
         done = threading.Event()
+        stream_error: dict[str, Exception | None] = {"exc": None}
 
         def _run_stream():
-            wrote_any = False
             try:
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 with requests.post(
@@ -132,24 +133,39 @@ class TTSManager:
                     stream=True,
                     timeout=(4, self.timeout_seconds),
                 ) as response:
-                    response.raise_for_status()
-                    total = 0
-                    with output_path.open("wb") as target:
-                        for chunk in response.iter_content(chunk_size=4096):
-                            if not chunk:
-                                continue
-                            target.write(chunk)
-                            target.flush()
-                            total += len(chunk)
-                            wrote_any = True
-                            if total >= min_start_bytes and not started.is_set():
-                                started.set()
-                    if wrote_any:
-                        shutil.copyfile(output_path, cache_path)
-                        print(f"[TTS] Finished writing audio file: {output_path.resolve()}")
-            except Exception:
-                if not wrote_any:
-                    self._write_bytes_safely(output_path, b"")
+                    print(f"[TTS] Deepgram request URL: {response.url}")
+                    if not response.ok:
+                        try:
+                            error_body = response.text[:300].replace("\n", " ").strip()
+                        except Exception:
+                            error_body = "<unable to read error body>"
+                        print(
+                            f"[TTS] Deepgram TTS request failed. "
+                            f"status={response.status_code} body={error_body}"
+                        )
+                        response.raise_for_status()
+                    print(f"[TTS] Deepgram response status: {response.status_code}")
+                    content_type = str(response.headers.get("Content-Type", "") or "").strip()
+                    print(f"[TTS] Model response Content-Type: {content_type or 'unknown'}")
+
+                    audio_buffer = bytearray()
+                    for chunk in response.iter_content(chunk_size=4096):
+                        if not chunk:
+                            continue
+                        if isinstance(chunk, str):
+                            raise TypeError("TTS stream returned text chunk instead of raw MP3 bytes.")
+                        if not isinstance(chunk, (bytes, bytearray)):
+                            raise TypeError(f"TTS stream returned unsupported chunk type: {type(chunk)!r}")
+                        audio_buffer.extend(chunk)
+                        if len(audio_buffer) >= min_start_bytes and not started.is_set():
+                            started.set()
+
+                    audio_bytes = bytes(audio_buffer)
+                    self._write_bytes_safely(output_path, audio_bytes)
+                    shutil.copyfile(output_path, cache_path)
+            except Exception as e:
+                stream_error["exc"] = e
+                print(f"[TTS] Stream synthesis failed before playable MP3 was written: {e}")
             finally:
                 started.set()
                 done.set()
@@ -167,17 +183,57 @@ class TTSManager:
         # Wait for full audio generation to complete before returning control to main loop.
         # This prevents microphone from hearing the bed's own TTS voice.
         done.wait(timeout=self.timeout_seconds)
+        if stream_error["exc"] is not None:
+            raise stream_error["exc"]
         return str(output_path)
 
     def _write_bytes_safely(self, output_path: Path, content: bytes) -> Path:
-        try:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_bytes(content)
-            print(f"[TTS] Finished writing audio file: {output_path.resolve()}")
-            return output_path
-        except Exception as e:
-            print(f"[TTS] Failed writing audio file at {output_path}: {e}")
-            return output_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if content is None:
+            raise ValueError("TTS audio buffer is None; refusing to write empty audio file.")
+        if isinstance(content, str):
+            raise TypeError("TTS audio buffer is text; expected raw MP3 bytes.")
+        if not isinstance(content, (bytes, bytearray)):
+            raise TypeError(f"TTS audio buffer has unsupported type: {type(content)!r}")
+
+        audio_bytes = bytes(content)
+        buffer_len = len(audio_bytes)
+        print(f"[TTS] Audio buffer length before write: {buffer_len} bytes -> {output_path.resolve()}")
+        if buffer_len <= 0:
+            raise ValueError("TTS audio buffer is empty (0 bytes); refusing to write MP3.")
+
+        writer = threading.current_thread().name
+        print(f"[TTS] Waiting for write lock: {output_path.resolve()} (thread={writer})")
+        with self._write_lock:
+            print(f"[TTS] Write lock acquired: {output_path.resolve()} (thread={writer})")
+            try:
+                max_attempts = 4
+                # We rely on AudioPlaybackController.play_file() stop/unload to release file handles promptly.
+                for attempt in range(1, max_attempts + 1):
+                    try:
+                        output_path.write_bytes(audio_bytes)
+                        file_size = output_path.stat().st_size if output_path.exists() else 0
+                        print(f"[TTS] Audio file size after write: {file_size} bytes -> {output_path.resolve()}")
+                        if file_size <= 0:
+                            raise ValueError(f"TTS write produced empty file on disk: {output_path.resolve()}")
+                        print(f"[TTS] Finished writing audio file: {output_path.resolve()}")
+                        return output_path
+                    except PermissionError as e:
+                        if attempt >= max_attempts:
+                            print(
+                                f"[TTS][WARN] Write contention persisted after {attempt} attempts; "
+                                f"skipping overwrite for {output_path.resolve()}: {e}"
+                            )
+                            return output_path
+                        wait_seconds = min(0.45, 0.15 * attempt)
+                        print(
+                            f"[TTS] Write contention (PermissionError). "
+                            f"retry={attempt}/{max_attempts} wait={wait_seconds:.2f}s "
+                            f"path={output_path.resolve()}"
+                        )
+                        time.sleep(wait_seconds)
+            finally:
+                print(f"[TTS] Write lock released: {output_path.resolve()} (thread={writer})")
 
     def synthesize_to_mp3(
         self,
@@ -200,8 +256,9 @@ class TTSManager:
             pace_value = 1.0
 
         if not self.api_key:
-            written_path = self._write_bytes_safely(output_path, b"")
-            return str(written_path)
+            msg = "[TTS] Missing API key; cannot synthesize MP3."
+            print(msg)
+            raise RuntimeError(msg)
 
         runtime_profile = self.resolve_audio_profile(
             emotion_state=emotion_state,
@@ -213,10 +270,10 @@ class TTSManager:
         cache_path = self._cache_path_for(normalized_text, voice_to_use, pace_value)
         if cache_path.exists() and cache_path.stat().st_size > 0:
             try:
-                shutil.copyfile(cache_path, output_path)
-                print(f"[TTS] Finished writing audio file: {output_path.resolve()}")
+                self._write_bytes_safely(output_path, cache_path.read_bytes())
             except Exception as e:
                 print(f"[TTS] Cache copy failed for {output_path}: {e}")
+                raise
             return str(output_path)
 
         cache_key = str(cache_path)
@@ -225,10 +282,11 @@ class TTSManager:
             if inflight and not inflight["done"].is_set():
                 return str(inflight["output_path"])
 
-        url = self._make_speech_url(model=deepgram_model, pace=pace_value)
+        url = self._make_speech_url(model=deepgram_model)
         headers = {
             "Authorization": f"Token {self.api_key}",
             "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
         }
         payload = {
             "text": normalized_text,
@@ -246,5 +304,4 @@ class TTSManager:
             return str(result_path)
         except Exception as e:
             print(f"TTS synthesis failed: {str(e)}")
-            self._write_bytes_safely(output_path, b"")
-            return str(output_path)
+            raise
