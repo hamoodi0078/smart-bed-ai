@@ -5,7 +5,6 @@ import threading
 from datetime import datetime
 from urllib.parse import urlencode
 from pathlib import Path
-from time import time
 
 import requests
 
@@ -125,6 +124,7 @@ class TTSManager:
         def _run_stream():
             wrote_any = False
             try:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
                 with requests.post(
                     url,
                     headers=headers,
@@ -146,6 +146,7 @@ class TTSManager:
                                 started.set()
                     if wrote_any:
                         shutil.copyfile(output_path, cache_path)
+                        print(f"[TTS] Finished writing audio file: {output_path.resolve()}")
             except Exception:
                 if not wrote_any:
                     self._write_bytes_safely(output_path, b"")
@@ -170,17 +171,13 @@ class TTSManager:
 
     def _write_bytes_safely(self, output_path: Path, content: bytes) -> Path:
         try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(content)
+            print(f"[TTS] Finished writing audio file: {output_path.resolve()}")
             return output_path
-        except Exception:
-            # Windows can keep an MP3 handle locked briefly after playback stop.
-            fallback_path = self.output_dir / f"latest_response_{int(time() * 1000)}.mp3"
-            try:
-                fallback_path.write_bytes(content)
-                return fallback_path
-            except Exception:
-                # Last-resort path to avoid crashing the runtime loop.
-                return output_path
+        except Exception as e:
+            print(f"[TTS] Failed writing audio file at {output_path}: {e}")
+            return output_path
 
     def synthesize_to_mp3(
         self,
@@ -191,7 +188,8 @@ class TTSManager:
         emotion_state: str = "neutral",
         profile_override: str = "",
     ) -> str:
-        output_path = self.output_dir / filename
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = self.output_dir / "latest_response.mp3"
         normalized_text = self._normalize_tts_text(text)
 
         try:
@@ -214,7 +212,12 @@ class TTSManager:
         deepgram_model = self._resolve_deepgram_model(voice_to_use)
         cache_path = self._cache_path_for(normalized_text, voice_to_use, pace_value)
         if cache_path.exists() and cache_path.stat().st_size > 0:
-            return str(cache_path)
+            try:
+                shutil.copyfile(cache_path, output_path)
+                print(f"[TTS] Finished writing audio file: {output_path.resolve()}")
+            except Exception as e:
+                print(f"[TTS] Cache copy failed for {output_path}: {e}")
+            return str(output_path)
 
         cache_key = str(cache_path)
         with self._stream_lock:

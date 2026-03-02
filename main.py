@@ -2351,45 +2351,24 @@ def play_tts_with_fast_start(
     emotion_state: str = "neutral",
     profile_override: str = "",
 ) -> str:
-    head, tail = _split_for_fast_tts_start(text)
-    if not head:
+    playback_path = "output_audio/latest_response.mp3"
+    text_to_speak = str(text or "").strip()
+    if not text_to_speak:
         return ""
 
-    if not tail:
-        audio_path = tts.synthesize_to_mp3(
-            head,
-            voice_override=voice_override,
-            pace_override=pace_override,
-            emotion_state=emotion_state,
-            profile_override=profile_override,
-        )
-        tts_player.play_file(audio_path)
-        return audio_path
-
-    head_audio = tts.synthesize_to_mp3(
-        head,
-        filename="latest_response_head.mp3",
+    tts.synthesize_to_mp3(
+        text_to_speak,
+        filename="latest_response.mp3",
         voice_override=voice_override,
         pace_override=pace_override,
         emotion_state=emotion_state,
         profile_override=profile_override,
     )
-    started = tts_player.play_file(head_audio)
-
-    tail_audio = tts.synthesize_to_mp3(
-        tail,
-        filename="latest_response_tail.mp3",
-        voice_override=voice_override,
-        pace_override=pace_override,
-        emotion_state=emotion_state,
-        profile_override=profile_override,
-    )
-    if started and tts_player.is_playing():
-        tts_player.queue_file(tail_audio)
-    elif not started:
-        tts_player.play_file(tail_audio)
-
-    return head_audio
+    print(f"[AUDIO] Playback path: {playback_path}")
+    print(f"[AUDIO] pygame playback starting: {playback_path}")
+    played = tts_player.play_file(playback_path)
+    print(f"[AUDIO] pygame playback finished: {playback_path} (played={played})")
+    return playback_path
 
 
 def run_streaming_voice_turn(
