@@ -260,6 +260,37 @@ def _save_profile(payload: dict[str, Any]):
                     pass
 
 
+def _purge_profile_user_data(profile: dict[str, Any], user: dict[str, Any]) -> int:
+    key_candidates = {
+        str(user.get("user_id", "") or "").strip(),
+        str(user.get("email", "") or "").strip().lower(),
+    }
+    key_candidates = {k for k in key_candidates if k}
+    if not key_candidates:
+        return 0
+
+    removed = 0
+    section_keys = (
+        "web_settings",
+        "web_routines",
+        "web_profile_prefs",
+        "web_device_controls",
+        "web_timeline",
+        "web_device_commands",
+        "spotify_tokens",
+    )
+    for section_key in section_keys:
+        section = profile.get(section_key, {})
+        if not isinstance(section, dict):
+            continue
+        for candidate in key_candidates:
+            if candidate in section:
+                del section[candidate]
+                removed += 1
+        profile[section_key] = section
+    return removed
+
+
 def _normalize_user_settings(payload: dict[str, Any] | None) -> dict[str, Any]:
     data = payload if isinstance(payload, dict) else {}
     response_style = str(data.get("response_style", "balanced")).strip().lower()
@@ -974,6 +1005,34 @@ def auth_logout(response: Response, request: Request) -> dict[str, Any]:
     _clear_session_cookies(response)
     _event("info", "logout", revoked_sessions=revoked)
     return {"ok": True}
+
+
+@app.post("/v1/auth/delete-data")
+def auth_delete_data(response: Response, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _cookie_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_token = str(request.cookies.get("sb_user_token", "") or "").strip()
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    profile_removed = _purge_profile_user_data(profile, user)
+    _save_profile(profile)
+    deleted = store.delete_user_data(user_id=str(user.get("user_id", "")))
+    if user_token:
+        store.revoke_session(user_token)
+    _clear_session_cookies(response)
+    _event(
+        "info",
+        "delete_data",
+        user_id=str(user.get("user_id", "")),
+        db_deleted=int(deleted.get("total", 0)),
+        profile_sections_removed=profile_removed,
+    )
+    return {"ok": True, "deleted": deleted, "profile_sections_removed": profile_removed}
 
 
 @app.get("/v1/auth/me")

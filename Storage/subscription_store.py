@@ -263,6 +263,7 @@ class SubscriptionStore:
             "claim_code": claim_code,
             "model": model,
             "factory_secret": factory_secret,
+            "owner_user_id": "",
             "status": "available",
             "current_user_id": "",
             "linked_at": "",
@@ -280,8 +281,19 @@ class SubscriptionStore:
                 return d
         return None
 
+    @staticmethod
+    def _device_belongs_to_user(device: dict, user_id: str) -> bool:
+        if str(device.get("current_user_id", "")).strip() == user_id:
+            return True
+        # Replaced devices stay visible only to the user that previously owned
+        # them. This prevents cross-user history leaks.
+        status_key = str(device.get("status", "")).strip().lower()
+        owner_key = str(device.get("owner_user_id", "")).strip()
+        return status_key == "replaced" and owner_key == user_id
+
     def list_user_devices(self, user_id: str) -> list:
-        return [d for d in self.db["devices"] if d.get("current_user_id") == user_id or d.get("status") == "replaced"]
+        user_key = str(user_id or "").strip()
+        return [d for d in self.db["devices"] if self._device_belongs_to_user(d, user_key)]
 
     def get_active_device_for_user(self, user_id: str) -> Optional[dict]:
         for d in self.db["devices"]:
@@ -306,6 +318,7 @@ class SubscriptionStore:
             }
 
         device["current_user_id"] = user_id
+        device["owner_user_id"] = user_id
         device["status"] = "active"
         device["linked_at"] = self._now_iso()
         self.save()
@@ -325,9 +338,11 @@ class SubscriptionStore:
 
         old_device["status"] = "replaced"
         old_device["replaced_at"] = self._now_iso()
+        old_device["owner_user_id"] = user_id
         old_device["current_user_id"] = ""
 
         new_device["status"] = "active"
+        new_device["owner_user_id"] = user_id
         new_device["current_user_id"] = user_id
         new_device["linked_at"] = self._now_iso()
 
@@ -1020,6 +1035,7 @@ class SubscriptionStore:
 
     def build_user_timeline(self, user_id: str, limit: int = 100) -> list:
         events = []
+        user_key = str(user_id or "").strip()
 
         user = self.get_user(user_id)
         if user:
@@ -1051,7 +1067,7 @@ class SubscriptionStore:
             )
 
         for d in self.db.get("devices", []):
-            if d.get("current_user_id") == user_id or d.get("status") == "replaced":
+            if self._device_belongs_to_user(d, user_key):
                 if d.get("linked_at"):
                     events.append(
                         {
@@ -1111,3 +1127,78 @@ class SubscriptionStore:
         events.sort(key=lambda x: x.get("ts", ""), reverse=True)
         lim = max(1, min(500, int(limit)))
         return events[:lim]
+
+    def delete_user_data(self, user_id: str) -> dict:
+        user_key = str(user_id or "").strip()
+        if not user_key:
+            raise ValueError("user_id is required")
+
+        deleted = {
+            "users": 0,
+            "subscriptions": 0,
+            "usage_daily": 0,
+            "usage_monthly": 0,
+            "bed_profiles": 0,
+            "checkout_sessions": 0,
+            "payment_events": 0,
+            "admin_users": 0,
+            "user_sessions": 0,
+            "admin_sessions": 0,
+            "device_sessions": 0,
+            "device_refresh_sessions": 0,
+            "devices_unlinked": 0,
+        }
+
+        def _delete_rows(key: str, predicate) -> int:
+            rows = self.db.get(key, [])
+            if not isinstance(rows, list):
+                return 0
+            kept = [row for row in rows if not predicate(row if isinstance(row, dict) else {})]
+            removed = len(rows) - len(kept)
+            if removed:
+                self.db[key] = kept
+            return removed
+
+        deleted["users"] = _delete_rows("users", lambda row: row.get("user_id") == user_key)
+        deleted["subscriptions"] = _delete_rows("subscriptions", lambda row: row.get("user_id") == user_key)
+        deleted["usage_daily"] = _delete_rows("usage_daily", lambda row: row.get("user_id") == user_key)
+        deleted["usage_monthly"] = _delete_rows("usage_monthly", lambda row: row.get("user_id") == user_key)
+        deleted["bed_profiles"] = _delete_rows("bed_profiles", lambda row: row.get("user_id") == user_key)
+        deleted["checkout_sessions"] = _delete_rows("checkout_sessions", lambda row: row.get("user_id") == user_key)
+        deleted["payment_events"] = _delete_rows("payment_events", lambda row: row.get("user_id") == user_key)
+        deleted["admin_users"] = _delete_rows("admin_users", lambda row: row.get("user_id") == user_key)
+
+        for row in self.db.get("devices", []):
+            if not isinstance(row, dict):
+                continue
+            if row.get("current_user_id") == user_key or row.get("owner_user_id") == user_key:
+                row["current_user_id"] = ""
+                row["owner_user_id"] = ""
+                row["status"] = "available"
+                row["replaced_at"] = ""
+                deleted["devices_unlinked"] += 1
+
+        for token, session in list(self.db.get("user_sessions", {}).items()):
+            if isinstance(session, dict) and session.get("user_id") == user_key:
+                del self.db["user_sessions"][token]
+                deleted["user_sessions"] += 1
+
+        for token, session in list(self.db.get("admin_sessions", {}).items()):
+            if isinstance(session, dict) and session.get("user_id") == user_key:
+                del self.db["admin_sessions"][token]
+                deleted["admin_sessions"] += 1
+
+        for token, session in list(self.db.get("device_sessions", {}).items()):
+            if isinstance(session, dict) and session.get("user_id") == user_key:
+                del self.db["device_sessions"][token]
+                deleted["device_sessions"] += 1
+
+        for token, session in list(self.db.get("device_refresh_sessions", {}).items()):
+            if isinstance(session, dict) and session.get("user_id") == user_key:
+                del self.db["device_refresh_sessions"][token]
+                deleted["device_refresh_sessions"] += 1
+
+        deleted["total"] = sum(int(v) for v in deleted.values())
+        if deleted["total"] > 0:
+            self.save()
+        return deleted
