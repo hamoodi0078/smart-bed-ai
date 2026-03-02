@@ -2703,10 +2703,10 @@ def handle_local_commands(
             return "Data deletion cancelled.", True
         if bool(tokens.intersection(confirm_tokens)) or bool(raw_tokens.intersection(confirm_tokens)):
             runtime_flags["awaiting_data_delete_confirm"] = False
-            if delete_profile():
+            if delete_profile(profile=profile):
                 profile.clear()
                 profile["runtime_flags"] = {"session_locked_after_delete": True}
-                return "All local data deleted. Please restart so I can run fresh setup.", True
+                return "Current user data was deleted on this device. Shared subscription records were kept. Please restart so I can run fresh setup.", True
             return "I could not delete local data right now. Please try again.", True
         return "Please say confirm or cancel.", True
 
@@ -3138,7 +3138,7 @@ def handle_local_commands(
     if lower in ("delete all my data", "erase my data", "reset my data"):
         runtime_flags["awaiting_data_delete_confirm"] = True
         save_profile(profile)
-        return "This will delete your local profile and memory on this device. Say confirm to proceed or cancel.", True
+        return "This will delete data for your current local user profile on this device. Shared subscription records for other users are kept. Say confirm to proceed or cancel.", True
 
     if lower in ("privacy status", "show privacy settings", "data retention"):
         days = _safe_int(profile.get("preferences", {}).get("data_retention_days", 14), default_value=14, min_value=1, max_value=365)

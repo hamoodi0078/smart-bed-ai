@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import secrets
+import tempfile
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,7 @@ WEB_DIR = BASE_DIR / "web"
 ASSETS_DIR = WEB_DIR / "assets"
 PROFILE_PATH = BASE_DIR / "user_profile.json"
 store = SubscriptionStore()
+_PROFILE_IO_LOCK = threading.RLock()
 
 
 def _load_local_env_file(path: Path) -> None:
@@ -144,10 +147,21 @@ class SpotifyPlaybackRequest(BaseModel):
 def _safe_profile() -> dict[str, Any]:
     if not PROFILE_PATH.exists():
         return {}
+    with _PROFILE_IO_LOCK:
+        try:
+            raw = PROFILE_PATH.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.error("profile_read_failed path=%s error=%s", PROFILE_PATH, exc)
+            raise HTTPException(status_code=500, detail="Profile storage read failed") from exc
     try:
-        return json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        logger.error("profile_parse_failed path=%s error=%s", PROFILE_PATH, exc)
+        raise HTTPException(status_code=500, detail="Profile JSON is invalid") from exc
+    if not isinstance(data, dict):
+        logger.error("profile_parse_failed path=%s error=top_level_not_object", PROFILE_PATH)
+        raise HTTPException(status_code=500, detail="Profile JSON root must be an object")
+    return data
 
 
 def _latest_emotion_state(profile: dict[str, Any]) -> str:
@@ -217,7 +231,33 @@ def _device_health_status(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def _save_profile(payload: dict[str, Any]):
-    PROFILE_PATH.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+    serialized = json.dumps(payload, indent=2, ensure_ascii=True)
+    PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Path | None = None
+    with _PROFILE_IO_LOCK:
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=str(PROFILE_PATH.parent),
+                prefix=f".{PROFILE_PATH.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                tmp.write(serialized)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+                tmp_path = Path(tmp.name)
+            os.replace(str(tmp_path), str(PROFILE_PATH))
+        except OSError as exc:
+            logger.error("profile_write_failed path=%s error=%s", PROFILE_PATH, exc)
+            raise HTTPException(status_code=500, detail="Profile storage write failed") from exc
+        finally:
+            if tmp_path and tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
 
 
 def _normalize_user_settings(payload: dict[str, Any] | None) -> dict[str, Any]:
@@ -844,6 +884,9 @@ def auth_register(payload: RegisterRequest, response: Response, request: Request
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
     try:
+        # Public registration creates a normal app user only.
+        # Admin roles (especially "owner") are not granted here and must come
+        # from a separate secure provisioning/setup step.
         user = store.create_user(email=email, password=password, name=name)
     except ValueError as exc:
         _bump("auth_register_failure")
@@ -890,6 +933,10 @@ def admin_auth_login(payload: LoginRequest, response: Response, request: Request
         _event("warning", "admin_login_failed", email=(payload.email or "").strip().lower(), reason="invalid_credentials")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    # Admin bootstrap flow:
+    # - Login may create a missing admin record, but it is always "viewer".
+    # - "owner" is never auto-created here; it must be assigned manually or
+    #   via a dedicated secure setup flow.
     admin_user = store.ensure_admin_for_login(user)
     role = (admin_user.get("role") or "viewer").strip().lower()
     if role == "viewer":
@@ -918,8 +965,14 @@ def admin_auth_login(payload: LoginRequest, response: Response, request: Request
 @app.post("/v1/auth/logout")
 def auth_logout(response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
+    user_token = str(request.cookies.get("sb_user_token", "") or "").strip()
+    admin_token = str(request.cookies.get("sb_admin_token", "") or "").strip()
+    revoked = 0
+    for token in {user_token, admin_token}:
+        if token and store.revoke_session(token):
+            revoked += 1
     _clear_session_cookies(response)
-    _event("info", "logout")
+    _event("info", "logout", revoked_sessions=revoked)
     return {"ok": True}
 
 

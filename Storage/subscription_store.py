@@ -1,9 +1,18 @@
 import hashlib
+import hmac
 import json
+import os
+import tempfile
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from secrets import token_urlsafe
 from typing import Dict, Optional
+
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None
 
 
 DB_PATH = Path("data/subscription_db.json")
@@ -43,18 +52,27 @@ PLAN_DEFINITIONS = {
 class SubscriptionStore:
     def __init__(self, db_path: Path = DB_PATH):
         self.db_path = db_path
+        self._io_lock = threading.RLock()
         self.db = self._load()
 
     def _now_iso(self) -> str:
         return datetime.utcnow().isoformat(timespec="seconds")
 
     def _load(self) -> dict:
-        if self.db_path.exists():
+        if not self.db_path.exists():
+            return self._empty()
+        with self._io_lock:
             try:
-                return json.loads(self.db_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        return self._empty()
+                raw = self.db_path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise RuntimeError(f"Unable to read DB file: {self.db_path}") from exc
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"DB file is not valid JSON: {self.db_path}") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError(f"DB root must be a JSON object: {self.db_path}")
+        return data
 
     @staticmethod
     def _empty() -> dict:
@@ -92,12 +110,61 @@ class SubscriptionStore:
         return tuple(out)
 
     def save(self):
+        serialized = json.dumps(self.db, indent=2, ensure_ascii=True)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.db_path.write_text(json.dumps(self.db, indent=2), encoding="utf-8")
+        tmp_path: Optional[Path] = None
+        with self._io_lock:
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=str(self.db_path.parent),
+                    prefix=f".{self.db_path.name}.",
+                    suffix=".tmp",
+                    delete=False,
+                ) as tmp:
+                    tmp.write(serialized)
+                    tmp.flush()
+                    os.fsync(tmp.fileno())
+                    tmp_path = Path(tmp.name)
+                os.replace(str(tmp_path), str(self.db_path))
+            except OSError as exc:
+                raise RuntimeError(f"Unable to write DB file atomically: {self.db_path}") from exc
+            finally:
+                if tmp_path and tmp_path.exists():
+                    try:
+                        tmp_path.unlink()
+                    except OSError:
+                        pass
 
     @staticmethod
-    def _hash_password(password: str) -> str:
-        return hashlib.sha256((password or "").encode("utf-8")).hexdigest()
+    def _is_legacy_sha256_hash(password_hash: str) -> bool:
+        text = (password_hash or "").strip().lower()
+        return len(text) == 64 and all(ch in "0123456789abcdef" for ch in text)
+
+    @staticmethod
+    def hash_password(password: str) -> str:
+        if bcrypt is None:
+            raise RuntimeError("bcrypt is required for secure password hashing")
+        # bcrypt embeds a random per-password salt in the encoded hash value.
+        secret = (password or "").encode("utf-8")
+        return bcrypt.hashpw(secret, bcrypt.gensalt()).decode("utf-8")
+
+    @staticmethod
+    def check_password(password: str, stored_hash: str) -> bool:
+        secret = (password or "").encode("utf-8")
+        text = (stored_hash or "").strip()
+        if not text:
+            return False
+        if SubscriptionStore._is_legacy_sha256_hash(text):
+            legacy = hashlib.sha256(secret).hexdigest()
+            return hmac.compare_digest(text.lower(), legacy)
+        if bcrypt is None:
+            return False
+        try:
+            return bcrypt.checkpw(secret, text.encode("utf-8"))
+        except Exception:
+            return False
 
     def create_user(self, email: str, password: str, name: str = "") -> dict:
         email_norm = (email or "").strip().lower()
@@ -108,7 +175,7 @@ class SubscriptionStore:
             "user_id": f"usr_{token_urlsafe(8)}",
             "email": email_norm,
             "name": (name or "").strip(),
-            "password_hash": self._hash_password(password),
+            "password_hash": self.hash_password(password),
             "created_at": self._now_iso(),
         }
         self.db["users"].append(user)
@@ -130,10 +197,19 @@ class SubscriptionStore:
 
     def authenticate_user(self, email: str, password: str) -> Optional[dict]:
         email_norm = (email or "").strip().lower()
-        pwd_hash = self._hash_password(password)
         for user in self.db["users"]:
-            if user.get("email") == email_norm and user.get("password_hash") == pwd_hash:
+            if user.get("email") != email_norm:
+                continue
+            stored_hash = str(user.get("password_hash", ""))
+            if not self.check_password(password, stored_hash):
+                continue
+            # Migration path: keep legacy SHA-256 login working, then replace the
+            # stored hash with bcrypt so future logins use the stronger scheme.
+            if self._is_legacy_sha256_hash(stored_hash) and bcrypt is not None:
+                user["password_hash"] = self.hash_password(password)
+                self.save()
                 return user
+            return user
         return None
 
     def get_user(self, user_id: str) -> Optional[dict]:
@@ -162,6 +238,21 @@ class SubscriptionStore:
         except Exception:
             return None
         return self.get_user(sess.get("user_id", ""))
+
+    def revoke_session(self, token: str) -> bool:
+        token_key = str(token or "").strip()
+        if not token_key:
+            return False
+        removed = False
+        if token_key in self.db.get("user_sessions", {}):
+            del self.db["user_sessions"][token_key]
+            removed = True
+        if token_key in self.db.get("admin_sessions", {}):
+            del self.db["admin_sessions"][token_key]
+            removed = True
+        if removed:
+            self.save()
+        return removed
 
     def provision_device(self, device_id: str, claim_code: str, model: str = "", factory_secret: str = "") -> dict:
         existing = self.get_device(device_id)
@@ -742,15 +833,10 @@ class SubscriptionStore:
                 return row
         return None
 
-    def _active_admin_count(self) -> int:
-        count = 0
-        for row in self.db.get("admin_users", []):
-            if (row.get("status") or "active") == "active":
-                count += 1
-        return count
-
     def upsert_admin_user(self, user_id: str, email: str, role: str = "viewer", status: str = "active") -> dict:
         role_key = (role or "viewer").strip().lower()
+        # Owner remains a valid stored role, but it should only be assigned by
+        # a trusted manual/secure provisioning flow, not public auth paths.
         if role_key not in ("owner", "admin", "support", "ops", "finance", "viewer"):
             role_key = "viewer"
         status_key = "active" if (status or "active").strip().lower() != "disabled" else "disabled"
@@ -780,11 +866,14 @@ class SubscriptionStore:
         existing = self.get_admin_user(user.get("user_id", ""))
         if existing:
             return existing
-        role = "owner" if self._active_admin_count() == 0 else "viewer"
+        # Bootstrap flow:
+        # - Public accounts can appear in admin_users as "viewer" only.
+        # - "owner" must be assigned manually or by a dedicated secure setup path,
+        #   never inferred from "first admin login".
         return self.upsert_admin_user(
             user_id=user.get("user_id", ""),
             email=user.get("email", ""),
-            role=role,
+            role="viewer",
             status="active",
         )
 
