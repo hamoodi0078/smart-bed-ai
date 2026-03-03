@@ -4557,24 +4557,12 @@ def main():
         )
 
     gpt_diag = _build_gpt_route_diagnostics(backend_client)
-    if settings.use_backend_ai_proxy:
-        if not backend_client.is_configured():
-            print("[WARN] Backend AI proxy is enabled but APP_BACKEND_BASE_URL/BED_DEVICE_ID is not configured.")
-        else:
-            backend_client.ensure_session()
-            backend_client.fetch_entitlement()
-            print(f"Bed: {backend_client.status_line()}")
-            if not backend_client.is_feature_allowed("cloud_chat"):
-                print("[WARN] Backend GPT route blocked: cloud_chat feature is disabled for this entitlement.")
-    if settings.use_openai_direct:
-        if not str(settings.openai_api_key or "").strip():
-            print("[WARN] USE_OPENAI_DIRECT=1 but OPENAI_API_KEY is missing.")
-        if not str(settings.openai_chat_model or "").strip():
-            print("[WARN] USE_OPENAI_DIRECT=1 but OPENAI_CHAT_MODEL is missing.")
-        if str(settings.openai_api_key or "").strip() and str(settings.openai_chat_model or "").strip():
-            print(f"Bed: Direct OpenAI GPT route enabled (model={settings.openai_chat_model}).")
-    if gpt_diag["issues"]:
-        print("[WARN] GPT route diagnostics -> " + " | ".join(gpt_diag["issues"]))
+    if gpt_diag["openai_ready"]:
+        print(f"[GPT] OpenAI direct route enabled with model={settings.openai_chat_model}")
+    elif gpt_diag["backend_ready"]:
+        print("[GPT] Backend cloud route enabled (cloud_chat entitlement required).")
+    else:
+        print("[GPT] No GPT route enabled; open questions will use fallback message.")
 
     print("Bed: Startup health -> " + build_health_report())
 

@@ -1035,6 +1035,48 @@
       "assistant": "Cloud subscription is inactive or quota reached.",
       "emotion": "neutral",
       "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:33:06",
+      "user": "Who is iron?",
+      "assistant": "GPT route is unavailable right now. Both USEOPENAIDIRECT and USEBACKEN...",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:34:32",
+      "user": "Yeah.",
+      "assistant": "GPT route is unavailable right now. Both USEOPENAIDIRECT and USEBACKEN...",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:41:46",
+      "user": "My head is spinning.",
+      "assistant": "GPT route is unavailable right now. Both USEOPENAIDIRECT and USEBACKEN...",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:41:59",
+      "user": "My head is spinning.",
+      "assistant": "GPT route is unavailable right now. Both USEOPENAIDIRECT and USEBACKEN...",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:46:25",
+      "user": "Ahojriu.",
+      "assistant": "GPT route is unavailable right now. Both USEOPENAIDIRECT and USEBACKEN...",
+      "emotion": "neutral",
+      "personality": "therapist"
+    },
+    {
+      "ts": "2026-03-03T02:48:40",
+      "user": "Abdullah.",
+      "assistant": "GPT route is unavailable right now. Both USEOPENAIDIRECT and USEBACKEN...",
+      "emotion": "neutral",
+      "personality": "therapist"
     }
   ],
   "external_daily_events": []

@@ -1,3 +1,17 @@
+"""
+GPT routing .env setup:
+- Enable direct OpenAI route:
+  USE_OPENAI_DIRECT=1
+  OPENAI_API_KEY=your_openai_api_key
+  OPENAI_CHAT_MODEL=gpt-4o-mini
+  OPENAI_BASE_URL=https://api.openai.com/v1
+
+- Optional backend proxy route (entitlement-gated cloud_chat):
+  USE_BACKEND_AI_PROXY=1
+  APP_BACKEND_BASE_URL=http://127.0.0.1:8001
+  BED_DEVICE_ID=your_device_id
+"""
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
