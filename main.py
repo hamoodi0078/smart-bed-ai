@@ -51,11 +51,20 @@ from ai.spotify_manager import SpotifyManager
 from ai.stt_manager import STTManager
 from ai.tts_manager import TTSManager
 from ai.wake_word_manager import WakeWordManager
-from config import settings
+from automations.defaults import build_default_automations
+from automations.registry import AutomationRegistry
+from config import RUNTIME_DATA_DIR, settings
+from core.types import CommandResult
+from commands.lights import handle_light_intent_result
+from commands.registry import match as match_command_handler
+from commands.registry import register as register_command_handler
+from commands.reminders import handle_reminder_intent_result
+from commands.sleep import handle_sleep_intent_result
 from led.led_control import LEDController
 from Storage.cache_manager import CacheManager
 from Storage.schedule_manager import ScheduleManager, is_valid_time_24h
 from Storage.user_profile import delete_profile, load_profile, save_profile
+from time_utils import utcnow
 
 
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -72,9 +81,11 @@ reminder_nudge_state = {
 }
 awaiting_reflection_answer = False
 sleep_mode_active = False
-automations: list[dict[str, object]] = []
+AUTOMATION_STATE_PATH = RUNTIME_DATA_DIR / "automations_state.json"
+automation_registry = AutomationRegistry(state_path=AUTOMATION_STATE_PATH)
 automation_reply_handler = None
 automation_runtime_hooks: dict[str, object] = {}
+automation_profile_ref: dict | None = None
 THERAPIST_DISTRESS_KEYWORDS = (
     "sad",
     "upset",
@@ -105,28 +116,6 @@ THERAPIST_DISTRESS_KEYWORDS = (
     "متوتر",
     "مضغوط",
 )
-
-
-def register_automation(name, trigger, action, cooldown_minutes=60):
-    automations.append(
-        {
-            "name": str(name or "").strip(),
-            "trigger": trigger,
-            "action": action,
-            "enabled": True,
-            "last_ran": None,
-            "cooldown_minutes": int(cooldown_minutes),
-        }
-    )
-
-
-def _is_time_between(now: datetime, start_h: int, start_m: int, end_h: int, end_m: int) -> bool:
-    current = (now.hour * 60) + now.minute
-    start = (start_h * 60) + start_m
-    end = (end_h * 60) + end_m
-    if start <= end:
-        return start <= current <= end
-    return (current >= start) or (current <= end)
 
 
 def _parse_datetime_like(value) -> datetime | None:
@@ -162,127 +151,67 @@ def _has_pending_work_planning_reminder_today(now: datetime) -> bool:
 
 
 def init_automations():
-    if automations:
+    if automation_registry.list():
         return
-
-    def sleep_time_suggestion_trigger(now: datetime) -> bool:
-        return _is_time_between(now, 23, 0, 6, 0) and (not sleep_mode_active)
-
-    def sleep_time_suggestion_action() -> str:
-        return (
-            "Before sleep, be grateful for this day, review your work and plan for tomorrow, "
-            "then sleep now to protect Fajr."
-        )
-
-    register_automation(
-        "sleep_time_suggestion",
-        sleep_time_suggestion_trigger,
-        sleep_time_suggestion_action,
-        cooldown_minutes=120,
-    )
-
-    def work_and_plan_10pm_trigger(now: datetime) -> bool:
-        if not _is_time_between(now, 21, 50, 22, 10):
-            return False
-        return not _has_pending_work_planning_reminder_today(now)
-
-    def work_and_plan_10pm_action() -> str:
-        return (
-            "It is around 10 pm. This is your small daily habit: do your work and planning "
-            "for tomorrow, then you can rest in peace in sha Allah."
-        )
-
-    register_automation(
-        "work_and_plan_10pm",
-        work_and_plan_10pm_trigger,
-        work_and_plan_10pm_action,
-        cooldown_minutes=1440,
-    )
-
-    def morning_wake_scene_trigger(now: datetime) -> bool:
-        return _is_time_between(now, 6, 0, 7, 0) and sleep_mode_active
-
-    def morning_wake_scene_action() -> str:
-        global sleep_mode_active
-        wake_hook = automation_runtime_hooks.get("wake_up_led_scene")
-        if callable(wake_hook):
-            wake_hook()
-        else:
-            # TODO: call wake_up_led_scene()
-            pass
-        sleep_mode_active = False
-        return "Bismillah. Start your day with discipline and shukr, and move with focus from the first hour."
-
-    register_automation(
-        "morning_wake_scene",
-        morning_wake_scene_trigger,
-        morning_wake_scene_action,
-        cooldown_minutes=120,
-    )
-
-    def fajr_gentle_light_trigger(now: datetime) -> bool:
-        return _is_time_between(now, 4, 40, 5, 10) and sleep_mode_active
-
-    def fajr_gentle_light_action() -> str:
-        fajr_hook = automation_runtime_hooks.get("fajr_gentle_light_scene")
-        if callable(fajr_hook):
-            fajr_hook()
-        else:
-            # TODO: call a gentle warm dim fajr light scene function.
-            pass
-        return "Fajr time is near. Wake gently, make wudu, and ask Allah to guide your day."
-
-    register_automation(
-        "fajr_gentle_light",
-        fajr_gentle_light_trigger,
-        fajr_gentle_light_action,
-        cooldown_minutes=1440,
-    )
+    for automation in build_default_automations():
+        automation_registry.register(automation)
 
 
 def run_automations():
-    now = datetime.now()
-    for automation in automations:
-        if not bool(automation.get("enabled", True)):
+    global sleep_mode_active
+    profile = automation_profile_ref if isinstance(automation_profile_ref, dict) else {}
+    prefs = profile.get("preferences", {}) if isinstance(profile, dict) else {}
+    timezone_name = str(prefs.get("timezone", "UTC") or "UTC").strip() or "UTC"
+    now_utc = utcnow()
+
+    try:
+        now_local = now_utc.astimezone(ZoneInfo(timezone_name))
+    except Exception:
+        timezone_name = "UTC"
+        now_local = now_utc
+
+    ctx = {
+        "now_utc": now_utc,
+        "timezone": timezone_name,
+        "sleep_mode_active": bool(sleep_mode_active),
+        "quiet_window": str(prefs.get("quiet_window", "") or ""),
+        "quiet_mode_active": bool(prefs.get("quiet_mode_active", False)),
+        "has_pending_work_planning_reminder_today": _has_pending_work_planning_reminder_today(now_local),
+        "fajr_light_time": str(prefs.get("fajr_light_time", "04:50") or "04:50"),
+    }
+
+    for effect in automation_registry.run_automations(ctx):
+        kind = str(effect.kind or "").strip().lower()
+        payload = effect.payload if isinstance(effect.payload, dict) else {}
+
+        if kind == "say":
+            reply = str(payload.get("text", "") or "").strip()
+            if not reply:
+                continue
+            logger.info("[AUTOMATION] fired with reply=%r", reply)
+            try:
+                if callable(automation_reply_handler):
+                    automation_reply_handler(reply)
+            except Exception:
+                logger.exception("[AUTOMATION] reply handler failed.")
             continue
 
-        name = str(automation.get("name", "unnamed_automation") or "unnamed_automation")
-        trigger = automation.get("trigger")
-        action = automation.get("action")
-        if not callable(trigger) or not callable(action):
+        if kind == "led":
+            op = str(payload.get("op", "") or "").strip().lower()
+            hook = automation_runtime_hooks.get(op)
+            if callable(hook):
+                hook()
             continue
 
-        try:
-            should_fire = bool(trigger(now))
-        except Exception:
-            logger.exception("[AUTOMATION] %s trigger failed.", name)
+        if kind != "store":
             continue
 
-        if not should_fire:
-            continue
-
-        last_ran = _parse_datetime_like(automation.get("last_ran"))
-        cooldown = int(automation.get("cooldown_minutes", 60) or 60)
-        if (last_ran is not None) and ((now - last_ran) < timedelta(minutes=cooldown)):
-            continue
-
-        try:
-            reply = action()
-        except Exception:
-            logger.exception("[AUTOMATION] %s action failed.", name)
-            continue
-
-        automation["last_ran"] = now
-        final_reply = str(reply or "").strip()
-        if not final_reply:
-            continue
-
-        logger.info("[AUTOMATION] %s fired with reply=%r", name, final_reply)
-        try:
-            if callable(automation_reply_handler):
-                automation_reply_handler(final_reply)
-        except Exception:
-            logger.exception("[AUTOMATION] %s reply handler failed.", name)
+        op = str(payload.get("op", "") or "").strip().lower()
+        if op == "set_sleep_mode":
+            sleep_mode_active = bool(payload.get("value", sleep_mode_active))
+            if isinstance(profile, dict):
+                profile.setdefault("runtime_flags", {})["sleep_mode"] = sleep_mode_active
+                save_profile(profile)
 
 
 def format_planned_reminders() -> str:
@@ -2297,6 +2226,9 @@ def ensure_profile_shape(profile: dict):
     profile["preferences"].setdefault("speed_mode", "normal")
     profile["preferences"].setdefault("guide_level", "beginner")
     profile["preferences"].setdefault("quiet_window", "")
+    profile["preferences"].setdefault("quiet_mode_active", False)
+    profile["preferences"].setdefault("timezone", "UTC")
+    profile["preferences"].setdefault("fajr_light_time", "04:50")
     profile["preferences"].setdefault("sleep_target_hours", 8.0)
     profile["preferences"].setdefault("adaptive_wake_enabled", True)
     profile["preferences"].setdefault("therapist_followup_tone", "soft")
@@ -4806,6 +4738,7 @@ def main():
     global sleep_mode_active
     global automation_reply_handler
     global automation_runtime_hooks
+    global automation_profile_ref
     led = LEDController(
         user_strip_pin=settings.user_strip_pin,
         state_strip_pin=settings.state_strip_pin,
@@ -4968,6 +4901,7 @@ def main():
             f"({profile.get('age', '?')} years old)."
         )
     apply_led_hardware_config(led, profile)
+    automation_profile_ref = profile
     wake_word_manager.set_wake_aliases(build_wake_aliases_from_profile(profile))
     print(f"Bed: {led.hardware_status()}")
     goal_manager.ensure_shape(profile)
@@ -5004,6 +4938,7 @@ def main():
         led.set_user_brightness(0.12)
         led.set_state("sleep")
 
+    automation_runtime_hooks["wake_up_scene"] = _automation_wake_up_led_scene
     automation_runtime_hooks["wake_up_led_scene"] = _automation_wake_up_led_scene
     automation_runtime_hooks["fajr_gentle_light_scene"] = _automation_fajr_gentle_light_scene
     init_automations()
@@ -5412,64 +5347,8 @@ def main():
             return f"{scene_line} {bedtime_line}".strip()
 
         def handle_light_intent(text: str) -> str:
-            raw_text = str(text or "").strip()
-            lowered = raw_text.lower()
-            normalized = " " + "".join(ch if (ch.isalnum() or ch.isspace()) else " " for ch in lowered) + " "
-
-            color_word = None
-            for candidate in ("red", "blue", "green", "yellow", "purple", "white", "warm", "cool"):
-                if f" {candidate} " in normalized:
-                    color_word = candidate
-                    break
-
-            brightness_word = None
-            for candidate in ("dimmer", "dim", "brighter", "bright", "full"):
-                if f" {candidate} " in normalized:
-                    brightness_word = candidate
-                    break
-
-            color_map = {
-                "red": "red",
-                "blue": "blue",
-                "green": "green",
-                "yellow": "yellow",
-                "purple": "purple",
-                "white": "white",
-                "warm": "orange",
-                "cool": "cyan",
-            }
-            brightness_map = {
-                "dimmer": 0.25,
-                "dim": 0.25,
-                "brighter": 0.80,
-                "bright": 0.80,
-                "full": 1.00,
-            }
-
-            if (color_word is None) and (brightness_word is None):
-                print(f"[INTENT][LIGHT] color=none brightness=none from text='{raw_text}'")
-                return "What color or brightness would you like for the lights?"
-
-            if color_word is not None:
-                set_user_led_color(color_map[color_word])
-
-            if brightness_word is not None:
-                led.set_user_brightness(brightness_map[brightness_word])
-
-            log_color = color_word or "none"
-            log_brightness = brightness_word or "none"
-            print(f"[INTENT][LIGHT] color={log_color} brightness={log_brightness} from text='{raw_text}'")
-
-            if color_word and brightness_word:
-                scene_brightness = "dim" if brightness_word in ("dim", "dimmer") else ("full brightness" if brightness_word == "full" else "bright")
-                return f"Okay, I will set the lights to a {scene_brightness} {color_word} scene."
-            if color_word:
-                return f"Okay, I will set the lights to {color_word}."
-            return (
-                "Okay, I will make the lights dimmer."
-                if brightness_word in ("dim", "dimmer")
-                else ("Okay, I will set the lights to full brightness." if brightness_word == "full" else "Okay, I will make the lights brighter.")
-            )
+            result = handle_light_intent_result(text)
+            return apply_command_result_effects(result)
 
         def handle_time_intent(text: str) -> str:
             _log_intent("TIME", text)
@@ -5489,108 +5368,80 @@ def main():
         def handle_sleep_intent(text: str) -> str:
             raw_text = str(text or "").strip()
             print(f"[INTENT][SLEEP] activating sleep scene for text='{raw_text}'")
-            sleep_mode_line = activate_sleep_scene()
-            if sleep_mode_line:
-                print(f"[INTENT][SLEEP] {sleep_mode_line}")
-            return "I have started sleep mode with a calm light scene."
+            result = handle_sleep_intent_result(text)
+            return apply_command_result_effects(result)
+
+        def apply_command_result_effects(result: CommandResult) -> str:
+            """Apply command effects emitted by pure command handlers."""
+            response_text = str(result.text or "")
+            for effect in result.effects:
+                kind = str(effect.kind or "").strip().lower()
+                payload = effect.payload if isinstance(effect.payload, dict) else {}
+                if kind == "say":
+                    response_text = str(payload.get("text", response_text) or response_text)
+                    continue
+                if kind == "led":
+                    op = str(payload.get("op", "") or "").strip().lower()
+                    if op == "set_user_color":
+                        color = str(payload.get("color", "") or "").strip().lower()
+                        if color:
+                            set_user_led_color(color)
+                        continue
+                    if op == "set_user_brightness":
+                        brightness = payload.get("brightness")
+                        if isinstance(brightness, (int, float)):
+                            led.set_user_brightness(float(brightness))
+                        continue
+                    target_state = str(payload.get("state", "") or "").strip().lower()
+                    if target_state in {"listening", "speaking", "sleep", "standby"}:
+                        led.set_state(target_state)
+                    continue
+                if kind != "store":
+                    continue
+
+                op = str(payload.get("op", "") or "").strip().lower()
+                if op == "append_planned_reminder":
+                    reminder = payload.get("reminder", {})
+                    if isinstance(reminder, dict):
+                        planned_reminders.append(reminder)
+                elif op == "set_reminder_nudge_state":
+                    state = payload.get("state", {})
+                    if isinstance(state, dict):
+                        reminder_nudge_state.update(state)
+                elif op == "activate_sleep_scene":
+                    sleep_mode_line = activate_sleep_scene()
+                    if sleep_mode_line:
+                        print(f"[INTENT][SLEEP] {sleep_mode_line}")
+            return response_text
 
         def handle_reminder_intent(text: str) -> str:
-            raw_text = str(text or "").strip()
-            lowered = raw_text.lower()
-            if lowered in ("show my reminders", "list reminders"):
-                print(f"[INTENT][REMINDER] listing reminders for text='{raw_text}'")
-                return format_planned_reminders()
+            result = handle_reminder_intent_result(
+                text,
+                reminders_summary=format_planned_reminders(),
+                now_provider=datetime.now,
+            )
+            return apply_command_result_effects(result)
 
-            task_text = ""
-            time_text = ""
-            pattern = ""
-            repeat_flag = ("every night" in lowered) or bool(re.search(r"\bevery\b", lowered))
-
-            if "remind me to" in lowered:
-                pattern = "remind"
-                marker = "remind me to"
-                start = lowered.find(marker) + len(marker)
-                tail_raw = raw_text[start:].strip()
-                tail_lower = lowered[start:].strip()
-                at_index = tail_lower.rfind(" at ")
-                if at_index >= 0:
-                    task_text = tail_raw[:at_index].strip(" .,!?")
-                    time_text = tail_raw[at_index + 4 :].strip(" .,!?")
-                else:
-                    task_text = tail_raw.strip(" .,!?")
-            elif "remind me" in lowered:
-                pattern = "remind"
-                marker = "remind me"
-                start = lowered.find(marker) + len(marker)
-                tail_raw = raw_text[start:].strip()
-                tail_lower = lowered[start:].strip()
-                if tail_lower.startswith("to "):
-                    tail_raw = tail_raw[3:].strip()
-                    tail_lower = tail_lower[3:].strip()
-                at_index = tail_lower.rfind(" at ")
-                if at_index >= 0:
-                    task_text = tail_raw[:at_index].strip(" .,!?")
-                    time_text = tail_raw[at_index + 4 :].strip(" .,!?")
-                else:
-                    task_text = tail_raw.strip(" .,!?")
-            elif "wake me up" in lowered:
-                pattern = "wake"
-                task_text = "wake up"
-                marker = "wake me up"
-                start = lowered.find(marker) + len(marker)
-                tail_raw = raw_text[start:].strip()
-                tail_lower = lowered[start:].strip()
-                if tail_lower.startswith("at "):
-                    time_text = tail_raw[3:].strip(" .,!?")
-                elif " at " in tail_lower:
-                    at_index = tail_lower.rfind(" at ")
-                    time_text = tail_raw[at_index + 4 :].strip(" .,!?")
-                elif tail_raw:
-                    time_text = tail_raw.strip(" .,!?")
-
-            print(f"[INTENT][REMINDER] task='{task_text}' time='{time_text}' pattern='{pattern}' raw='{raw_text}'")
-            if task_text or time_text:
-                reminder = {
-                    "raw_text": raw_text,
-                    "pattern": pattern or "reminder",
-                    "task": task_text,
-                    "time": time_text,
-                    "created_at": datetime.now(),
-                    "completed": False,
-                    "repeat": repeat_flag,
-                    "nudge_sent": False,
-                }
-                planned_reminders.append(reminder)
-                print(
-                    f"[INTENT][REMINDER] stored reminder: task='{task_text}' time='{time_text}' "
-                    f"pattern='{reminder['pattern']}' raw='{raw_text}'."
-                )
-                if time_text:
-                    reminder_nudge_state["active"] = True
-                    reminder_nudge_state["task"] = task_text
-                    reminder_nudge_state["nudge_sent"] = False
-                    reminder_nudge_state["nudge_time"] = datetime.now()
-
-                if task_text and time_text:
-                    task_for_reply = re.sub(r"\bmy project\b", "your project", task_text, flags=re.IGNORECASE)
-                    lowered_time = time_text.lower()
-                    time_context = ""
-                    if ("pm" in lowered_time) and ("tonight" not in lowered_time):
-                        time_context = " tonight"
-                    elif ("am" in lowered_time) and ("tomorrow" not in lowered_time):
-                        time_context = " tomorrow"
-                    return f"Okay, I will remind you to {task_for_reply}{time_context} at {time_text}."
-                if task_text:
-                    return (
-                        f"Okay, I will remember you want to {task_text}. "
-                        "In the future, I will also use a time if you say one."
-                    )
-                return (
-                    f"Okay, I will note your reminder time as {time_text}. "
-                    "Actual reminder scheduling will be implemented later."
-                )
-
-            return "I did not catch the time or task. Please say: remind me to <task> at <time>."
+        register_command_handler(
+            "lights",
+            handle_light_intent,
+            aliases=("light", "lights"),
+        )
+        register_command_handler(
+            "sleep",
+            handle_sleep_intent,
+            aliases=("sleep mode", "go to sleep", "bedtime mode"),
+        )
+        register_command_handler(
+            "reminders",
+            handle_reminder_intent,
+            aliases=(
+                "show my reminders",
+                "list reminders",
+                "remind me",
+                "wake me up",
+            ),
+        )
 
         def handle_chat_intent(text: str) -> str:
             global awaiting_reflection_answer
@@ -5799,21 +5650,13 @@ def main():
 
         def handle_bed_command(text: str) -> str:
             lowered = str(text or "").lower()
-            if ("light" in lowered) or ("lights" in lowered):
-                return handle_light_intent(text)
+            matched_handler = match_command_handler(text)
+            if matched_handler is handle_light_intent:
+                return matched_handler(text)
             if ("time" in lowered) or ("day" in lowered) or ("date" in lowered) or ("today" in lowered):
                 return handle_time_intent(text)
-            if ("sleep mode" in lowered) or ("go to sleep" in lowered) or ("bedtime mode" in lowered):
-                return handle_sleep_intent(text)
-            if lowered in ("show my reminders", "list reminders"):
-                return handle_reminder_intent(text)
-            if (
-                lowered.startswith("remind me")
-                or (" remind me " in f" {lowered} ")
-                or lowered.startswith("wake me up")
-                or (" wake me up " in f" {lowered} ")
-            ):
-                return handle_reminder_intent(text)
+            if matched_handler is not None:
+                return matched_handler(text)
             return handle_chat_intent(text)
 
         while True:

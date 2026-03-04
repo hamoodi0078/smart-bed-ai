@@ -6,6 +6,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 import requests
+from time_utils import utcnow
 
 
 COUNTRY_TIMEZONE_ALIASES = {
@@ -338,7 +339,7 @@ def get_online_calendar_answer(
             if offset_hours is None:
                 now = datetime.now()
             else:
-                now = datetime.utcnow() + timedelta(hours=offset_hours)
+                now = utcnow() + timedelta(hours=offset_hours)
 
     source = "online" if online_now else "local fallback"
     requested_year = _extract_requested_year(lower, now.year)

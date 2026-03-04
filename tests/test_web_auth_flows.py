@@ -8,6 +8,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from Storage.subscription_store import SubscriptionStore
+from time_utils import from_iso, utcnow
 import web_server
 
 
@@ -69,6 +70,18 @@ class TestWebAuthFlows(unittest.TestCase):
         me = self.client.get("/v1/auth/me")
         self.assertEqual(me.status_code, 200)
         self.assertEqual(me.json().get("user", {}).get("email"), "login@example.com")
+
+    def test_user_session_expiry_math_uses_aware_utc(self):
+        created = self.store.create_user("expiry@example.com", "letmein1", "Expiry")
+        token_bundle = self.store.issue_user_token(created.get("user_id", ""), ttl_hours=1)
+
+        expires_at = from_iso(token_bundle.get("expires_at", ""))
+        self.assertIsNotNone(expires_at.tzinfo)
+        self.assertEqual(expires_at.utcoffset().total_seconds(), 0)
+
+        remaining = (expires_at - utcnow()).total_seconds()
+        self.assertGreater(remaining, 3500)
+        self.assertLessEqual(remaining, 3600)
 
     def test_admin_bootstrap_does_not_auto_promote_owner(self):
         register = self._register(email="admin-bootstrap@example.com", password="letmein1")

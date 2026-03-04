@@ -1,13 +1,15 @@
 import hashlib
 import hmac
-import json
-import os
-import tempfile
 import threading
-from datetime import datetime, timedelta, timezone
+from copy import deepcopy
+from datetime import datetime, timedelta
 from pathlib import Path
 from secrets import token_urlsafe
 from typing import Dict, Optional
+
+from config import SUBSCRIPTION_DB_PATH
+from Storage.io import atomic_write_json, locked_read_json
+from time_utils import from_iso, to_iso, utcnow
 
 try:
     import bcrypt
@@ -15,7 +17,8 @@ except ImportError:
     bcrypt = None
 
 
-DB_PATH = Path("data/subscription_db.json")
+DB_PATH = SUBSCRIPTION_DB_PATH
+SUBSCRIPTION_DB_SCHEMA_VERSION = 1
 
 
 PLAN_DEFINITIONS = {
@@ -57,7 +60,7 @@ class SubscriptionStore:
 
     @staticmethod
     def _utc_now() -> datetime:
-        return datetime.now(timezone.utc)
+        return utcnow()
 
     @staticmethod
     def _parse_datetime_utc(value: str) -> Optional[datetime]:
@@ -65,35 +68,26 @@ class SubscriptionStore:
         if not raw:
             return None
         try:
-            parsed = datetime.fromisoformat(raw)
-            if parsed.tzinfo is None:
-                return parsed.replace(tzinfo=timezone.utc)
-            return parsed.astimezone(timezone.utc)
+            return from_iso(raw)
         except Exception:
             return None
 
     def _now_iso(self) -> str:
-        return self._utc_now().isoformat(timespec="seconds")
+        return to_iso(self._utc_now().replace(microsecond=0))
 
     def _load(self) -> dict:
-        if not self.db_path.exists():
-            return self._empty()
+        file_existed = self.db_path.exists()
         with self._io_lock:
-            try:
-                raw = self.db_path.read_text(encoding="utf-8")
-            except OSError as exc:
-                raise RuntimeError(f"Unable to read DB file: {self.db_path}") from exc
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(f"DB file is not valid JSON: {self.db_path}") from exc
-        if not isinstance(data, dict):
-            raise RuntimeError(f"DB root must be a JSON object: {self.db_path}")
+            loaded = locked_read_json(self.db_path)
+            data, changed = self._normalize_db(loaded)
+            if changed and file_existed:
+                atomic_write_json(self.db_path, data)
         return data
 
     @staticmethod
     def _empty() -> dict:
         return {
+            "schema_version": SUBSCRIPTION_DB_SCHEMA_VERSION,
             "users": [],
             "subscriptions": [],
             "devices": [],
@@ -114,6 +108,23 @@ class SubscriptionStore:
             "incidents": [],
         }
 
+    def _normalize_db(self, payload: dict) -> tuple[dict, bool]:
+        defaults = self._empty()
+        data = dict(payload) if isinstance(payload, dict) else {}
+        changed = False
+
+        schema = data.get("schema_version")
+        if not isinstance(schema, int) or schema < 1:
+            data["schema_version"] = SUBSCRIPTION_DB_SCHEMA_VERSION
+            changed = True
+
+        for key, default_value in defaults.items():
+            if key not in data:
+                data[key] = deepcopy(default_value)
+                changed = True
+
+        return data, changed
+
     @staticmethod
     def _version_key(version: str):
         text = str(version or "").strip().lstrip("v")
@@ -127,32 +138,9 @@ class SubscriptionStore:
         return tuple(out)
 
     def save(self):
-        serialized = json.dumps(self.db, indent=2, ensure_ascii=True)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path: Optional[Path] = None
         with self._io_lock:
-            try:
-                with tempfile.NamedTemporaryFile(
-                    mode="w",
-                    encoding="utf-8",
-                    dir=str(self.db_path.parent),
-                    prefix=f".{self.db_path.name}.",
-                    suffix=".tmp",
-                    delete=False,
-                ) as tmp:
-                    tmp.write(serialized)
-                    tmp.flush()
-                    os.fsync(tmp.fileno())
-                    tmp_path = Path(tmp.name)
-                os.replace(str(tmp_path), str(self.db_path))
-            except OSError as exc:
-                raise RuntimeError(f"Unable to write DB file atomically: {self.db_path}") from exc
-            finally:
-                if tmp_path and tmp_path.exists():
-                    try:
-                        tmp_path.unlink()
-                    except OSError:
-                        pass
+            self.db, _ = self._normalize_db(self.db)
+            atomic_write_json(self.db_path, self.db)
 
     @staticmethod
     def _is_legacy_sha256_hash(password_hash: str) -> bool:
@@ -237,7 +225,7 @@ class SubscriptionStore:
 
     def issue_user_token(self, user_id: str, ttl_hours: int = 24 * 7) -> dict:
         token = token_urlsafe(32)
-        expires_at = (self._utc_now() + timedelta(hours=ttl_hours)).isoformat(timespec="seconds")
+        expires_at = to_iso((self._utc_now() + timedelta(hours=ttl_hours)).replace(microsecond=0))
         self.db["user_sessions"][token] = {
             "user_id": user_id,
             "expires_at": expires_at,
@@ -384,8 +372,8 @@ class SubscriptionStore:
     def issue_device_tokens(self, device_id: str, user_id: str, access_minutes: int = 15, refresh_days: int = 30) -> dict:
         access_token = token_urlsafe(32)
         refresh_token = token_urlsafe(48)
-        access_exp = (self._utc_now() + timedelta(minutes=access_minutes)).isoformat(timespec="seconds")
-        refresh_exp = (self._utc_now() + timedelta(days=refresh_days)).isoformat(timespec="seconds")
+        access_exp = to_iso((self._utc_now() + timedelta(minutes=access_minutes)).replace(microsecond=0))
+        refresh_exp = to_iso((self._utc_now() + timedelta(days=refresh_days)).replace(microsecond=0))
 
         self.db["device_sessions"][access_token] = {
             "device_id": device_id,
@@ -550,7 +538,7 @@ class SubscriptionStore:
         sub["payment_provider"] = payment_provider
         sub["price_kwd"] = plan["monthly_price_kwd"] if interval_norm == "monthly" else plan["yearly_price_kwd"]
         months = 1 if interval_norm == "monthly" else 12
-        sub["next_renewal_at"] = (self._utc_now() + timedelta(days=30 * months)).isoformat(timespec="seconds")
+        sub["next_renewal_at"] = to_iso((self._utc_now() + timedelta(days=30 * months)).replace(microsecond=0))
         sub["updated_at"] = self._now_iso()
         self.save()
         return sub
@@ -558,7 +546,7 @@ class SubscriptionStore:
     def set_subscription_grace(self, user_id: str, grace_days: int = 7) -> dict:
         sub = self.get_subscription(user_id)
         sub["status"] = "grace"
-        sub["grace_end_at"] = (self._utc_now() + timedelta(days=grace_days)).isoformat(timespec="seconds")
+        sub["grace_end_at"] = to_iso((self._utc_now() + timedelta(days=grace_days)).replace(microsecond=0))
         sub["updated_at"] = self._now_iso()
         self.save()
         return sub
@@ -909,7 +897,7 @@ class SubscriptionStore:
 
     def issue_admin_token(self, user_id: str, role: str, ttl_hours: int = 12) -> dict:
         token = token_urlsafe(36)
-        expires_at = (self._utc_now() + timedelta(hours=ttl_hours)).isoformat(timespec="seconds")
+        expires_at = to_iso((self._utc_now() + timedelta(hours=ttl_hours)).replace(microsecond=0))
         self.db["admin_sessions"][token] = {
             "user_id": user_id,
             "role": (role or "viewer").strip().lower(),

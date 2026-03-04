@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
 import requests
+from time_utils import from_iso, utcnow
 
 
 class BedBackendClient:
@@ -27,14 +28,11 @@ class BedBackendClient:
 
     @staticmethod
     def _utc_now() -> datetime:
-        return datetime.now(timezone.utc)
+        return utcnow()
 
     def _parse_expires_at(self, expires_at_text: str) -> Optional[datetime]:
         try:
-            parsed = datetime.fromisoformat(str(expires_at_text or ""))
-            if parsed.tzinfo is None:
-                return parsed.replace(tzinfo=timezone.utc)
-            return parsed.astimezone(timezone.utc)
+            return from_iso(str(expires_at_text or ""))
         except Exception:
             return None
 

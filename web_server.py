@@ -5,9 +5,8 @@ import logging
 import os
 import re
 import secrets
-import tempfile
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -21,18 +20,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
+from Storage.io import atomic_write_json, locked_read_json
 from Storage.subscription_store import SubscriptionStore
 from ai.conversation_engine import ConversationEngine
 from ai.emotion_router import detect_emotion_state
 from ai.long_term_memory import LongTermMemoryStore
+from config import LONG_TERM_MEMORY_PATH, RUNTIME_DATA_DIR, USER_PROFILE_PATH
+from time_utils import from_iso, to_iso, utcnow
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
 ASSETS_DIR = WEB_DIR / "assets"
-PROFILE_PATH = BASE_DIR / "user_profile.json"
-WEB_MEMORY_DIR = BASE_DIR / "data" / "web_memory"
+PROFILE_PATH = USER_PROFILE_PATH
+WEB_MEMORY_DIR = RUNTIME_DATA_DIR / "web_memory"
 store = SubscriptionStore()
-_PROFILE_IO_LOCK = threading.RLock()
 _CHAT_ENGINE_LOCK = threading.RLock()
 _CHAT_ENGINES: dict[str, ConversationEngine] = {}
 _MAX_CHAT_ENGINES = 200
@@ -152,23 +153,11 @@ class SpotifyPlaybackRequest(BaseModel):
 
 
 def _safe_profile() -> dict[str, Any]:
-    if not PROFILE_PATH.exists():
-        return {}
-    with _PROFILE_IO_LOCK:
-        try:
-            raw = PROFILE_PATH.read_text(encoding="utf-8")
-        except OSError as exc:
-            logger.error("profile_read_failed path=%s error=%s", PROFILE_PATH, exc)
-            raise HTTPException(status_code=500, detail="Profile storage read failed") from exc
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        logger.error("profile_parse_failed path=%s error=%s", PROFILE_PATH, exc)
-        raise HTTPException(status_code=500, detail="Profile JSON is invalid") from exc
-    if not isinstance(data, dict):
-        logger.error("profile_parse_failed path=%s error=top_level_not_object", PROFILE_PATH)
-        raise HTTPException(status_code=500, detail="Profile JSON root must be an object")
-    return data
+        return locked_read_json(PROFILE_PATH)
+    except Exception as exc:
+        logger.error("profile_read_failed path=%s error=%s", PROFILE_PATH, exc)
+        raise HTTPException(status_code=500, detail="Profile storage read failed") from exc
 
 
 def _latest_emotion_state(profile: dict[str, Any]) -> str:
@@ -193,7 +182,7 @@ def _active_personality(profile: dict[str, Any]) -> str:
 
 def _last_memory_context() -> str:
     try:
-        return LongTermMemoryStore(path=str(BASE_DIR / "data" / "long_term_memory.json")).latest_memory_context()
+        return LongTermMemoryStore(path=str(LONG_TERM_MEMORY_PATH)).latest_memory_context()
     except Exception:
         return ""
 
@@ -238,33 +227,11 @@ def _device_health_status(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def _save_profile(payload: dict[str, Any]):
-    serialized = json.dumps(payload, indent=2, ensure_ascii=True)
-    PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path: Path | None = None
-    with _PROFILE_IO_LOCK:
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                dir=str(PROFILE_PATH.parent),
-                prefix=f".{PROFILE_PATH.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as tmp:
-                tmp.write(serialized)
-                tmp.flush()
-                os.fsync(tmp.fileno())
-                tmp_path = Path(tmp.name)
-            os.replace(str(tmp_path), str(PROFILE_PATH))
-        except OSError as exc:
-            logger.error("profile_write_failed path=%s error=%s", PROFILE_PATH, exc)
-            raise HTTPException(status_code=500, detail="Profile storage write failed") from exc
-        finally:
-            if tmp_path and tmp_path.exists():
-                try:
-                    tmp_path.unlink()
-                except OSError:
-                    pass
+    try:
+        atomic_write_json(PROFILE_PATH, payload if isinstance(payload, dict) else {})
+    except Exception as exc:
+        logger.error("profile_write_failed path=%s error=%s", PROFILE_PATH, exc)
+        raise HTTPException(status_code=500, detail="Profile storage write failed") from exc
 
 
 def _purge_profile_user_data(profile: dict[str, Any], user: dict[str, Any]) -> int:
@@ -591,18 +558,13 @@ def _parse_iso_timestamp(value: str) -> datetime | None:
     if not raw:
         return None
     try:
-        if raw.endswith("Z"):
-            raw = raw[:-1] + "+00:00"
-        parsed = datetime.fromisoformat(raw)
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
-        return parsed
+        return from_iso(raw)
     except Exception:
         return None
 
 
 def _now_utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return to_iso(utcnow())
 
 
 def _normalize_command_item(row: dict[str, Any] | None) -> dict[str, Any]:
@@ -645,7 +607,7 @@ def _progress_command_state(command: dict[str, Any], now: datetime) -> tuple[dic
 def _progress_user_commands(profile: dict[str, Any], key: str) -> tuple[list[dict[str, Any]], bool]:
     commands_section = _get_scoped_profile_section(profile, "web_device_commands")
     raw_rows = commands_section.get(key, []) if isinstance(commands_section.get(key, []), list) else []
-    now = datetime.now(timezone.utc)
+    now = utcnow()
     out: list[dict[str, Any]] = []
     changed_any = False
     for row in raw_rows:
@@ -780,7 +742,7 @@ def _spotify_expires_at(expires_in: Any) -> str:
         ttl = max(60, int(expires_in or 3600))
     except Exception:
         ttl = 3600
-    return (datetime.now(timezone.utc) + timedelta(seconds=ttl - 30)).isoformat()
+    return to_iso(utcnow() + timedelta(seconds=ttl - 30))
 
 
 def _spotify_api_request(method: str, url: str, access_token: str, json_body: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -842,7 +804,7 @@ def _spotify_refresh_user_token_if_needed(profile: dict[str, Any], user_key: str
         return {}
 
     expires_at = _parse_iso_timestamp(str(token.get("expires_at", "")))
-    needs_refresh = bool(expires_at and expires_at <= datetime.now(timezone.utc))
+    needs_refresh = bool(expires_at and expires_at <= utcnow())
     refresh_token = str(token.get("refresh_token", "") or "")
     if not needs_refresh or not refresh_token:
         return token

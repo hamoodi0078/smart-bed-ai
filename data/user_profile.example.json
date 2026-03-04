@@ -1,0 +1,46 @@
+{
+  "user_id": "usr_example",
+  "email": "user@example.com",
+  "name": "Example User",
+  "preferences": {
+    "personality": "guide"
+  },
+  "sleep": {
+    "recovery_mode": false,
+    "challenge_level": 1,
+    "night_wake_count": 0,
+    "bedtime_history": [],
+    "wake_history": [],
+    "partner_mode": {
+      "enabled": false
+    }
+  },
+  "personality_runtime": {
+    "emotion_history": []
+  },
+  "adaptive_personality": {
+    "last_selected": "guide"
+  },
+  "hardware": {
+    "user_strip_pin": 18,
+    "state_strip_pin": 13,
+    "user_strip_led_count": 120,
+    "state_strip_led_count": 60
+  },
+  "environment": {
+    "last_scene_key": "",
+    "last_preload_phase": ""
+  },
+  "runtime_flags": {
+    "sensor_pressure_active": false,
+    "sensor_motion_active": false
+  },
+  "web_settings": {},
+  "web_routines": {},
+  "web_profile_prefs": {},
+  "web_device_controls": {},
+  "web_timeline": {},
+  "web_device_commands": {},
+  "spotify_tokens": {},
+  "spotify_oauth_state": {}
+}

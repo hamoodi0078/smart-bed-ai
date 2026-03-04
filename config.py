@@ -13,6 +13,7 @@ GPT routing .env setup:
 """
 
 import os
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +47,58 @@ def _env_int(name: str, default: int) -> int:
         return int(raw)
     except (TypeError, ValueError):
         return int(default)
+
+
+BASE_DIR = Path(__file__).resolve().parent
+
+
+def _env_path(name: str, default_path: Path) -> Path:
+    raw = str(os.getenv(name, "") or "").strip()
+    candidate = Path(raw) if raw else default_path
+    candidate = candidate.expanduser()
+    if not candidate.is_absolute():
+        candidate = BASE_DIR / candidate
+    return candidate.resolve()
+
+
+def _is_relative_to(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
+RUNTIME_DATA_DIR = _env_path("RUNTIME_DATA_DIR", BASE_DIR / "runtime_data")
+SUBSCRIPTION_DB_PATH = _env_path("SUBSCRIPTION_DB_PATH", RUNTIME_DATA_DIR / "subscription_db.json")
+USER_PROFILE_PATH = _env_path("USER_PROFILE_PATH", RUNTIME_DATA_DIR / "user_profile.json")
+LONG_TERM_MEMORY_PATH = _env_path("LONG_TERM_MEMORY_PATH", RUNTIME_DATA_DIR / "long_term_memory.json")
+
+
+def _assert_safe_sensitive_json_path(label: str, path: Path) -> None:
+    override = os.getenv("ALLOW_INSECURE_REPO_DATA_PATHS", "0") == "1"
+    resolved = path.resolve()
+    repo_data_dir = (BASE_DIR / "data").resolve()
+    repo_profile_path = (BASE_DIR / "user_profile.json").resolve()
+    is_risky = _is_relative_to(resolved, repo_data_dir) or resolved == repo_profile_path
+    if is_risky and not override:
+        logging.getLogger("runtime_guard").warning(
+            "Refusing unsafe JSON path for %s: %s (set ALLOW_INSECURE_REPO_DATA_PATHS=1 to override)",
+            label,
+            resolved,
+        )
+        raise RuntimeError(
+            f"Unsafe JSON data path for {label}: {resolved}. "
+            "Set ALLOW_INSECURE_REPO_DATA_PATHS=1 only if you explicitly accept this."
+        )
+
+
+def enforce_sensitive_data_path_guard() -> None:
+    _assert_safe_sensitive_json_path("SUBSCRIPTION_DB_PATH", SUBSCRIPTION_DB_PATH)
+    _assert_safe_sensitive_json_path("USER_PROFILE_PATH", USER_PROFILE_PATH)
+
+
+enforce_sensitive_data_path_guard()
 
 
 @dataclass
@@ -106,6 +159,7 @@ class Settings:
     state_strip_pin: int = int(os.getenv("STATE_STRIP_PIN", "13"))
     user_strip_led_count: int = int(os.getenv("USER_STRIP_LED_COUNT", "120"))
     state_strip_led_count: int = int(os.getenv("STATE_STRIP_LED_COUNT", "60"))
+    runtime_data_dir: str = str(RUNTIME_DATA_DIR)
 
 
 settings = Settings()

@@ -1,32 +1,33 @@
-import json
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
+
+from config import LONG_TERM_MEMORY_PATH
+from Storage.io import atomic_write_json, locked_read_json
 
 
 class LongTermMemoryStore:
     """Simple JSON-backed memory for week-over-week conversational continuity."""
 
-    def __init__(self, path: str = "data/long_term_memory.json", max_items: int = 400):
+    def __init__(self, path: str | Path = LONG_TERM_MEMORY_PATH, max_items: int = 400):
         self.path = Path(path)
         self.max_items = max(50, int(max_items))
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def _load(self) -> dict:
         try:
-            if self.path.exists():
-                payload = json.loads(self.path.read_text(encoding="utf-8"))
-                if isinstance(payload, dict):
-                    payload.setdefault("entries", [])
-                    payload.setdefault("external_daily_events", [])
-                    return payload
+            payload = locked_read_json(self.path)
+            if isinstance(payload, dict) and payload:
+                payload.setdefault("entries", [])
+                payload.setdefault("external_daily_events", [])
+                return payload
         except Exception:
             pass
         return {"entries": [], "external_daily_events": []}
 
     def _save(self, payload: dict):
         try:
-            self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic_write_json(self.path, payload if isinstance(payload, dict) else {})
         except Exception:
             return
 

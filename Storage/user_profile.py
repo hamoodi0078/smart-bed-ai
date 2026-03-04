@@ -1,8 +1,14 @@
-import json
 from pathlib import Path
 
-PROFILE_PATH = Path("user_profile.json")
-LEGACY_SPOTIFY_TOKENS_PATH = Path("data/spotify_tokens.json")
+from config import RUNTIME_DATA_DIR, USER_PROFILE_PATH
+from Storage.io import atomic_write_json, locked_read_json
+
+PROFILE_PATH = USER_PROFILE_PATH
+PROFILE_SCHEMA_VERSION = 1
+LEGACY_SPOTIFY_TOKENS_PATHS = (
+    RUNTIME_DATA_DIR / "spotify_tokens.json",
+    Path("data/spotify_tokens.json"),
+)
 
 # These top-level fields are personal state for the active local user profile.
 # We remove them during "delete my data" while keeping shared/system-level files intact.
@@ -45,16 +51,24 @@ def load_profile():
     if not PROFILE_PATH.exists():
         return None
 
-    try:
-        with PROFILE_PATH.open("r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
+    profile = locked_read_json(PROFILE_PATH)
+    if not isinstance(profile, dict):
         return None
+
+    changed = False
+    if "schema_version" not in profile:
+        profile["schema_version"] = PROFILE_SCHEMA_VERSION
+        changed = True
+
+    if changed:
+        save_profile(profile)
+    return profile
 
 
 def save_profile(profile: dict):
-    with PROFILE_PATH.open("w", encoding="utf-8") as f:
-        json.dump(profile, f, ensure_ascii=False, indent=2)
+    payload = dict(profile) if isinstance(profile, dict) else {}
+    payload.setdefault("schema_version", PROFILE_SCHEMA_VERSION)
+    atomic_write_json(PROFILE_PATH, payload)
 
 
 def _resolve_current_user_key(profile: dict, preferred_key: str = "") -> str:
@@ -116,30 +130,31 @@ def _prune_user_from_scoped_sections(profile: dict, user_key: str) -> None:
 def _prune_legacy_spotify_token_file(user_key: str) -> bool:
     # Legacy file: older builds may keep Spotify tokens in a standalone JSON map.
     # We only remove the current user's token row and keep all others.
-    if not user_key or not LEGACY_SPOTIFY_TOKENS_PATH.exists():
+    if not user_key:
         return True
 
-    try:
-        payload = json.loads(LEGACY_SPOTIFY_TOKENS_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return False
+    for legacy_path in LEGACY_SPOTIFY_TOKENS_PATHS:
+        if not legacy_path.exists():
+            continue
 
-    if not isinstance(payload, dict):
-        return False
+        try:
+            payload = locked_read_json(legacy_path)
+        except Exception:
+            return False
 
-    changed = False
-    if user_key in payload:
-        payload.pop(user_key, None)
-        changed = True
-    else:
-        lookup = user_key.lower()
-        for key in list(payload.keys()):
-            if str(key).strip().lower() == lookup:
-                payload.pop(key, None)
-                changed = True
+        changed = False
+        if user_key in payload:
+            payload.pop(user_key, None)
+            changed = True
+        else:
+            lookup = user_key.lower()
+            for key in list(payload.keys()):
+                if str(key).strip().lower() == lookup:
+                    payload.pop(key, None)
+                    changed = True
 
-    if changed:
-        LEGACY_SPOTIFY_TOKENS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        if changed:
+            atomic_write_json(legacy_path, payload)
     return True
 
 

@@ -4,20 +4,32 @@ __pycache__/
 
 # Virtual environments
 .venv/
+.venv*/
 venv/
+venv*/
+ENV/
+env/
 
-# Secrets
+# Secrets and env files
 .env
+*.env
 .env.*
 !.env.example
+secrets/
+secrets.*
+*.secrets
+*.secret
 
 # Runtime/generated artifacts
 output_audio/
 *.log
 
 # Local app data
+runtime_data/**
+!runtime_data/.gitkeep
 user_profile.json
 data/subscription_db.json
 data/long_term_memory.json
 data/cache.db
 data/spotify_tokens.json
+data/*_db.json

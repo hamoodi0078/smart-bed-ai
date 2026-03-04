@@ -1,0 +1,98 @@
+import json
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+
+from Storage.io import atomic_write_json, locked_read_json
+
+
+class TestStorageIo(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self._tmp.name)
+        self.path = self.base / "nested" / "state.json"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_atomic_write_then_locked_read_round_trip(self):
+        payload = {
+            "schema_version": 1,
+            "name": "Dana",
+            "numbers": [1, 2, 3],
+            "nested": {"ok": True, "value": 42},
+        }
+        atomic_write_json(self.path, payload)
+        loaded = locked_read_json(self.path)
+        self.assertEqual(payload, loaded)
+
+    def test_repeated_writes_keep_valid_json(self):
+        final_payload = {}
+        for i in range(100):
+            final_payload = {
+                "schema_version": 1,
+                "iteration": i,
+                "active": True,
+                "items": [i, i + 1, i + 2],
+            }
+            atomic_write_json(self.path, final_payload)
+
+            raw = self.path.read_text(encoding="utf-8")
+            parsed = json.loads(raw)
+            self.assertIsInstance(parsed, dict)
+            self.assertEqual(parsed.get("iteration"), i)
+
+        loaded = locked_read_json(self.path)
+        self.assertEqual(loaded, final_payload)
+
+    def test_threaded_writes_remain_valid(self):
+        errors: list[Exception] = []
+        barrier = threading.Barrier(8)
+
+        def writer(thread_id: int):
+            try:
+                barrier.wait(timeout=5)
+                for n in range(50):
+                    atomic_write_json(
+                        self.path,
+                        {
+                            "schema_version": 1,
+                            "thread_id": thread_id,
+                            "counter": n,
+                        },
+                    )
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=writer, args=(idx,)) for idx in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        self.assertEqual(errors, [])
+        loaded = locked_read_json(self.path)
+        self.assertIsInstance(loaded, dict)
+        self.assertEqual(loaded.get("schema_version"), 1)
+        self.assertIn("thread_id", loaded)
+        self.assertIn("counter", loaded)
+        json.loads(self.path.read_text(encoding="utf-8"))
+
+    def test_invalid_json_falls_back_safely(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text('{"broken": ', encoding="utf-8")
+
+        loaded = locked_read_json(self.path)
+        self.assertEqual(loaded, {})
+
+        quarantined = list(self.path.parent.glob(f"{self.path.stem}.corrupt.*{self.path.suffix}"))
+        self.assertGreaterEqual(len(quarantined), 1)
+
+        repaired = {"schema_version": 1, "restored": True}
+        atomic_write_json(self.path, repaired)
+        self.assertEqual(locked_read_json(self.path), repaired)
+
+
+if __name__ == "__main__":
+    unittest.main()
