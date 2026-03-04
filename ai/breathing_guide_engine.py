@@ -151,7 +151,8 @@ class BreathingGuideEngine:
                 filename=f"breathing_prompt_{int(time.time())}.mp3",
                 pace_override=0.85,
             )
-            self.audio_player.play_file(audio_file)
+            if audio_file:
+                self.audio_player.play_file(audio_file)
         except Exception as exc:
             print(f"[BreathingGuide] prompt error: {exc}")
 

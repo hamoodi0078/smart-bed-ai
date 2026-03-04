@@ -118,7 +118,7 @@ class TTSManager:
         cache_key: str,
         min_start_bytes: int = 12288,
         start_wait_seconds: float = 0.28,
-    ) -> str:
+    ) -> str | None:
         started = threading.Event()
         done = threading.Event()
         stream_error: dict[str, Exception | None] = {"exc": None}
@@ -126,43 +126,59 @@ class TTSManager:
         def _run_stream():
             try:
                 output_path.parent.mkdir(parents=True, exist_ok=True)
-                with requests.post(
-                    url,
-                    headers=headers,
-                    json=payload,
-                    stream=True,
-                    timeout=(4, self.timeout_seconds),
-                ) as response:
-                    print(f"[TTS] Deepgram request URL: {response.url}")
-                    if not response.ok:
-                        try:
-                            error_body = response.text[:300].replace("\n", " ").strip()
-                        except Exception:
-                            error_body = "<unable to read error body>"
-                        print(
-                            f"[TTS] Deepgram TTS request failed. "
-                            f"status={response.status_code} body={error_body}"
-                        )
-                        response.raise_for_status()
-                    print(f"[TTS] Deepgram response status: {response.status_code}")
-                    content_type = str(response.headers.get("Content-Type", "") or "").strip()
-                    print(f"[TTS] Model response Content-Type: {content_type or 'unknown'}")
+                try:
+                    with requests.post(
+                        url,
+                        headers=headers,
+                        json=payload,
+                        stream=True,
+                        timeout=(4, self.timeout_seconds),
+                    ) as response:
+                        print(f"[TTS] Deepgram request URL: {response.url}")
+                        if not response.ok:
+                            try:
+                                error_body = response.text[:300].replace("\n", " ").strip()
+                            except Exception:
+                                error_body = "<unable to read error body>"
+                            print(
+                                f"[TTS] Deepgram TTS request failed. "
+                                f"status={response.status_code} body={error_body}"
+                            )
+                            response.raise_for_status()
+                        print(f"[TTS] Deepgram response status: {response.status_code}")
+                        content_type = str(response.headers.get("Content-Type", "") or "").strip()
+                        print(f"[TTS] Model response Content-Type: {content_type or 'unknown'}")
 
-                    audio_buffer = bytearray()
-                    for chunk in response.iter_content(chunk_size=4096):
-                        if not chunk:
-                            continue
-                        if isinstance(chunk, str):
-                            raise TypeError("TTS stream returned text chunk instead of raw MP3 bytes.")
-                        if not isinstance(chunk, (bytes, bytearray)):
-                            raise TypeError(f"TTS stream returned unsupported chunk type: {type(chunk)!r}")
-                        audio_buffer.extend(chunk)
-                        if len(audio_buffer) >= min_start_bytes and not started.is_set():
-                            started.set()
+                        audio_buffer = bytearray()
+                        for chunk in response.iter_content(chunk_size=4096):
+                            if not chunk:
+                                continue
+                            if isinstance(chunk, str):
+                                raise TypeError("TTS stream returned text chunk instead of raw MP3 bytes.")
+                            if not isinstance(chunk, (bytes, bytearray)):
+                                raise TypeError(f"TTS stream returned unsupported chunk type: {type(chunk)!r}")
+                            audio_buffer.extend(chunk)
+                            if len(audio_buffer) >= min_start_bytes and not started.is_set():
+                                started.set()
 
-                    audio_bytes = bytes(audio_buffer)
-                    self._write_bytes_safely(output_path, audio_bytes)
-                    shutil.copyfile(output_path, cache_path)
+                        audio_bytes = bytes(audio_buffer)
+                        self._write_bytes_safely(output_path, audio_bytes)
+                        shutil.copyfile(output_path, cache_path)
+                except (
+                    requests.exceptions.Timeout,
+                    requests.exceptions.ReadTimeout,
+                    requests.exceptions.ConnectionError,
+                    requests.exceptions.RequestException,
+                ) as req_err:
+                    short_message = str(req_err).replace("\n", " ").strip()
+                    if len(short_message) > 220:
+                        short_message = short_message[:217] + "..."
+                    print(
+                        f"[TTS][WARN] Deepgram TTS failed ({type(req_err).__name__}): "
+                        f"{short_message}. Skipping this utterance."
+                    )
+                    stream_error["exc"] = None
+                    return
             except Exception as e:
                 stream_error["exc"] = e
                 print(f"[TTS] Stream synthesis failed before playable MP3 was written: {e}")
@@ -184,8 +200,10 @@ class TTSManager:
         # This prevents microphone from hearing the bed's own TTS voice.
         done.wait(timeout=self.timeout_seconds)
         if stream_error["exc"] is not None:
-            raise stream_error["exc"]
-        return str(output_path)
+            return None
+        if output_path.exists() and output_path.stat().st_size > 0:
+            return str(output_path)
+        return None
 
     def _write_bytes_safely(self, output_path: Path, content: bytes) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -243,7 +261,7 @@ class TTSManager:
         pace_override: float = 1.0,
         emotion_state: str = "neutral",
         profile_override: str = "",
-    ) -> str:
+    ) -> str | None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         output_path = self.output_dir / "latest_response.mp3"
         normalized_text = self._normalize_tts_text(text)
@@ -257,8 +275,17 @@ class TTSManager:
 
         if not self.api_key:
             msg = "[TTS] Missing API key; cannot synthesize MP3."
-            print(msg)
-            raise RuntimeError(msg)
+            print(f"[TTS][WARN] {msg} Creating silent fallback audio.")
+            # Create a minimal valid MP3 file as fallback with actual audio data
+            # This creates a very short silent MP3 file
+            fallback_content = (
+                b'\xFF\xFB\x80\x00'  # MP3 frame header (MPEG-1, Layer III, 320kbps, 44.1kHz, stereo)
+                + b'\x00' * 417        # Audio data (creates about 0.026 seconds of silence)
+                + b'\xFF\xFB\x80\x00'  # Another MP3 frame header
+                + b'\x00' * 417        # More audio data
+            )
+            output_path.write_bytes(fallback_content)
+            return str(output_path)
 
         runtime_profile = self.resolve_audio_profile(
             emotion_state=emotion_state,
@@ -273,7 +300,7 @@ class TTSManager:
                 self._write_bytes_safely(output_path, cache_path.read_bytes())
             except Exception as e:
                 print(f"[TTS] Cache copy failed for {output_path}: {e}")
-                raise
+                return None
             return str(output_path)
 
         cache_key = str(cache_path)
@@ -301,7 +328,28 @@ class TTSManager:
                 cache_path=cache_path,
                 cache_key=cache_key,
             )
+            if result_path is None:
+                print("[TTS][WARN] No playable TTS audio produced; creating silent fallback audio.")
+                # Create a minimal valid MP3 file as fallback with actual audio data
+                # This creates a very short silent MP3 file
+                fallback_content = (
+                    b'\xFF\xFB\x80\x00'  # MP3 frame header (MPEG-1, Layer III, 320kbps, 44.1kHz, stereo)
+                    + b'\x00' * 417        # Audio data (creates about 0.026 seconds of silence)
+                    + b'\xFF\xFB\x80\x00'  # Another MP3 frame header
+                    + b'\x00' * 417        # More audio data
+                )
+                output_path.write_bytes(fallback_content)
+                return str(output_path)
             return str(result_path)
         except Exception as e:
             print(f"TTS synthesis failed: {str(e)}")
-            raise
+            # Create a minimal valid MP3 file as fallback with actual audio data
+            # This creates a very short silent MP3 file
+            fallback_content = (
+                b'\xFF\xFB\x80\x00'  # MP3 frame header (MPEG-1, Layer III, 320kbps, 44.1kHz, stereo)
+                + b'\x00' * 417        # Audio data (creates about 0.026 seconds of silence)
+                + b'\xFF\xFB\x80\x00'  # Another MP3 frame header
+                + b'\x00' * 417        # More audio
+            )
+            output_path.write_bytes(fallback_content)
+            return str(output_path)

@@ -80,6 +80,8 @@ class RealtimeVoicePipeline:
                 )
                 if _stopped():
                     break
+                if not audio_path:
+                    continue
 
                 if not playback_started.is_set():
                     if self.player.play_file(audio_path):
