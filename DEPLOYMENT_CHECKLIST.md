@@ -4,7 +4,7 @@
 
 | Module | Files | Status |
 |--------|-------|--------|
-| Core (main, config, app_server, sanity_checks) | 4 | OK |
+| Core (main, config, web_server, sanity_checks) | 4 | OK |
 | ai/ (26 modules) | 26 | OK |
 | Storage/ (4 modules) | 4 | OK |
 | led/ (1 module) | 1 | OK |
@@ -31,7 +31,7 @@
 - First-boot onboarding with sleep-specific questions
 - Help-bot quick commands
 
-### Backend Server (`app_server.py`)
+### Backend Server (`web_server.py`)
 - FastAPI on port 8000
 - Auth: register/login with JWT tokens
 - Subscription: Free / Standard / Pro tiers with PayPal checkout
@@ -109,7 +109,7 @@
 - [ ] `BED_FIRMWARE_VERSION` set to current release
 
 ### 3. Backend Server
-- [ ] Deploy `app_server.py` on cloud host (e.g. VPS, Railway, Render)
+- [ ] Deploy `web_server.py` on cloud host (e.g. VPS, Railway, Render)
 - [ ] Set `APP_BACKEND_BASE_URL` on bed to point to production server
 - [ ] Enable HTTPS (TLS termination via reverse proxy or platform)
 - [ ] Set up persistent storage for `data/subscription_db.json` (or migrate to PostgreSQL)
@@ -213,7 +213,7 @@ Type=simple
 User=pi
 WorkingDirectory=/home/pi/smart-bed
 EnvironmentFile=/home/pi/smart-bed/.env
-ExecStart=/usr/bin/python3 -m uvicorn app_server:app --host 0.0.0.0 --port 8000
+ExecStart=/usr/bin/python3 -m uvicorn web_server:app --host 0.0.0.0 --port 8000
 Restart=on-failure
 RestartSec=5
 
@@ -225,7 +225,7 @@ WantedBy=multi-user.target
 
 ## File Inventory (35 Python + 18 App files = 53 total)
 
-**Core**: main.py, config.py, app_server.py, sanity_checks.py
+**Core**: main.py, config.py, web_server.py, sanity_checks.py
 **AI**: 26 modules in ai/
 **Storage**: 4 modules in Storage/
 **LED**: 1 module in led/

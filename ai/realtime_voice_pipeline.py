@@ -137,11 +137,7 @@ class RealtimeVoicePipeline:
         should_stop: Callable[[], bool] | None = None,
         on_preload_start: Callable[[str], None] | None = None,
     ) -> str:
-        """
-        Compatibility wrapper: open-question routing now uses GPT text generation,
-        so we process chunks with the normal sentence splitter path.
-        """
-        print("[FLOW] Realtime pipeline voice-agent mode disabled; using generic text stream path.")
+        """Compatibility wrapper that preserves chunk-level voice-agent streaming."""
         return self.speak_from_text_stream(
             text_chunks,
             voice_override=voice_override,
@@ -150,5 +146,5 @@ class RealtimeVoicePipeline:
             profile_override=profile_override,
             should_stop=should_stop,
             on_preload_start=on_preload_start,
-            source_is_voice_agent=False,
+            source_is_voice_agent=True,
         )

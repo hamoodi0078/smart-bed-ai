@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from secrets import token_urlsafe
 from typing import Dict, Optional
@@ -55,8 +55,25 @@ class SubscriptionStore:
         self._io_lock = threading.RLock()
         self.db = self._load()
 
+    @staticmethod
+    def _utc_now() -> datetime:
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def _parse_datetime_utc(value: str) -> Optional[datetime]:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw)
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except Exception:
+            return None
+
     def _now_iso(self) -> str:
-        return datetime.utcnow().isoformat(timespec="seconds")
+        return self._utc_now().isoformat(timespec="seconds")
 
     def _load(self) -> dict:
         if not self.db_path.exists():
@@ -220,7 +237,7 @@ class SubscriptionStore:
 
     def issue_user_token(self, user_id: str, ttl_hours: int = 24 * 7) -> dict:
         token = token_urlsafe(32)
-        expires_at = (datetime.utcnow() + timedelta(hours=ttl_hours)).isoformat(timespec="seconds")
+        expires_at = (self._utc_now() + timedelta(hours=ttl_hours)).isoformat(timespec="seconds")
         self.db["user_sessions"][token] = {
             "user_id": user_id,
             "expires_at": expires_at,
@@ -232,10 +249,10 @@ class SubscriptionStore:
         sess = self.db.get("user_sessions", {}).get(token)
         if not sess:
             return None
-        try:
-            if datetime.fromisoformat(sess.get("expires_at", "")) < datetime.utcnow():
-                return None
-        except Exception:
+        expires_at = self._parse_datetime_utc(sess.get("expires_at", ""))
+        if expires_at is None:
+            return None
+        if expires_at < self._utc_now():
             return None
         return self.get_user(sess.get("user_id", ""))
 
@@ -367,8 +384,8 @@ class SubscriptionStore:
     def issue_device_tokens(self, device_id: str, user_id: str, access_minutes: int = 15, refresh_days: int = 30) -> dict:
         access_token = token_urlsafe(32)
         refresh_token = token_urlsafe(48)
-        access_exp = (datetime.utcnow() + timedelta(minutes=access_minutes)).isoformat(timespec="seconds")
-        refresh_exp = (datetime.utcnow() + timedelta(days=refresh_days)).isoformat(timespec="seconds")
+        access_exp = (self._utc_now() + timedelta(minutes=access_minutes)).isoformat(timespec="seconds")
+        refresh_exp = (self._utc_now() + timedelta(days=refresh_days)).isoformat(timespec="seconds")
 
         self.db["device_sessions"][access_token] = {
             "device_id": device_id,
@@ -395,10 +412,10 @@ class SubscriptionStore:
         sess = self.db.get("device_sessions", {}).get(token)
         if not sess or sess.get("revoked"):
             return None
-        try:
-            if datetime.fromisoformat(sess.get("expires_at", "")) < datetime.utcnow():
-                return None
-        except Exception:
+        expires_at = self._parse_datetime_utc(sess.get("expires_at", ""))
+        if expires_at is None:
+            return None
+        if expires_at < self._utc_now():
             return None
         return sess
 
@@ -408,10 +425,10 @@ class SubscriptionStore:
             return None
         if sess.get("device_id") != device_id:
             return None
-        try:
-            if datetime.fromisoformat(sess.get("expires_at", "")) < datetime.utcnow():
-                return None
-        except Exception:
+        expires_at = self._parse_datetime_utc(sess.get("expires_at", ""))
+        if expires_at is None:
+            return None
+        if expires_at < self._utc_now():
             return None
         return self.issue_device_tokens(device_id=device_id, user_id=sess.get("user_id", ""))
 
@@ -533,7 +550,7 @@ class SubscriptionStore:
         sub["payment_provider"] = payment_provider
         sub["price_kwd"] = plan["monthly_price_kwd"] if interval_norm == "monthly" else plan["yearly_price_kwd"]
         months = 1 if interval_norm == "monthly" else 12
-        sub["next_renewal_at"] = (datetime.utcnow() + timedelta(days=30 * months)).isoformat(timespec="seconds")
+        sub["next_renewal_at"] = (self._utc_now() + timedelta(days=30 * months)).isoformat(timespec="seconds")
         sub["updated_at"] = self._now_iso()
         self.save()
         return sub
@@ -541,7 +558,7 @@ class SubscriptionStore:
     def set_subscription_grace(self, user_id: str, grace_days: int = 7) -> dict:
         sub = self.get_subscription(user_id)
         sub["status"] = "grace"
-        sub["grace_end_at"] = (datetime.utcnow() + timedelta(days=grace_days)).isoformat(timespec="seconds")
+        sub["grace_end_at"] = (self._utc_now() + timedelta(days=grace_days)).isoformat(timespec="seconds")
         sub["updated_at"] = self._now_iso()
         self.save()
         return sub
@@ -550,16 +567,13 @@ class SubscriptionStore:
         sub = self.get_subscription(user_id)
         if sub.get("status") != "grace":
             return sub
-        try:
-            grace_end_at = datetime.fromisoformat(sub.get("grace_end_at", ""))
-            if grace_end_at < datetime.utcnow():
-                sub["status"] = "inactive"
-                sub["tier"] = "free"
-                sub["price_kwd"] = 0.0
-                sub["updated_at"] = self._now_iso()
-                self.save()
-        except Exception:
-            pass
+        grace_end_at = self._parse_datetime_utc(sub.get("grace_end_at", ""))
+        if grace_end_at and grace_end_at < self._utc_now():
+            sub["status"] = "inactive"
+            sub["tier"] = "free"
+            sub["price_kwd"] = 0.0
+            sub["updated_at"] = self._now_iso()
+            self.save()
         return sub
 
     def get_usage_daily(self, user_id: str, date_iso: str) -> Dict:
@@ -581,7 +595,7 @@ class SubscriptionStore:
         return row
 
     def add_usage(self, user_id: str, tokens: int, requests_count: int = 1):
-        now = datetime.utcnow()
+        now = self._utc_now()
         day = now.date().isoformat()
         month_key = f"{now.year:04d}-{now.month:02d}"
         daily = self.get_usage_daily(user_id, day)
@@ -632,8 +646,9 @@ class SubscriptionStore:
         sub = self.enforce_grace_expiry(user_id)
         plan = PLAN_DEFINITIONS.get(sub.get("tier", "free"), PLAN_DEFINITIONS["free"])
 
-        today = datetime.utcnow().date().isoformat()
-        month_key = datetime.utcnow().strftime("%Y-%m")
+        now = self._utc_now()
+        today = now.date().isoformat()
+        month_key = now.strftime("%Y-%m")
         daily = self.get_usage_daily(user_id, today)
         monthly = self.get_usage_monthly(user_id, month_key)
 
@@ -894,7 +909,7 @@ class SubscriptionStore:
 
     def issue_admin_token(self, user_id: str, role: str, ttl_hours: int = 12) -> dict:
         token = token_urlsafe(36)
-        expires_at = (datetime.utcnow() + timedelta(hours=ttl_hours)).isoformat(timespec="seconds")
+        expires_at = (self._utc_now() + timedelta(hours=ttl_hours)).isoformat(timespec="seconds")
         self.db["admin_sessions"][token] = {
             "user_id": user_id,
             "role": (role or "viewer").strip().lower(),
@@ -908,10 +923,10 @@ class SubscriptionStore:
         sess = self.db.get("admin_sessions", {}).get(token)
         if not sess or bool(sess.get("revoked", False)):
             return None
-        try:
-            if datetime.fromisoformat(sess.get("expires_at", "")) < datetime.utcnow():
-                return None
-        except Exception:
+        expires_at = self._parse_datetime_utc(sess.get("expires_at", ""))
+        if expires_at is None:
+            return None
+        if expires_at < self._utc_now():
             return None
         admin_user = self.get_admin_user(sess.get("user_id", ""))
         if not admin_user:

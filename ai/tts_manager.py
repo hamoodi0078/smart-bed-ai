@@ -301,7 +301,7 @@ class TTSManager:
             except Exception as e:
                 print(f"[TTS] Cache copy failed for {output_path}: {e}")
                 return None
-            return str(output_path)
+            return str(cache_path)
 
         cache_key = str(cache_path)
         with self._stream_lock:

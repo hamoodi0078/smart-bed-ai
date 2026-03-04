@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import secrets
 import tempfile
 import threading
@@ -21,14 +22,20 @@ from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 from Storage.subscription_store import SubscriptionStore
+from ai.conversation_engine import ConversationEngine
+from ai.emotion_router import detect_emotion_state
 from ai.long_term_memory import LongTermMemoryStore
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
 ASSETS_DIR = WEB_DIR / "assets"
 PROFILE_PATH = BASE_DIR / "user_profile.json"
+WEB_MEMORY_DIR = BASE_DIR / "data" / "web_memory"
 store = SubscriptionStore()
 _PROFILE_IO_LOCK = threading.RLock()
+_CHAT_ENGINE_LOCK = threading.RLock()
+_CHAT_ENGINES: dict[str, ConversationEngine] = {}
+_MAX_CHAT_ENGINES = 200
 
 
 def _load_local_env_file(path: Path) -> None:
@@ -393,6 +400,139 @@ def _normalize_device_controls(payload: dict[str, Any] | None) -> dict[str, Any]
         "alarm_on": bool(data.get("alarm_on", True)),
         "light_level": light_level,
     }
+
+
+def _sanitize_user_key(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return "guest"
+    safe = re.sub(r"[^a-z0-9._-]+", "_", raw).strip("._-")
+    return (safe or "guest")[:80]
+
+
+def _memory_store_for_user(user_key: str) -> LongTermMemoryStore:
+    safe_key = _sanitize_user_key(user_key)
+    return LongTermMemoryStore(path=str(WEB_MEMORY_DIR / f"{safe_key}.json"))
+
+
+def _chat_engine_for_user(user_key: str) -> ConversationEngine:
+    safe_key = _sanitize_user_key(user_key)
+    api_key = str(os.getenv("DEEPGRAM_API_KEY", "") or "").strip()
+    model = str(os.getenv("DEEPGRAM_VOICE_AGENT_MODEL", "voice-agent-conversational") or "voice-agent-conversational").strip()
+    voice_agent_url = str(os.getenv("DEEPGRAM_VOICE_AGENT_URL", "https://agent.deepgram.com/v1/agent/converse") or "https://agent.deepgram.com/v1/agent/converse").strip()
+
+    with _CHAT_ENGINE_LOCK:
+        existing = _CHAT_ENGINES.get(safe_key)
+        if (
+            existing is not None
+            and existing.api_key == api_key
+            and existing.model == model
+            and existing.voice_agent_url == voice_agent_url
+        ):
+            return existing
+
+        engine = ConversationEngine(
+            api_key=api_key,
+            model=model,
+            timeout_seconds=12,
+            voice_agent_url=voice_agent_url,
+        )
+        _CHAT_ENGINES[safe_key] = engine
+        while len(_CHAT_ENGINES) > _MAX_CHAT_ENGINES:
+            oldest_key = next(iter(_CHAT_ENGINES))
+            del _CHAT_ENGINES[oldest_key]
+        return engine
+
+
+def _chat_personality_from_settings(settings_payload: dict[str, Any]) -> str:
+    style = str((settings_payload or {}).get("response_style", "balanced") or "balanced").strip().lower()
+    if style == "coaching":
+        return "coach"
+    if style == "calm":
+        return "therapist"
+    return "guide"
+
+
+def _chat_cognitive_load_mode(settings_payload: dict[str, Any]) -> str:
+    engagement = str((settings_payload or {}).get("engagement_level", "high") or "high").strip().lower()
+    if engagement == "low":
+        return "exhausted"
+    if engagement == "medium":
+        return "reduced"
+    return "normal"
+
+
+def _chat_local_fallback(message: str) -> str:
+    lower = str(message or "").strip().lower()
+    if "wind" in lower and "down" in lower:
+        return "I can help start wind-down autopilot. Open Bed controls and trigger the wind-down action."
+    if "status" in lower or "health" in lower:
+        return "System looks stable right now. If you want, ask me for incidents or sleep optimization actions."
+    if "incident" in lower:
+        return "Top incident: Spotify token refresh failures on a small subset of devices."
+    return (
+        "I can assist with bed automation, sleep guidance, device status, "
+        "or admin incident summaries."
+    )
+
+
+def _chat_profile_prefs_for_user(profile: dict[str, Any], user: dict[str, Any]) -> dict[str, Any]:
+    defaults = _normalize_user_profile_prefs(
+        {
+            "display_name": str(user.get("name", "") or user.get("email", "") or "User"),
+            "timezone": "Asia/Kuwait",
+            "push_enabled": True,
+            "email_enabled": False,
+        }
+    )
+    key = _user_profile_key(user)
+    section = _get_scoped_profile_section(profile, "web_profile_prefs")
+    scoped = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
+    return _normalize_user_profile_prefs({**defaults, **scoped})
+
+
+def _chat_scoped_routine_for_user(profile: dict[str, Any], user: dict[str, Any]) -> dict[str, Any]:
+    key = _user_profile_key(user)
+    section = _get_scoped_profile_section(profile, "web_routines")
+    scoped = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
+    defaults = _normalize_user_routine({"bedtime": "22:30", "wake": "07:00", "weekends": True})
+    return _normalize_user_routine({**defaults, **scoped})
+
+
+def _chat_scoped_controls_for_user(profile: dict[str, Any], user: dict[str, Any]) -> dict[str, Any]:
+    key = _user_profile_key(user)
+    section = _get_scoped_profile_section(profile, "web_device_controls")
+    scoped = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
+    defaults = _normalize_device_controls({"lights_on": False, "audio_on": False, "alarm_on": True, "light_level": 65})
+    return _normalize_device_controls({**defaults, **scoped})
+
+
+def _chat_user_context(
+    *,
+    user: dict[str, Any],
+    settings_payload: dict[str, Any],
+    profile_prefs: dict[str, Any],
+    routine: dict[str, Any],
+    controls: dict[str, Any],
+    memory_line: str,
+) -> str:
+    lines = [
+        f"user_name={str(profile_prefs.get('display_name', '') or user.get('name', '') or user.get('email', '') or 'User').strip()}",
+        f"user_timezone={str(profile_prefs.get('timezone', 'Asia/Kuwait') or 'Asia/Kuwait').strip()}",
+        f"response_style={str(settings_payload.get('response_style', 'balanced') or 'balanced').strip().lower()}",
+        f"engagement_level={str(settings_payload.get('engagement_level', 'high') or 'high').strip().lower()}",
+        f"wind_down_minutes={int(settings_payload.get('wind_down_minutes', 45) or 45)}",
+        f"partner_mode_enabled={bool(settings_payload.get('partner_mode_enabled', False))}",
+        f"routine_bedtime={str(routine.get('bedtime', '22:30') or '22:30').strip()}",
+        f"routine_wake={str(routine.get('wake', '07:00') or '07:00').strip()}",
+        f"lights_on={bool(controls.get('lights_on', False))}",
+        f"audio_on={bool(controls.get('audio_on', False))}",
+        f"alarm_on={bool(controls.get('alarm_on', True))}",
+    ]
+    memory_text = str(memory_line or "").strip()
+    if memory_text:
+        lines.append(memory_text)
+    return "\n".join(lines)
 
 
 def _default_user_timeline() -> list[dict[str, Any]]:
@@ -1929,28 +2069,91 @@ def admin_actions(payload: AdminActionRequest, request: Request) -> dict[str, An
 @app.post("/v1/ai/chat")
 def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
-    if not (_cookie_user(request) or _cookie_admin(request)):
+    user = _cookie_user(request)
+    admin = _cookie_admin(request)
+    actor = user or admin
+    if not actor:
         _bump("chat_denied")
         _event("warning", "chat_denied_unauthenticated")
         raise HTTPException(status_code=401, detail="Login required")
     _bump("chat_requests")
 
     message = (payload.message or "").strip()
-    lower = message.lower()
-
     if not message:
         return {"reply": "Please type a message so I can help."}
 
-    if "wind" in lower and "down" in lower:
-        return {"reply": "I can help start wind-down autopilot. Open Bed controls and trigger the wind-down action."}
-    if "status" in lower or "health" in lower:
-        return {"reply": "System looks stable right now. If you want, ask me for incidents or sleep optimization actions."}
-    if "incident" in lower:
-        return {"reply": "Top incident: Spotify token refresh failures on a small subset of devices."}
+    actor_key = _user_profile_key(actor)
+    if not actor_key:
+        actor_key = str(actor.get("user_id", "") or actor.get("admin_id", "") or actor.get("email", "") or "session").strip().lower()
 
-    return {
-        "reply": (
-            "Got it. I can assist with bed automation, sleep guidance, device status, "
-            "or admin incident summaries."
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    settings_defaults = _normalize_user_settings(
+        {
+            "response_style": "balanced",
+            "engagement_level": "high",
+            "wind_down_minutes": 45,
+            "partner_mode_enabled": False,
+        }
+    )
+    settings_payload = _profile_user_settings(profile, actor, defaults=settings_defaults)
+    profile_prefs = _chat_profile_prefs_for_user(profile, actor)
+    routine = _chat_scoped_routine_for_user(profile, actor)
+    controls = _chat_scoped_controls_for_user(profile, actor)
+    personality = _chat_personality_from_settings(settings_payload)
+    emotion_state = detect_emotion_state(message)
+    cognitive_load_mode = _chat_cognitive_load_mode(settings_payload)
+    memory_store = _memory_store_for_user(actor_key)
+    memory_line = memory_store.memory_prompt_line(message)
+    user_context = _chat_user_context(
+        user=actor,
+        settings_payload=settings_payload,
+        profile_prefs=profile_prefs,
+        routine=routine,
+        controls=controls,
+        memory_line=memory_line,
+    )
+
+    used_fallback = False
+    try:
+        chat_engine = _chat_engine_for_user(actor_key)
+        reply = chat_engine.generate_response(
+            user_text=message,
+            personality=personality,
+            realtime_context="",
+            user_context=user_context,
+            emotion_state=emotion_state,
+            cognitive_load_mode=cognitive_load_mode,
+            quick_timeout_seconds=3,
+            total_timeout_seconds=8,
+            max_response_tokens=160,
         )
-    }
+        if not str(reply or "").strip() or str(reply).startswith("(Deepgram fallback -"):
+            used_fallback = True
+            reply = _chat_local_fallback(message)
+    except Exception as exc:
+        used_fallback = True
+        _event("warning", "chat_engine_failure", user_id=str(actor.get("user_id", "")), error=str(exc)[:180])
+        reply = _chat_local_fallback(message)
+
+    try:
+        memory_store.record_turn(
+            user_text=message,
+            assistant_text=reply,
+            emotion_state=emotion_state,
+            personality=personality,
+        )
+    except Exception:
+        pass
+
+    _event(
+        "info",
+        "chat_reply",
+        user_id=str(actor.get("user_id", "") or ""),
+        personality=personality,
+        emotion_state=emotion_state,
+        fallback=used_fallback,
+    )
+    return {"reply": str(reply).strip() or _chat_local_fallback(message)}

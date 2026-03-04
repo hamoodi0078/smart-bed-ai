@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
@@ -25,9 +25,16 @@ class BedBackendClient:
     def is_configured(self) -> bool:
         return bool(self.base_url and self.device_id)
 
+    @staticmethod
+    def _utc_now() -> datetime:
+        return datetime.now(timezone.utc)
+
     def _parse_expires_at(self, expires_at_text: str) -> Optional[datetime]:
         try:
-            return datetime.fromisoformat(str(expires_at_text or ""))
+            parsed = datetime.fromisoformat(str(expires_at_text or ""))
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
         except Exception:
             return None
 
@@ -36,7 +43,7 @@ class BedBackendClient:
             return False
         if not self.access_expires_at:
             return True
-        return self.access_expires_at > datetime.utcnow() + timedelta(seconds=20)
+        return self.access_expires_at > self._utc_now() + timedelta(seconds=20)
 
     def _store_token_bundle(self, payload: dict):
         self.device_access_token = str(payload.get("device_access_token", "") or self.device_access_token)

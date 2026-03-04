@@ -678,7 +678,26 @@ def build_sleep_help() -> str:
     )
 
 
-def build_wake_greeting(profile: dict, runtime_orchestrator: PersonalityRuntimeOrchestrator) -> str:
+def _select_runtime_phrase(
+    profile: dict,
+    runtime_orchestrator: PersonalityRuntimeOrchestrator | None,
+    candidates: tuple[str, ...] | list[str],
+    *,
+    phrase_kind: str,
+) -> str:
+    options = list(candidates or [])
+    if runtime_orchestrator is not None:
+        try:
+            return runtime_orchestrator.choose_unique_phrase(profile, options, phrase_kind=phrase_kind)
+        except Exception:
+            pass
+    return options[0] if options else ""
+
+
+def build_wake_greeting(
+    profile: dict,
+    runtime_orchestrator: PersonalityRuntimeOrchestrator | None = None,
+) -> str:
     raw_name = str(profile.get("name", "") or "").strip()
     prefs = profile.get("preferences", {})
     language_pref = str(prefs.get("language", "auto") or "auto").strip().lower()
@@ -691,26 +710,26 @@ def build_wake_greeting(profile: dict, runtime_orchestrator: PersonalityRuntimeO
     if use_arabic:
         if 5 <= hour < 12:
             candidates = ("صباح الخير", "أهلا صباحك جميل", "صباح النور")
-            intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_ar_morning")
+            intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_ar_morning")
         elif 12 <= hour < 18:
             candidates = ("مساء الخير", "أهلا مساءك جميل", "مساء النور")
-            intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_ar_afternoon")
+            intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_ar_afternoon")
         else:
             candidates = ("أهلا", "هلا", "أهلا وسهلا")
-            intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_ar_evening")
+            intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_ar_evening")
         if raw_name:
             return f"{intro} {raw_name}. أنا هنا وجاهز للمساعدة. قل 'sleep mode' لإنهاء الجلسة."
         return f"{intro}. أنا هنا وجاهز للمساعدة. قل 'sleep mode' لإنهاء الجلسة."
 
     if 5 <= hour < 12:
         candidates = ("Good morning", "Morning", "Good morning and welcome back")
-        intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_en_morning")
+        intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_en_morning")
     elif 12 <= hour < 18:
         candidates = ("Good afternoon", "Hey, good afternoon", "Welcome back this afternoon")
-        intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_en_afternoon")
+        intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_en_afternoon")
     else:
         candidates = ("Good evening", "Evening", "Good evening, welcome back")
-        intro = runtime_orchestrator.choose_unique_phrase(profile, list(candidates), phrase_kind="greeting_en_evening")
+        intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_en_evening")
     if raw_name:
         return f"{intro}, {raw_name}. I am here and listening. Say 'sleep mode' to end this session."
     return f"{intro}. I am here and listening. Say 'sleep mode' to end this session."
@@ -2736,27 +2755,49 @@ def play_tts_with_fast_start(
     emotion_state: str = "neutral",
     profile_override: str = "",
 ) -> str:
-    playback_path = "output_audio/latest_response.mp3"
     text_to_speak = str(text or "").strip()
     if not text_to_speak:
         return ""
 
-    audio_path = tts.synthesize_to_mp3(
-        text_to_speak,
-        filename="latest_response.mp3",
-        voice_override=voice_override,
-        pace_override=pace_override,
-        emotion_state=emotion_state,
-        profile_override=profile_override,
-    )
-    if not audio_path:
+    def _synthesize_segment(segment_text: str, filename: str) -> str | None:
+        try:
+            return tts.synthesize_to_mp3(
+                segment_text,
+                filename=filename,
+                voice_override=voice_override,
+                pace_override=pace_override,
+                emotion_state=emotion_state,
+                profile_override=profile_override,
+            )
+        except TypeError:
+            # Backward compatibility with older/mock TTS adapters.
+            return tts.synthesize_to_mp3(
+                segment_text,
+                filename=filename,
+                voice_override=voice_override,
+                pace_override=pace_override,
+            )
+
+    head_text, tail_text = _split_for_fast_tts_start(text_to_speak)
+    head_filename = "latest_response_head.mp3" if tail_text else "latest_response.mp3"
+    first_audio_path = _synthesize_segment(head_text, head_filename)
+    if not first_audio_path:
         print("[TTS][WARN] No playable TTS audio produced; skipping playback.")
         return ""
-    print(f"[AUDIO] Playback path: {playback_path}")
-    print(f"[AUDIO] pygame playback starting: {playback_path}")
-    played = tts_player.play_file(playback_path)
-    print(f"[AUDIO] pygame playback finished: {playback_path} (played={played})")
-    return playback_path
+
+    print(f"[AUDIO] Playback path: {first_audio_path}")
+    print(f"[AUDIO] pygame playback starting: {first_audio_path}")
+    played = tts_player.play_file(first_audio_path)
+    print(f"[AUDIO] pygame playback finished: {first_audio_path} (played={played})")
+
+    if tail_text:
+        tail_audio_path = _synthesize_segment(tail_text, "latest_response_tail.mp3")
+        if tail_audio_path:
+            queued = tts_player.queue_file(tail_audio_path)
+            if (not queued) and (not tts_player.is_playing()):
+                tts_player.play_file(tail_audio_path)
+
+    return first_audio_path
 
 
 def run_streaming_voice_turn(
@@ -2996,11 +3037,11 @@ def handle_local_commands(
     breathing_guide: BreathingGuideEngine,
     dream_journal: DreamJournalManager,
     adaptive_personality: AdaptivePersonalityEngine,
-    proactive_engine: ProactiveAutomationEngine,
-    signature_engine: SignatureExperienceEngine,
-    tts: TTSManager,
-    wake_word_manager: WakeWordManager,
-    memory_store: LongTermMemoryStore,
+    proactive_engine: ProactiveAutomationEngine | None = None,
+    signature_engine: SignatureExperienceEngine | None = None,
+    tts: TTSManager | None = None,
+    wake_word_manager: WakeWordManager | None = None,
+    memory_store: LongTermMemoryStore | None = None,
 ):
     lower = user_text.lower().strip()
     normalized_lower = re.sub(r"[^a-z0-9\s']+", " ", lower)
@@ -3011,6 +3052,68 @@ def handle_local_commands(
     runtime_flags.setdefault("pending_action_resolve", {})
     if runtime_flags.get("session_locked_after_delete"):
         return "Local data was deleted. Please restart so I can run fresh setup.", True
+
+    if proactive_engine is None:
+        class _NoOpProactiveEngine:
+            @staticmethod
+            def daily_summary(_profile: dict) -> str:
+                return "No proactive summary is available yet."
+
+        proactive_engine = _NoOpProactiveEngine()
+
+    if signature_engine is None:
+        class _NoOpSignatureEngine:
+            @staticmethod
+            def run(*_args, **_kwargs):
+                return "", False
+
+        signature_engine = _NoOpSignatureEngine()
+
+    if memory_store is None:
+        class _NoOpMemoryStore:
+            @staticmethod
+            def inject_daily_events(*_args, **_kwargs) -> int:
+                return 0
+
+            @staticmethod
+            def latest_daily_events_summary(*_args, **_kwargs) -> str:
+                return ""
+
+            @staticmethod
+            def memory_prompt_line(*_args, **_kwargs) -> str:
+                return ""
+
+            @staticmethod
+            def infer_invisible_routine(*_args, **_kwargs) -> dict:
+                return {}
+
+            @staticmethod
+            def record_turn(*_args, **_kwargs):
+                return None
+
+        memory_store = _NoOpMemoryStore()
+
+    if tts is None:
+        class _NoOpTTS:
+            @staticmethod
+            def synthesize_to_mp3(*_args, **_kwargs):
+                return ""
+
+        tts = _NoOpTTS()
+
+    if wake_word_manager is None:
+        class _NoOpWakeWordManager:
+            wake_word = "hey smart bed"
+
+            @staticmethod
+            def set_wake_aliases(*_args, **_kwargs):
+                return None
+
+            @staticmethod
+            def get_wake_phrases() -> list[str]:
+                return ["hey smart bed"]
+
+        wake_word_manager = _NoOpWakeWordManager()
 
     prefs = ensure_music_led_preferences(profile)
     breathing_offer_active = bool(runtime_flags.get("breathing_offer_active", False))
@@ -3185,29 +3288,36 @@ def handle_local_commands(
         save_profile(profile)
         return signature_response, True
 
-    resolved = resolve_action(user_text, profile, context={"breathing_offer_active": breathing_offer_active})
-    confidence = float(resolved.get("confidence", 0.0) or 0.0)
-    if confidence >= 0.78:
-        msg, handled = _execute_resolved_action(
-            resolved,
-            profile,
-            led,
-            spotify,
-            local_music,
-            sleep_engine,
-            environment_orchestrator,
-            sleep_routine,
-            routine_engine,
-            on_sleep_timer_finish,
-        )
-        if handled:
-            runtime_flags["pending_action_resolve"] = {}
+    optimize_room_phrases = (
+        "optimize my room for sleep",
+        "optimize room for sleep",
+        "optimize sleep room",
+        "sleep optimize room",
+    )
+    if lower not in optimize_room_phrases:
+        resolved = resolve_action(user_text, profile, context={"breathing_offer_active": breathing_offer_active})
+        confidence = float(resolved.get("confidence", 0.0) or 0.0)
+        if confidence >= 0.78:
+            msg, handled = _execute_resolved_action(
+                resolved,
+                profile,
+                led,
+                spotify,
+                local_music,
+                sleep_engine,
+                environment_orchestrator,
+                sleep_routine,
+                routine_engine,
+                on_sleep_timer_finish,
+            )
+            if handled:
+                runtime_flags["pending_action_resolve"] = {}
+                save_profile(profile)
+                return msg, True
+        elif 0.45 <= confidence < 0.78 and str(resolved.get("clarify_question", "")).strip():
+            runtime_flags["pending_action_resolve"] = resolved
             save_profile(profile)
-            return msg, True
-    elif 0.45 <= confidence < 0.78 and str(resolved.get("clarify_question", "")).strip():
-        runtime_flags["pending_action_resolve"] = resolved
-        save_profile(profile)
-        return str(resolved.get("clarify_question", "")).strip(), True
+            return str(resolved.get("clarify_question", "")).strip(), True
 
     if natural_intent == "nickname_setup":
         runtime_flags["awaiting_bed_nickname"] = True
