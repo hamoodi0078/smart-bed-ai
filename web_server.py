@@ -36,6 +36,8 @@ WEB_MEMORY_DIR = RUNTIME_DATA_DIR / "web_memory"
 store = SubscriptionStore()
 _CHAT_ENGINE_LOCK = threading.RLock()
 _CHAT_ENGINES: dict[str, ConversationEngine] = {}
+
+_SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
 _MAX_CHAT_ENGINES = 200
 
 
@@ -93,6 +95,11 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     message: str
+
+
+class CommandRequest(BaseModel):
+    text: str
+    source: str = "web"
 
 
 class RegisterRequest(BaseModel):
@@ -847,6 +854,117 @@ def _event(level: str, action: str, **fields: Any):
         logger.info(text)
 
 
+def _is_sensitive_key(key: str) -> bool:
+    normalized = str(key or "").strip().lower()
+    if not normalized:
+        return False
+    if normalized in _SENSITIVE_EXACT_KEYS:
+        return True
+    return "oauth" in normalized and "token" in normalized
+
+
+def _redact_sensitive_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, raw in value.items():
+            safe_key = str(key)
+            if _is_sensitive_key(safe_key):
+                continue
+            out[safe_key] = _redact_sensitive_payload(raw)
+        return out
+    if isinstance(value, list):
+        return [_redact_sensitive_payload(item) for item in value]
+    return value
+
+
+def _stable_state_snapshot(profile: dict[str, Any]) -> dict[str, Any]:
+    snapshot = {
+        "emotion_state": _latest_emotion_state(profile),
+        "active_personality": _active_personality(profile),
+        "biometric_summary": _biometric_summary(profile),
+        "device_health_status": _device_health_status(profile),
+    }
+    return _redact_sensitive_payload(snapshot)
+
+
+def _generate_actor_reply(actor: dict[str, Any], message: str) -> tuple[str, bool]:
+    actor_key = _user_profile_key(actor)
+    if not actor_key:
+        actor_key = str(actor.get("user_id", "") or actor.get("admin_id", "") or actor.get("email", "") or "session").strip().lower()
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    settings_defaults = _normalize_user_settings(
+        {
+            "response_style": "balanced",
+            "engagement_level": "high",
+            "wind_down_minutes": 45,
+            "partner_mode_enabled": False,
+        }
+    )
+    settings_payload = _profile_user_settings(profile, actor, defaults=settings_defaults)
+    profile_prefs = _chat_profile_prefs_for_user(profile, actor)
+    routine = _chat_scoped_routine_for_user(profile, actor)
+    controls = _chat_scoped_controls_for_user(profile, actor)
+    personality = _chat_personality_from_settings(settings_payload)
+    emotion_state = detect_emotion_state(message)
+    cognitive_load_mode = _chat_cognitive_load_mode(settings_payload)
+    memory_store = _memory_store_for_user(actor_key)
+    memory_line = memory_store.memory_prompt_line(message)
+    user_context = _chat_user_context(
+        user=actor,
+        settings_payload=settings_payload,
+        profile_prefs=profile_prefs,
+        routine=routine,
+        controls=controls,
+        memory_line=memory_line,
+    )
+
+    used_fallback = False
+    try:
+        chat_engine = _chat_engine_for_user(actor_key)
+        reply = chat_engine.generate_response(
+            user_text=message,
+            personality=personality,
+            realtime_context="",
+            user_context=user_context,
+            emotion_state=emotion_state,
+            cognitive_load_mode=cognitive_load_mode,
+            quick_timeout_seconds=3,
+            total_timeout_seconds=8,
+            max_response_tokens=160,
+        )
+        if not str(reply or "").strip() or str(reply).startswith("(Deepgram fallback -"):
+            used_fallback = True
+            reply = _chat_local_fallback(message)
+    except Exception as exc:
+        used_fallback = True
+        _event("warning", "chat_engine_failure", user_id=str(actor.get("user_id", "")), error=str(exc)[:180])
+        reply = _chat_local_fallback(message)
+
+    try:
+        memory_store.record_turn(
+            user_text=message,
+            assistant_text=reply,
+            emotion_state=emotion_state,
+            personality=personality,
+        )
+    except Exception:
+        pass
+
+    _event(
+        "info",
+        "chat_reply",
+        user_id=str(actor.get("user_id", "") or ""),
+        personality=personality,
+        emotion_state=emotion_state,
+        fallback=used_fallback,
+    )
+    return str(reply).strip() or _chat_local_fallback(message), used_fallback
+
+
 def _is_https_request(request: Request) -> bool:
     xf_proto = (request.headers.get("x-forwarded-proto", "") or "").split(",")[0].strip().lower()
     if xf_proto:
@@ -959,6 +1077,22 @@ def bed_state_bridge(request: Request) -> dict[str, Any]:
         "last_memory_context": _last_memory_context(),
         "biometric_summary": _biometric_summary(profile),
         "device_health_status": _device_health_status(profile),
+    }
+
+
+@app.get("/v1/state")
+def v1_state(request: Request) -> dict[str, Any]:
+    if not (_cookie_user(request) or _cookie_admin(request)):
+        raise HTTPException(status_code=401, detail="Login required")
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    return {
+        "ok": True,
+        "generated_at": _now_utc_iso(),
+        "snapshot": _stable_state_snapshot(profile),
     }
 
 
@@ -2044,78 +2178,34 @@ def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
     if not message:
         return {"reply": "Please type a message so I can help."}
 
-    actor_key = _user_profile_key(actor)
-    if not actor_key:
-        actor_key = str(actor.get("user_id", "") or actor.get("admin_id", "") or actor.get("email", "") or "session").strip().lower()
+    reply, _ = _generate_actor_reply(actor, message)
+    return {"reply": reply}
 
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
 
-    settings_defaults = _normalize_user_settings(
-        {
-            "response_style": "balanced",
-            "engagement_level": "high",
-            "wind_down_minutes": 45,
-            "partner_mode_enabled": False,
-        }
-    )
-    settings_payload = _profile_user_settings(profile, actor, defaults=settings_defaults)
-    profile_prefs = _chat_profile_prefs_for_user(profile, actor)
-    routine = _chat_scoped_routine_for_user(profile, actor)
-    controls = _chat_scoped_controls_for_user(profile, actor)
-    personality = _chat_personality_from_settings(settings_payload)
-    emotion_state = detect_emotion_state(message)
-    cognitive_load_mode = _chat_cognitive_load_mode(settings_payload)
-    memory_store = _memory_store_for_user(actor_key)
-    memory_line = memory_store.memory_prompt_line(message)
-    user_context = _chat_user_context(
-        user=actor,
-        settings_payload=settings_payload,
-        profile_prefs=profile_prefs,
-        routine=routine,
-        controls=controls,
-        memory_line=memory_line,
-    )
+@app.post("/v1/command")
+def v1_command(payload: CommandRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _cookie_user(request)
+    admin = _cookie_admin(request)
+    actor = user or admin
+    if not actor:
+        raise HTTPException(status_code=401, detail="Login required")
 
-    used_fallback = False
-    try:
-        chat_engine = _chat_engine_for_user(actor_key)
-        reply = chat_engine.generate_response(
-            user_text=message,
-            personality=personality,
-            realtime_context="",
-            user_context=user_context,
-            emotion_state=emotion_state,
-            cognitive_load_mode=cognitive_load_mode,
-            quick_timeout_seconds=3,
-            total_timeout_seconds=8,
-            max_response_tokens=160,
-        )
-        if not str(reply or "").strip() or str(reply).startswith("(Deepgram fallback -"):
-            used_fallback = True
-            reply = _chat_local_fallback(message)
-    except Exception as exc:
-        used_fallback = True
-        _event("warning", "chat_engine_failure", user_id=str(actor.get("user_id", "")), error=str(exc)[:180])
-        reply = _chat_local_fallback(message)
+    text = str(payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
 
-    try:
-        memory_store.record_turn(
-            user_text=message,
-            assistant_text=reply,
-            emotion_state=emotion_state,
-            personality=personality,
-        )
-    except Exception:
-        pass
+    source = str(payload.source or "web").strip().lower() or "web"
+    if source not in {"web", "mobile", "api"}:
+        source = "web"
 
-    _event(
-        "info",
-        "chat_reply",
-        user_id=str(actor.get("user_id", "") or ""),
-        personality=personality,
-        emotion_state=emotion_state,
-        fallback=used_fallback,
-    )
-    return {"reply": str(reply).strip() or _chat_local_fallback(message)}
+    reply_text, used_fallback = _generate_actor_reply(actor, text)
+    return {
+        "reply_text": reply_text,
+        "effects_summary": {
+            "source": source,
+            "executed_actions": [],
+            "assistant_fallback_used": bool(used_fallback),
+            "note": "No direct device action executed; assistant generated a guidance reply.",
+        },
+    }

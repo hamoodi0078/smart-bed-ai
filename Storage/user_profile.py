@@ -29,6 +29,7 @@ USER_OWNED_PROFILE_KEYS = (
     "personality_runtime",
     "adaptive_personality",
     "proactive",
+    "reflection",
     "safety_valve",
     "runtime_flags",
 )

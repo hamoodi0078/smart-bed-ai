@@ -56,6 +56,7 @@ from automations.registry import AutomationRegistry
 from config import RUNTIME_DATA_DIR, settings
 from core.types import CommandResult
 from commands.lights import handle_light_intent_result
+from commands.reflection import process_reflection_turn
 from commands.registry import match as match_command_handler
 from commands.registry import register as register_command_handler
 from commands.reminders import handle_reminder_intent_result
@@ -79,7 +80,9 @@ reminder_nudge_state = {
     "nudge_sent": False,
     "nudge_time": None,
 }
-awaiting_reflection_answer = False
+
+# Reflection state is now stored in user profile under 'reflection'
+
 sleep_mode_active = False
 AUTOMATION_STATE_PATH = RUNTIME_DATA_DIR / "automations_state.json"
 automation_registry = AutomationRegistry(state_path=AUTOMATION_STATE_PATH)
@@ -2985,6 +2988,16 @@ def handle_local_commands(
     if runtime_flags.get("session_locked_after_delete"):
         return "Local data was deleted. Please restart so I can run fresh setup.", True
 
+    reflection_response, reflection_handled, reflection_state_changed = process_reflection_turn(
+        user_text=user_text,
+        profile=profile,
+        timeout_hours=12,
+    )
+    if reflection_state_changed:
+        save_profile(profile)
+    if reflection_handled:
+        return reflection_response, True
+
     if proactive_engine is None:
         class _NoOpProactiveEngine:
             @staticmethod
@@ -5444,7 +5457,6 @@ def main():
         )
 
         def handle_chat_intent(text: str) -> str:
-            global awaiting_reflection_answer
             _log_intent("CHAT", text)
             local_response, handled = _dispatch_local_command(text)
             if handled:
@@ -5456,42 +5468,7 @@ def main():
             if not user_text:
                 return "I did not catch that. Please say it again."
 
-            if awaiting_reflection_answer:
-                bad_day_markers = (
-                    "no",
-                    "not really",
-                    "i wasted time",
-                    "i did nothing",
-                    "did nothing",
-                    "wasted time",
-                    "not good",
-                    "bad day",
-                )
-                good_day_markers = (
-                    "yes",
-                    "alhamdulillah",
-                    "i did well",
-                    "i used it well",
-                    "used my time well",
-                    "good day",
-                )
-                if any(marker in lowered_user_text for marker in bad_day_markers):
-                    awaiting_reflection_answer = False
-                    logger.info("[INTENT][CHAT] reflection_answer_bad for text=%r", text)
-                    return (
-                        "It is okay to have a weak day, you are human.\n"
-                        "Choose one small task for tomorrow and set a time for it.\n"
-                        "Make a short dua, ask Allah to forgive your laziness and give you strength."
-                    )
-                if any(marker in lowered_user_text for marker in good_day_markers):
-                    awaiting_reflection_answer = False
-                    logger.info("[INTENT][CHAT] reflection_answer_good for text=%r", text)
-                    return (
-                        "Alhamdulillah, you used your day well.\n"
-                        "Thank Allah for giving you that strength.\n"
-                        "Plan to repeat this tomorrow: work, plan, then rest with a clean heart."
-                    )
-
+            # ...existing code for other chat intents...
             completion_phrases = (
                 "i finished",
                 "i'm done",
@@ -5533,21 +5510,7 @@ def main():
                 print(f"[INTENT][CHAT] local_status for text={user_text!r}")
                 return "I am running well and ready to help you."
 
-            daily_reflection_phrases = (
-                "daily reflection",
-                "daily summary",
-                "end of the day",
-                "how was my day",
-                "reflect on my day",
-            )
-            if any(phrase in lowered_user_text for phrase in daily_reflection_phrases):
-                awaiting_reflection_answer = True
-                logger.info("[INTENT][CHAT] local_daily_reflection_balance for text=%r", text)
-                return (
-                    "Alhamdulillah for this day, and for the life and health Allah gave you.\n"
-                    "Now check quickly: did you use your time well, work hard, and plan for tomorrow?\n"
-                    "Have tawakkul in Allah, fix what you can, then rest with a clean heart and a clear plan."
-                )
+            # ...existing code for other chat intents...
 
             if (
                 ("islamic reminder" in lowered_user_text)

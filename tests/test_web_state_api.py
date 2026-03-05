@@ -65,6 +65,58 @@ class TestBedStateApi(unittest.TestCase):
         self.assertIn("led", device)
         self.assertEqual(device.get("last_preload_phase"), "sleep")
 
+    @patch("web_server._safe_profile")
+    @patch("web_server._cookie_user")
+    @patch("web_server._device_health_status")
+    def test_v1_state_redacts_sensitive_tokens(self, mock_device_health, mock_cookie_user, mock_safe_profile):
+        mock_cookie_user.return_value = {"user_id": "u1"}
+        mock_safe_profile.return_value = {"preferences": {"personality": "guide"}}
+        mock_device_health.return_value = {
+            "spotify_connected_users": 1,
+            "access_token": "secret-a",
+            "refresh_token": "secret-r",
+            "password_hash": "secret-h",
+            "oauth_token": "secret-oauth",
+            "nested": {
+                "oauth_access_token": "nested-secret",
+                "ok": True,
+            },
+        }
+
+        client = TestClient(web_server.app)
+        response = client.get("/v1/state")
+        self.assertEqual(response.status_code, 200)
+
+        snapshot = response.json().get("snapshot", {})
+        self.assertIn("device_health_status", snapshot)
+        payload = str(snapshot).lower()
+        self.assertNotIn("access_token", payload)
+        self.assertNotIn("refresh_token", payload)
+        self.assertNotIn("password_hash", payload)
+        self.assertNotIn("oauth_token", payload)
+        self.assertTrue(snapshot.get("device_health_status", {}).get("nested", {}).get("ok"))
+
+    @patch("web_server._generate_actor_reply", return_value=("Sure. I can help with that.", False))
+    @patch("web_server._cookie_user")
+    def test_v1_command_basic_success_response(self, mock_cookie_user, _mock_reply):
+        mock_cookie_user.return_value = {"user_id": "u1", "email": "u1@example.com"}
+
+        client = TestClient(web_server.app)
+        response = client.post(
+            "/v1/command",
+            json={"text": "start wind down", "source": "web"},
+        )
+        self.assertEqual(response.status_code, 200)
+
+        body = response.json()
+        self.assertIn("reply_text", body)
+        self.assertEqual(body.get("reply_text"), "Sure. I can help with that.")
+        self.assertIn("effects_summary", body)
+        effects = body.get("effects_summary", {})
+        self.assertEqual(effects.get("source"), "web")
+        self.assertIn("executed_actions", effects)
+        self.assertIn("assistant_fallback_used", effects)
+
 
 if __name__ == "__main__":
     unittest.main()
