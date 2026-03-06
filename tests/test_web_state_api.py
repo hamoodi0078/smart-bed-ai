@@ -118,5 +118,48 @@ class TestBedStateApi(unittest.TestCase):
         self.assertIn("assistant_fallback_used", effects)
 
 
+class TestApiErrorEnvelope(unittest.TestCase):
+    def test_trace_id_created_and_returned_in_headers(self):
+        client = TestClient(web_server.app)
+        response = client.get("/healthz")
+        self.assertEqual(response.status_code, 200)
+        trace_id = response.headers.get("X-Trace-Id", "")
+        self.assertRegex(trace_id, r"^req_[a-f0-9]{8}$")
+
+    def test_http_error_uses_standard_envelope(self):
+        client = TestClient(web_server.app)
+        response = client.get("/v1/bed/state")
+        self.assertEqual(response.status_code, 401)
+        body = response.json()
+        self.assertFalse(body.get("ok"))
+        self.assertEqual(body.get("error", {}).get("code"), "UNAUTHORIZED")
+        self.assertTrue(body.get("error", {}).get("message"))
+        self.assertRegex(str(body.get("error", {}).get("trace_id", "")), r"^req_[a-f0-9]{8}$")
+
+    def test_validation_error_uses_standard_envelope(self):
+        client = TestClient(web_server.app)
+        response = client.post("/v1/command", json={})
+        self.assertEqual(response.status_code, 422)
+        body = response.json()
+        self.assertFalse(body.get("ok"))
+        self.assertEqual(body.get("error", {}).get("code"), "VALIDATION_ERROR")
+        self.assertEqual(body.get("error", {}).get("message"), "Request validation failed")
+        header_trace_id = response.headers.get("X-Trace-Id", "")
+        self.assertEqual(body.get("error", {}).get("trace_id"), header_trace_id)
+
+    @patch("web_server._safe_profile", side_effect=RuntimeError("boom"))
+    @patch("web_server._cookie_user")
+    def test_unexpected_error_uses_standard_envelope(self, mock_cookie_user, _mock_safe_profile):
+        mock_cookie_user.return_value = {"user_id": "u1"}
+        client = TestClient(web_server.app, raise_server_exceptions=False)
+        response = client.get("/v2/bed/state")
+        self.assertEqual(response.status_code, 500)
+        body = response.json()
+        self.assertFalse(body.get("ok"))
+        self.assertEqual(body.get("error", {}).get("code"), "INTERNAL_ERROR")
+        self.assertEqual(body.get("error", {}).get("message"), "Internal server error")
+        self.assertRegex(str(body.get("error", {}).get("trace_id", "")), r"^req_[a-f0-9]{8}$")
+
+
 if __name__ == "__main__":
     unittest.main()

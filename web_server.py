@@ -16,8 +16,9 @@ from urllib.request import urlopen
 import base64
 
 from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from Storage.io import atomic_write_json, locked_read_json
@@ -40,6 +41,7 @@ _CHAT_ENGINES: dict[str, ConversationEngine] = {}
 _SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
 _MAX_CHAT_ENGINES = 200
 _DEVICE_STALE_WINDOW_SECONDS = 180
+_TRACE_ID_HEADER = "X-Trace-Id"
 
 
 def _load_local_env_file(path: Path) -> None:
@@ -92,6 +94,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def trace_id_middleware(request: Request, call_next):
+    trace_id = f"req_{secrets.token_hex(4)}"
+    request.state.trace_id = trace_id
+    response = await call_next(request)
+    response.headers[_TRACE_ID_HEADER] = trace_id
+    _event(
+        "info",
+        "http_request",
+        trace_id=trace_id,
+        method=request.method,
+        path=request.url.path,
+        status_code=getattr(response, "status_code", 200),
+    )
+    return response
 
 
 class ChatRequest(BaseModel):
@@ -870,6 +889,84 @@ def _event(level: str, action: str, **fields: Any):
         logger.error(text)
     else:
         logger.info(text)
+
+
+def _request_trace_id(request: Request) -> str:
+    trace_id = getattr(request.state, "trace_id", "")
+    if str(trace_id or "").strip():
+        return str(trace_id)
+    fallback = f"req_{secrets.token_hex(4)}"
+    request.state.trace_id = fallback
+    return fallback
+
+
+def _status_error_code(status_code: int) -> str:
+    mapping = {
+        400: "BAD_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+    }
+    return mapping.get(int(status_code), "HTTP_ERROR")
+
+
+def _error_envelope(*, trace_id: str, code: str, message: str) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": {
+            "code": str(code or "INTERNAL_ERROR"),
+            "message": str(message or "Request failed"),
+            "trace_id": str(trace_id),
+        },
+    }
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    trace_id = _request_trace_id(request)
+    message = str(exc.detail) if isinstance(exc.detail, str) and str(exc.detail).strip() else "Request failed"
+    code = _status_error_code(exc.status_code)
+    _event(
+        "warning",
+        "http_exception",
+        trace_id=trace_id,
+        path=request.url.path,
+        status_code=exc.status_code,
+        code=code,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_envelope(trace_id=trace_id, code=code, message=message),
+        headers={_TRACE_ID_HEADER: trace_id},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    trace_id = _request_trace_id(request)
+    _event(
+        "warning",
+        "validation_exception",
+        trace_id=trace_id,
+        path=request.url.path,
+        error_count=len(exc.errors()),
+    )
+    return JSONResponse(
+        status_code=422,
+        content=_error_envelope(trace_id=trace_id, code="VALIDATION_ERROR", message="Request validation failed"),
+        headers={_TRACE_ID_HEADER: trace_id},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    trace_id = _request_trace_id(request)
+    logger.exception("unhandled_exception trace_id=%s path=%s", trace_id, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content=_error_envelope(trace_id=trace_id, code="INTERNAL_ERROR", message="Internal server error"),
+        headers={_TRACE_ID_HEADER: trace_id},
+    )
 
 
 def _is_sensitive_key(key: str) -> bool:
