@@ -8,7 +8,7 @@ import secrets
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request as UrlRequest
@@ -39,6 +39,7 @@ _CHAT_ENGINES: dict[str, ConversationEngine] = {}
 
 _SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
 _MAX_CHAT_ENGINES = 200
+_DEVICE_STALE_WINDOW_SECONDS = 180
 
 
 def _load_local_env_file(path: Path) -> None:
@@ -100,6 +101,23 @@ class ChatRequest(BaseModel):
 class CommandRequest(BaseModel):
     text: str
     source: str = "web"
+
+
+class BedStateV2State(BaseModel):
+    emotion_state: str
+    active_personality: str
+    biometric_summary: dict[str, Any]
+    device_health_status: dict[str, Any]
+
+
+class BedStateV2Response(BaseModel):
+    schema_version: str
+    capabilities: list[str]
+    updated_at: str
+    stale: bool
+    device_online: bool
+    source: Literal["raspberry_pi", "cache", "mock", "simulator", "memory"]
+    state: BedStateV2State
 
 
 class RegisterRequest(BaseModel):
@@ -887,6 +905,57 @@ def _stable_state_snapshot(profile: dict[str, Any]) -> dict[str, Any]:
     return _redact_sensitive_payload(snapshot)
 
 
+def _bed_capabilities(snapshot: dict[str, Any]) -> list[str]:
+    device_health = snapshot.get("device_health_status", {}) if isinstance(snapshot, dict) else {}
+    capabilities = ["led", "audio", "alarm", "ai_chat"]
+    if bool(device_health.get("deepgram_configured", False)):
+        capabilities.append("voice")
+    if int(device_health.get("spotify_connected_users", 0) or 0) > 0:
+        capabilities.append("spotify_playback")
+    if bool(device_health.get("sensor_pressure_active", False)) or bool(device_health.get("sensor_motion_active", False)):
+        capabilities.append("presence_sensing")
+    return capabilities
+
+
+def _bed_state_freshness_meta() -> tuple[str, bool, bool, str]:
+    now = utcnow()
+    devices = store.list_fleet_devices(limit=1000)
+    if not isinstance(devices, list) or not devices:
+        return _now_utc_iso(), True, False, "memory"
+
+    online_statuses = {"active", "linked", "online"}
+    has_online_device = False
+    latest_seen: datetime | None = None
+    latest_cached: datetime | None = None
+    for row in devices:
+        if not isinstance(row, dict):
+            continue
+        status_key = str(row.get("status", "") or "").strip().lower()
+        if status_key in online_statuses:
+            has_online_device = True
+
+        seen_at = _parse_iso_timestamp(str(row.get("last_seen_at", "") or ""))
+        if seen_at is not None and (latest_seen is None or seen_at > latest_seen):
+            latest_seen = seen_at
+
+        cached_at = _parse_iso_timestamp(str(row.get("linked_at", "") or "")) or _parse_iso_timestamp(
+            str(row.get("created_at", "") or "")
+        )
+        if cached_at is not None and (latest_cached is None or cached_at > latest_cached):
+            latest_cached = cached_at
+
+    if latest_seen is not None:
+        age_seconds = (now - latest_seen).total_seconds()
+        stale = age_seconds > _DEVICE_STALE_WINDOW_SECONDS
+        device_online = has_online_device and not stale
+        return to_iso(latest_seen), stale, device_online, "raspberry_pi"
+
+    if latest_cached is not None:
+        return to_iso(latest_cached), True, False, "cache"
+
+    return _now_utc_iso(), True, False, "memory"
+
+
 def _generate_actor_reply(actor: dict[str, Any], message: str) -> tuple[str, bool]:
     actor_key = _user_profile_key(actor)
     if not actor_key:
@@ -1094,6 +1163,28 @@ def v1_state(request: Request) -> dict[str, Any]:
         "generated_at": _now_utc_iso(),
         "snapshot": _stable_state_snapshot(profile),
     }
+
+
+@app.get("/v2/bed/state", response_model=BedStateV2Response)
+def v2_bed_state(request: Request) -> BedStateV2Response:
+    if not (_cookie_user(request) or _cookie_admin(request)):
+        raise HTTPException(status_code=401, detail="Login required")
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    snapshot = _stable_state_snapshot(profile)
+    updated_at, stale, device_online, source = _bed_state_freshness_meta()
+    return BedStateV2Response(
+        schema_version="2.0",
+        capabilities=_bed_capabilities(snapshot),
+        updated_at=updated_at,
+        stale=bool(stale),
+        device_online=bool(device_online),
+        source=source,
+        state=BedStateV2State(**snapshot),
+    )
 
 
 @app.get("/user-dashboard")
