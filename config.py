@@ -103,6 +103,7 @@ enforce_sensitive_data_path_guard()
 
 @dataclass
 class Settings:
+    web_allowed_origins_raw: str = os.getenv("WEB_ALLOWED_ORIGINS", "http://127.0.0.1:8001,http://localhost:8001")
     deepgram_api_key: str = os.getenv("DEEPGRAM_API_KEY", "")
     deepgram_tts_api_key: str = os.getenv("DEEPGRAM_TTS_API_KEY", os.getenv("TTS_API_KEY", os.getenv("DEEPGRAM_API_KEY", "")))
     deepgram_voice_agent_model: str = os.getenv("DEEPGRAM_VOICE_AGENT_MODEL", "voice-agent-conversational")
@@ -143,6 +144,10 @@ class Settings:
     spotify_default_playlist_uri: str = os.getenv("SPOTIFY_DEFAULT_PLAYLIST_URI", "")
     spotify_client_id: str = os.getenv("SPOTIFY_CLIENT_ID", "")
     spotify_client_secret: str = os.getenv("SPOTIFY_CLIENT_SECRET", "")
+    spotify_scopes: str = os.getenv(
+        "SPOTIFY_SCOPES",
+        "user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-email user-read-private",
+    )
     spotify_redirect_uri: str = os.getenv(
         "SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8000/spotify/callback"
     )

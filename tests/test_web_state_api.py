@@ -96,6 +96,20 @@ class TestBedStateApi(unittest.TestCase):
         self.assertNotIn("oauth_token", payload)
         self.assertTrue(snapshot.get("device_health_status", {}).get("nested", {}).get("ok"))
 
+    @patch("web_server._bed_state_freshness_meta", return_value=("2026-03-07T10:00:00Z", False, True, "raspberry_pi"))
+    @patch("web_server._safe_profile", return_value={"preferences": {"personality": "guide"}})
+    @patch("web_server._cookie_user", return_value={"user_id": "u1"})
+    def test_v2_state_exposes_freshness_contract(self, _mock_cookie_user, _mock_safe_profile, _mock_freshness):
+        client = TestClient(web_server.app)
+        response = client.get("/v2/bed/state")
+        self.assertEqual(response.status_code, 200)
+
+        body = response.json()
+        self.assertEqual(body.get("updated_at"), "2026-03-07T10:00:00Z")
+        self.assertFalse(body.get("stale"))
+        self.assertTrue(body.get("device_online"))
+        self.assertEqual(body.get("source"), "raspberry_pi")
+
     @patch("web_server._generate_actor_reply", return_value=("Sure. I can help with that.", False))
     @patch("web_server._cookie_user")
     def test_v1_command_basic_success_response(self, mock_cookie_user, _mock_reply):

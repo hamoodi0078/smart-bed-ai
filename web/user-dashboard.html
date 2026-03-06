@@ -41,7 +41,22 @@
         <div class="topbar-actions">
           <span id="session-role" class="pill">Role: User</span>
           <span id="session-user" class="pill">User</span>
-          <span class="pill">Device status: Online | Firmware v1.0.0</span>
+          <button
+            id="device-status-trigger"
+            class="pill device-status-indicator device-status-online"
+            type="button"
+            aria-expanded="false"
+            aria-controls="device-status-diagnostics"
+          >
+            <span id="device-status-dot" class="device-status-dot" aria-hidden="true"></span>
+            <span id="device-status-text">Device online - tap for diagnostics</span>
+          </button>
+          <div id="device-status-diagnostics" class="device-status-diagnostics" hidden>
+            <div class="device-status-row"><span>Status</span><strong id="device-status-diag-label">Online</strong></div>
+            <div class="device-status-row"><span>Last updated</span><strong id="device-status-diag-updated">Checking...</strong></div>
+            <div class="device-status-row"><span>Source</span><strong id="device-status-diag-source">Unknown</strong></div>
+            <div class="device-status-row"><span>Device online</span><strong id="device-status-diag-online">Yes</strong></div>
+          </div>
           <button id="logout-btn" class="btn alt" type="button">Logout</button>
         </div>
       </div>

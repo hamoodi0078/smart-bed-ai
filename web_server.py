@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import secrets
 import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel
 
 from Storage.io import atomic_write_json, locked_read_json
@@ -26,7 +27,7 @@ from Storage.subscription_store import SubscriptionStore
 from ai.conversation_engine import ConversationEngine
 from ai.emotion_router import detect_emotion_state
 from ai.long_term_memory import LongTermMemoryStore
-from config import LONG_TERM_MEMORY_PATH, RUNTIME_DATA_DIR, USER_PROFILE_PATH
+from config import LONG_TERM_MEMORY_PATH, RUNTIME_DATA_DIR, USER_PROFILE_PATH, settings
 from time_utils import from_iso, to_iso, utcnow
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -42,30 +43,24 @@ _SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
 _MAX_CHAT_ENGINES = 200
 _DEVICE_STALE_WINDOW_SECONDS = 180
 _TRACE_ID_HEADER = "X-Trace-Id"
+_METRICS_REQUEST_COUNT = Counter(
+    "smart_bed_http_requests_total",
+    "Total HTTP requests handled by the Smart Bed API",
+    ["method", "path", "status_code"],
+)
+_METRICS_REQUEST_LATENCY = Histogram(
+    "smart_bed_http_request_latency_seconds",
+    "HTTP request latency in seconds for the Smart Bed API",
+    ["method", "path"],
+)
+_METRICS_ERROR_COUNT = Counter(
+    "smart_bed_http_errors_total",
+    "Total HTTP error responses from the Smart Bed API",
+    ["method", "path", "status_code"],
+)
 
 
-def _load_local_env_file(path: Path) -> None:
-    if not path.exists():
-        return
-    try:
-        for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = str(raw_line or "").strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            env_key = key.strip()
-            if not env_key:
-                continue
-            env_value = value.strip().strip('"').strip("'")
-            os.environ.setdefault(env_key, env_value)
-    except Exception:
-        # Keep runtime resilient even if .env has malformed lines.
-        return
-
-
-_load_local_env_file(BASE_DIR / ".env")
-
-_cors_origins_raw = os.getenv("WEB_ALLOWED_ORIGINS", "http://127.0.0.1:8001,http://localhost:8001")
+_cors_origins_raw = str(settings.web_allowed_origins_raw or "http://127.0.0.1:8001,http://localhost:8001")
 ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 logger = logging.getLogger("web_runtime")
 if not logger.handlers:
@@ -100,15 +95,28 @@ app.add_middleware(
 async def trace_id_middleware(request: Request, call_next):
     trace_id = f"req_{secrets.token_hex(4)}"
     request.state.trace_id = trace_id
+    started = time.perf_counter()
     response = await call_next(request)
+    elapsed = max(0.0, time.perf_counter() - started)
+    status_code = int(getattr(response, "status_code", 200) or 200)
+    method = str(request.method or "GET")
+    path = str(request.url.path or "/")
+    status_key = str(status_code)
+
+    _METRICS_REQUEST_COUNT.labels(method=method, path=path, status_code=status_key).inc()
+    _METRICS_REQUEST_LATENCY.labels(method=method, path=path).observe(elapsed)
+    if status_code >= 400:
+        _METRICS_ERROR_COUNT.labels(method=method, path=path, status_code=status_key).inc()
+
     response.headers[_TRACE_ID_HEADER] = trace_id
     _event(
         "info",
         "http_request",
         trace_id=trace_id,
-        method=request.method,
-        path=request.url.path,
-        status_code=getattr(response, "status_code", 200),
+        method=method,
+        path=path,
+        status_code=status_code,
+        latency_ms=round(elapsed * 1000.0, 2),
     )
     return response
 
@@ -255,7 +263,7 @@ def _device_health_status(profile: dict[str, Any]) -> dict[str, Any]:
     spotify_tokens = profile.get("spotify_tokens", {}) if isinstance(profile, dict) else {}
 
     return {
-        "deepgram_configured": bool(os.getenv("DEEPGRAM_API_KEY", "").strip()),
+        "deepgram_configured": bool(str(settings.deepgram_api_key or "").strip()),
         "spotify_connected_users": len(spotify_tokens) if isinstance(spotify_tokens, dict) else 0,
         "led": {
             "user_strip_pin": int(hardware.get("user_strip_pin", 18) or 18),
@@ -428,9 +436,9 @@ def _memory_store_for_user(user_key: str) -> LongTermMemoryStore:
 
 def _chat_engine_for_user(user_key: str) -> ConversationEngine:
     safe_key = _sanitize_user_key(user_key)
-    api_key = str(os.getenv("DEEPGRAM_API_KEY", "") or "").strip()
-    model = str(os.getenv("DEEPGRAM_VOICE_AGENT_MODEL", "voice-agent-conversational") or "voice-agent-conversational").strip()
-    voice_agent_url = str(os.getenv("DEEPGRAM_VOICE_AGENT_URL", "https://agent.deepgram.com/v1/agent/converse") or "https://agent.deepgram.com/v1/agent/converse").strip()
+    api_key = str(settings.deepgram_api_key or "").strip()
+    model = str(settings.deepgram_voice_agent_model or "voice-agent-conversational").strip()
+    voice_agent_url = str(settings.deepgram_voice_agent_url or "https://agent.deepgram.com/v1/agent/converse").strip()
 
     with _CHAT_ENGINE_LOCK:
         existing = _CHAT_ENGINES.get(safe_key)
@@ -674,19 +682,16 @@ def _apply_command_status_to_timeline(items: list[dict[str, Any]], commands: dic
 
 
 def _spotify_env_config(request: Request | None = None) -> dict[str, str]:
-    redirect_uri = os.getenv("SPOTIFY_REDIRECT_URI", "").strip()
+    redirect_uri = str(settings.spotify_redirect_uri or "").strip()
     if not redirect_uri and request is not None:
         base_url = str(request.base_url).rstrip("/")
         redirect_uri = f"{base_url}/v1/mobile/spotify/callback"
 
     return {
-        "client_id": os.getenv("SPOTIFY_CLIENT_ID", "").strip(),
-        "client_secret": os.getenv("SPOTIFY_CLIENT_SECRET", "").strip(),
+        "client_id": str(settings.spotify_client_id or "").strip(),
+        "client_secret": str(settings.spotify_client_secret or "").strip(),
         "redirect_uri": redirect_uri,
-        "scope": os.getenv(
-            "SPOTIFY_SCOPES",
-            "user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-email user-read-private",
-        ).strip(),
+        "scope": str(settings.spotify_scopes or "").strip(),
     }
 
 
@@ -1224,6 +1229,11 @@ def login_page() -> FileResponse:
 @app.get("/healthz")
 def healthz() -> dict[str, Any]:
     return {"ok": True, "service": "web_runtime"}
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/v1/bed/state")
@@ -1840,7 +1850,7 @@ def mobile_spotify_playback(payload: SpotifyPlaybackRequest, request: Request) -
         raise HTTPException(status_code=400, detail="Spotify is not connected")
 
     action = str(payload.action or "").strip().lower()
-    device_id = str(payload.device_id or "").strip() or os.getenv("SPOTIFY_DEVICE_ID", "").strip()
+    device_id = str(payload.device_id or "").strip() or str(settings.spotify_device_id or "").strip()
     query = f"?device_id={device_id}" if device_id else ""
 
     try:

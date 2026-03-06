@@ -177,6 +177,52 @@ a {
   color: var(--muted);
 }
 
+.device-status-indicator {
+  cursor: pointer;
+}
+
+.device-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 8px;
+  background: var(--good);
+}
+
+.device-status-online .device-status-dot {
+  background: var(--good);
+}
+
+.device-status-stale .device-status-dot {
+  background: var(--warn);
+}
+
+.device-status-offline .device-status-dot {
+  background: var(--bad);
+}
+
+.device-status-diagnostics {
+  flex-basis: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.device-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-status-row + .device-status-row {
+  margin-top: 6px;
+}
+
 .grid {
   display: grid;
   gap: 14px;

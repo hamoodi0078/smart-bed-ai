@@ -18,6 +18,8 @@ const USER_SETTINGS_KEY = "dana_user_dashboard_settings_v1";
 const USER_ROUTINE_KEY = "dana_user_routine_v1";
 const USER_PROFILE_KEY = "dana_user_profile_v1";
 const DEVICE_CONTROL_KEY = "dana_device_controls_v1";
+const DEVICE_STATUS_ONLINE_MS = 30 * 1000;
+const DEVICE_STATUS_STALE_MS = 5 * 60 * 1000;
 
 async function apiFetch(url, options = {}) {
   const merged = {
@@ -161,6 +163,124 @@ function renderSleepInsights(settings) {
     wakes.className = `status ${wakeClass}`;
     wakes.textContent = partnerOn ? "Low" : "Moderate";
   }
+}
+
+function parseIsoToMs(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function formatRelativeAge(ageMs) {
+  if (!Number.isFinite(ageMs)) return "Unknown";
+  const safeAge = Math.max(0, ageMs);
+  if (safeAge < 1000) return "just now";
+  if (safeAge < 60 * 1000) return `${Math.floor(safeAge / 1000)} sec ago`;
+  if (safeAge < 60 * 60 * 1000) return `${Math.floor(safeAge / (60 * 1000))} min ago`;
+  if (safeAge < 24 * 60 * 60 * 1000) return `${Math.floor(safeAge / (60 * 60 * 1000))} hr ago`;
+  return `${Math.floor(safeAge / (24 * 60 * 60 * 1000))} day ago`;
+}
+
+function formatUpdatedAt(updatedAt) {
+  const parsedMs = parseIsoToMs(updatedAt);
+  if (parsedMs === null) return "Unknown";
+  const relative = formatRelativeAge(Date.now() - parsedMs);
+  const absolute = new Date(parsedMs).toLocaleString();
+  return `${relative} (${absolute})`;
+}
+
+function normalizeDeviceSource(source) {
+  const raw = String(source || "").trim();
+  if (!raw) return "Unknown";
+  return raw.replace(/_/g, " ");
+}
+
+function mapDeviceStatus(statePayload) {
+  const updatedAt = String(statePayload?.updated_at || "").trim();
+  const parsedMs = parseIsoToMs(updatedAt);
+  const stale = Boolean(statePayload?.stale);
+  const deviceOnline = Boolean(statePayload?.device_online);
+  const source = normalizeDeviceSource(statePayload?.source);
+
+  let statusKey = "offline";
+  if (parsedMs !== null) {
+    const ageMs = Math.max(0, Date.now() - parsedMs);
+    if (ageMs < DEVICE_STATUS_ONLINE_MS) {
+      statusKey = "online";
+    } else if (ageMs <= DEVICE_STATUS_STALE_MS) {
+      statusKey = "stale";
+    } else {
+      statusKey = "offline";
+    }
+  } else if (deviceOnline) {
+    statusKey = "online";
+  } else if (stale) {
+    statusKey = "stale";
+  }
+
+  const label = statusKey === "online" ? "Online" : statusKey === "stale" ? "Stale" : "Offline";
+  return {
+    statusKey,
+    label,
+    source,
+    deviceOnline,
+    lastUpdatedText: formatUpdatedAt(updatedAt),
+  };
+}
+
+function bindDeviceStatusDiagnostics() {
+  const trigger = document.getElementById("device-status-trigger");
+  const diagnostics = document.getElementById("device-status-diagnostics");
+  if (!trigger || !diagnostics) return;
+  if (trigger.dataset.bound === "1") return;
+  trigger.dataset.bound = "1";
+  trigger.addEventListener("click", () => {
+    const expanded = trigger.getAttribute("aria-expanded") === "true";
+    trigger.setAttribute("aria-expanded", expanded ? "false" : "true");
+    diagnostics.hidden = expanded;
+  });
+}
+
+function renderDeviceStatus(meta) {
+  const trigger = document.getElementById("device-status-trigger");
+  const statusText = document.getElementById("device-status-text");
+  const diagLabel = document.getElementById("device-status-diag-label");
+  const diagUpdated = document.getElementById("device-status-diag-updated");
+  const diagSource = document.getElementById("device-status-diag-source");
+  const diagOnline = document.getElementById("device-status-diag-online");
+  if (!trigger || !statusText || !diagLabel || !diagUpdated || !diagSource || !diagOnline) return;
+
+  trigger.classList.remove("device-status-online", "device-status-stale", "device-status-offline");
+  trigger.classList.add(`device-status-${meta.statusKey}`);
+  statusText.textContent = `Device ${meta.label.toLowerCase()} - tap for diagnostics`;
+
+  diagLabel.textContent = meta.label;
+  diagUpdated.textContent = meta.lastUpdatedText;
+  diagSource.textContent = meta.source;
+  diagOnline.textContent = meta.deviceOnline ? "Yes" : "No";
+}
+
+async function hydrateDeviceStatusIndicator() {
+  if (!location.pathname.includes("user-dashboard")) return;
+  bindDeviceStatusDiagnostics();
+
+  let payload = {};
+  try {
+    const res = await loadBedStateFromApi();
+    if (res.status === 401) {
+      redirectToLogin("user");
+      return;
+    }
+    if (res.ok) {
+      payload = await res.json().catch(() => ({}));
+    }
+  } catch (_err) {
+    payload = {};
+  }
+
+  renderDeviceStatus(mapDeviceStatus(payload));
 }
 
 async function initRoutinePlanner(defaults) {
@@ -831,6 +951,11 @@ async function loadDeviceControlsFromApi() {
   return res;
 }
 
+async function loadBedStateFromApi() {
+  const res = await apiFetch("/v2/bed/state");
+  return res;
+}
+
 async function persistDeviceControlsToApi(payload) {
   const res = await apiFetch("/v1/mobile/device-controls", {
     method: "POST",
@@ -1059,6 +1184,7 @@ async function hydrateUserDashboard() {
   const locationMetric = document.getElementById("metric-location");
   if (!recovery || !consistency || !health || !partner) return;
   setMetricLoading([recovery, consistency, health, partner, winddown, style, locationMetric], true);
+  await hydrateDeviceStatusIndicator();
 
   try {
     const dashboardRes = await apiFetch("/v1/mobile/dashboard");
