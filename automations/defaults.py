@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from automations.base import Automation
+from automations.base import AUTOMATION_CRITICALITY_CRITICAL, AUTOMATION_CRITICALITY_NON_CRITICAL, Automation
 from core.types import Effect
 
 
@@ -33,30 +33,10 @@ def _parse_hhmm(value: str, default: tuple[int, int]) -> tuple[int, int]:
         return default
 
 
-def _is_in_quiet_window(ctx: dict[str, Any]) -> bool:
-    if bool(ctx.get("quiet_mode_active", False)):
-        return True
-    quiet_window = str(ctx.get("quiet_window", "") or "").strip()
-    if not quiet_window or "-" not in quiet_window:
-        return False
-    now_local = ctx.get("now_local")
-    if not isinstance(now_local, datetime):
-        return False
-    try:
-        left, right = [part.strip() for part in quiet_window.split("-", 1)]
-        sh, sm = _parse_hhmm(left, (0, 0))
-        eh, em = _parse_hhmm(right, (0, 0))
-        return _in_window(now_local, sh, sm, eh, em)
-    except Exception:
-        return False
-
-
 def build_default_automations() -> list[Automation]:
     def sleep_trigger(ctx: dict[str, Any]) -> bool:
         now_local = ctx.get("now_local")
         if not isinstance(now_local, datetime):
-            return False
-        if _is_in_quiet_window(ctx):
             return False
         return _in_window(now_local, 23, 0, 6, 0) and (not bool(ctx.get("sleep_mode_active", False)))
 
@@ -76,8 +56,6 @@ def build_default_automations() -> list[Automation]:
     def work_plan_trigger(ctx: dict[str, Any]) -> bool:
         now_local = ctx.get("now_local")
         if not isinstance(now_local, datetime):
-            return False
-        if _is_in_quiet_window(ctx):
             return False
         if not _in_window(now_local, 21, 50, 22, 10):
             return False
@@ -100,8 +78,6 @@ def build_default_automations() -> list[Automation]:
         now_local = ctx.get("now_local")
         if not isinstance(now_local, datetime):
             return False
-        if _is_in_quiet_window(ctx):
-            return False
         return _in_window(now_local, 6, 0, 7, 0) and bool(ctx.get("sleep_mode_active", False))
 
     def morning_wake_action(ctx: dict[str, Any]) -> list[Effect]:
@@ -121,8 +97,6 @@ def build_default_automations() -> list[Automation]:
     def fajr_trigger(ctx: dict[str, Any]) -> bool:
         now_local = ctx.get("now_local")
         if not isinstance(now_local, datetime):
-            return False
-        if _is_in_quiet_window(ctx):
             return False
         if not bool(ctx.get("sleep_mode_active", False)):
             return False
@@ -153,6 +127,7 @@ def build_default_automations() -> list[Automation]:
             trigger=sleep_trigger,
             action=sleep_action,
             cooldown_minutes=120,
+            criticality=AUTOMATION_CRITICALITY_NON_CRITICAL,
             window_key=sleep_window_key,
         ),
         Automation(
@@ -160,6 +135,7 @@ def build_default_automations() -> list[Automation]:
             trigger=work_plan_trigger,
             action=work_plan_action,
             cooldown_minutes=1440,
+            criticality=AUTOMATION_CRITICALITY_NON_CRITICAL,
             window_key=work_plan_window_key,
         ),
         Automation(
@@ -167,6 +143,7 @@ def build_default_automations() -> list[Automation]:
             trigger=morning_wake_trigger,
             action=morning_wake_action,
             cooldown_minutes=120,
+            criticality=AUTOMATION_CRITICALITY_CRITICAL,
             window_key=morning_wake_window_key,
         ),
         Automation(
@@ -174,6 +151,7 @@ def build_default_automations() -> list[Automation]:
             trigger=fajr_trigger,
             action=fajr_action,
             cooldown_minutes=1440,
+            criticality=AUTOMATION_CRITICALITY_CRITICAL,
             window_key=fajr_window_key,
         ),
     ]

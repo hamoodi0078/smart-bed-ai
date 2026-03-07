@@ -31,6 +31,7 @@ from ai.local_music_manager import LocalMusicManager
 from ai.offline_intent_pack import OfflineIntentPack
 from ai.online_calendar import get_online_calendar_answer
 from ai.proactive_automation_engine import ProactiveAutomationEngine
+from ai.response_quality_gate import ResponseQualityGate
 from ai.goal_strategy_engine import GoalStrategyEngine
 from ai.adaptive_personality_engine import AdaptivePersonalityEngine
 from ai.breathing_guide_engine import BreathingGuideEngine
@@ -50,6 +51,7 @@ from ai.sleep_routine_manager import SleepRoutineManager
 from ai.spotify_manager import SpotifyManager
 from ai.stt_manager import STTManager
 from ai.tts_manager import TTSManager
+from ai.voice_circuit_breaker import VoiceCircuitBreaker
 from ai.wake_word_manager import WakeWordManager
 from automations.defaults import build_default_automations
 from automations.registry import AutomationRegistry
@@ -163,6 +165,13 @@ def init_automations():
 def run_automations():
     global sleep_mode_active
     profile = automation_profile_ref if isinstance(automation_profile_ref, dict) else {}
+    disk_profile = load_profile()
+    if isinstance(disk_profile, dict):
+        disk_prefs = disk_profile.get("preferences", {}) if isinstance(disk_profile.get("preferences", {}), dict) else {}
+        profile_prefs = profile.setdefault("preferences", {})
+        for key in ("quiet_window", "quiet_mode_active", "quiet_hours_override_until_utc", "timezone"):
+            if key in disk_prefs:
+                profile_prefs[key] = disk_prefs.get(key)
     prefs = profile.get("preferences", {}) if isinstance(profile, dict) else {}
     timezone_name = str(prefs.get("timezone", "UTC") or "UTC").strip() or "UTC"
     now_utc = utcnow()
@@ -177,8 +186,11 @@ def run_automations():
         "now_utc": now_utc,
         "timezone": timezone_name,
         "sleep_mode_active": bool(sleep_mode_active),
-        "quiet_window": str(prefs.get("quiet_window", "") or ""),
+        "quiet_window": str(
+            prefs.get("quiet_window", settings.quiet_hours_default_window) or settings.quiet_hours_default_window
+        ),
         "quiet_mode_active": bool(prefs.get("quiet_mode_active", False)),
+        "quiet_hours_override_until_utc": str(prefs.get("quiet_hours_override_until_utc", "") or ""),
         "has_pending_work_planning_reminder_today": _has_pending_work_planning_reminder_today(now_local),
         "fajr_light_time": str(prefs.get("fajr_light_time", "04:50") or "04:50"),
     }
@@ -833,6 +845,26 @@ def has_any(text: str, words: tuple[str, ...]) -> bool:
 def _is_llm_fallback_response(text: str) -> bool:
     value = str(text or "").strip()
     return value.startswith("(Deepgram fallback -") or value.startswith("(Offline fallback -")
+
+
+def _voice_offline_fallback_response(offline_pack: OfflineIntentPack, user_text: str) -> str:
+    offline_response, handled_offline = offline_pack.handle(user_text)
+    if handled_offline and str(offline_response or "").strip():
+        return str(offline_response).strip()
+    return (
+        "Voice pipeline is in offline recovery mode. "
+        "I can still handle core local commands like alarms, routines, lights, and local music."
+    )
+
+
+def _is_voice_circuit_reset_command(text: str) -> bool:
+    lowered = str(text or "").strip().lower()
+    return lowered in {
+        "reset voice circuit",
+        "voice circuit reset",
+        "reset voice pipeline",
+        "reset voice breaker",
+    }
 
 
 def _extract_openai_chat_text(payload: dict) -> str:
@@ -2162,7 +2194,7 @@ def run_first_boot_intro(tts=None, tts_player=None):
             "engagement_level": "high",
             "speed_mode": "normal",
             "guide_level": "beginner",
-            "quiet_window": "",
+            "quiet_window": str(settings.quiet_hours_default_window or "22:00-07:00"),
             "sleep_target_hours": sleep_target_hours,
             "adaptive_wake_enabled": adaptive_wake_enabled,
         },
@@ -2228,8 +2260,9 @@ def ensure_profile_shape(profile: dict):
     profile["preferences"].setdefault("engagement_level", "high")
     profile["preferences"].setdefault("speed_mode", "normal")
     profile["preferences"].setdefault("guide_level", "beginner")
-    profile["preferences"].setdefault("quiet_window", "")
+    profile["preferences"].setdefault("quiet_window", str(settings.quiet_hours_default_window or "22:00-07:00"))
     profile["preferences"].setdefault("quiet_mode_active", False)
+    profile["preferences"].setdefault("quiet_hours_override_until_utc", "")
     profile["preferences"].setdefault("timezone", "UTC")
     profile["preferences"].setdefault("fajr_light_time", "04:50")
     profile["preferences"].setdefault("sleep_target_hours", 8.0)
@@ -4771,6 +4804,13 @@ def main():
     routine_engine = RoutineEngine()
     audio_output = AudioOutputManager()
     offline_pack = OfflineIntentPack()
+    response_quality_gate = ResponseQualityGate(max_chars=500)
+    voice_circuit_breaker = VoiceCircuitBreaker(
+        failure_threshold=settings.voice_circuit_failure_threshold,
+        backoff_base_seconds=settings.voice_circuit_backoff_base_seconds,
+        backoff_max_seconds=settings.voice_circuit_backoff_max_seconds,
+        reset_signal_path=settings.voice_circuit_reset_signal_path,
+    )
     local_music = LocalMusicManager(music_dir=settings.local_music_dir)
     tts_player = AudioPlaybackController()
     breathing_guide = BreathingGuideEngine()
@@ -5623,6 +5663,12 @@ def main():
             return handle_chat_intent(text)
 
         while True:
+            if voice_circuit_breaker.consume_manual_reset_signal():
+                breaker_state = voice_circuit_breaker.snapshot()
+                print(
+                    "[VOICE][CIRCUIT] Manual reset applied from control signal. "
+                    f"state={breaker_state.get('state')} failures={breaker_state.get('failure_count')}"
+                )
             process_due_alarms()
             run_automations()
             nudge_text = check_reminder_nudge()
@@ -5672,6 +5718,16 @@ def main():
                 )
             pending_user_text = ""
             lower_text = user_text.lower().strip()
+
+            if _is_voice_circuit_reset_command(user_text):
+                breaker_state = voice_circuit_breaker.manual_reset(reason="runtime_command")
+                print(
+                    "[VOICE][CIRCUIT] Manual reset requested from runtime command. "
+                    f"state={breaker_state.get('state')} failures={breaker_state.get('failure_count')}"
+                )
+                print("Bed: Voice pipeline recovery circuit reset. Normal voice processing is restored.")
+                led.set_state("listening")
+                continue
 
             if _is_wake_only_utterance(wake_word_manager, user_text):
                 print("Bed: I am already awake. Please tell me your command.")
@@ -5731,26 +5787,95 @@ def main():
                 continue
 
             print(f"[FLOW] STT text: {user_text}")
-            response_text = str(handle_bed_command(user_text) or "").strip()
+            voice_failure_type = {"name": ""}
+
+            def _run_voice_pipeline_operation() -> dict:
+                raw_response_text = str(handle_bed_command(user_text) or "").strip()
+                response_text_inner, quality_gate = response_quality_gate.apply(raw_response_text)
+                if not response_text_inner:
+                    raise RuntimeError("empty_reply_after_quality_gate")
+
+                audio_file_inner = tts.synthesize_to_mp3(
+                    response_text_inner,
+                    voice_override=get_personality_voice(profile),
+                )
+                if not audio_file_inner:
+                    raise RuntimeError("tts_unavailable")
+
+                environment_orchestrator.preload_transition_for_response(led, profile, response_text_inner)
+                led.set_state("speaking")
+                played = bool(tts_player.play_file(audio_file_inner))
+                return {
+                    "response_text": response_text_inner,
+                    "audio_file": str(audio_file_inner),
+                    "played": played,
+                    "quality_gate": quality_gate,
+                }
+
+            def _voice_fallback(reason: str) -> dict:
+                fallback_text, quality_gate = response_quality_gate.apply(
+                    _voice_offline_fallback_response(offline_pack, user_text)
+                )
+                return {
+                    "response_text": fallback_text,
+                    "audio_file": "",
+                    "played": False,
+                    "reason": reason,
+                    "quality_gate": quality_gate,
+                }
+
+            def _on_voice_failure(exc: Exception):
+                voice_failure_type["name"] = type(exc).__name__
+
+            turn_result, used_fallback, breaker_reason, breaker_snapshot = voice_circuit_breaker.run(
+                operation=_run_voice_pipeline_operation,
+                fallback=_voice_fallback,
+                on_failure=_on_voice_failure,
+            )
+
+            response_text = str(turn_result.get("response_text", "") or "").strip()
+            quality_gate_meta = turn_result.get("quality_gate", {})
+            if isinstance(quality_gate_meta, dict):
+                if bool(quality_gate_meta.get("used_fallback", False)):
+                    print(f"[QUALITY_GATE] safe fallback applied reason={quality_gate_meta.get('reason', 'unknown')}")
+                elif bool(quality_gate_meta.get("trimmed", False)):
+                    print(
+                        "[QUALITY_GATE] response trimmed "
+                        f"original_len={quality_gate_meta.get('original_length', 0)} "
+                        f"final_len={quality_gate_meta.get('final_length', 0)}"
+                    )
             if not response_text:
-                print("[FLOW][WARN] Intent returned an empty reply.")
+                print("[FLOW][WARN] Voice pipeline fallback returned empty text.")
                 led.set_state("listening")
                 continue
 
+            if used_fallback:
+                tts_player.stop()
+                cooldown_remaining = float(breaker_snapshot.get("cooldown_seconds_remaining", 0.0) or 0.0)
+                failure_suffix = (
+                    f" failure_type={voice_failure_type['name']}" if voice_failure_type["name"] else ""
+                )
+                print(
+                    "[VOICE][CIRCUIT] Offline fallback engaged "
+                    f"reason={breaker_reason} "
+                    f"state={breaker_snapshot.get('state')} "
+                    f"failures={breaker_snapshot.get('failure_count')} "
+                    f"cooldown_remaining={cooldown_remaining:.2f}s"
+                    f"{failure_suffix}"
+                )
+                print(f"Bed: {response_text}")
+                print("Bed: Voice pipeline offline fallback is active. Audio playback skipped.")
+                last_assistant_response = response_text
+                led.set_state("listening")
+                continue
+
+            audio_file = str(turn_result.get("audio_file", "") or "")
             print(f"[FLOW] Reply text: {response_text}")
             last_assistant_response = response_text
 
             print(f"Bed: {response_text}")
-            environment_orchestrator.preload_transition_for_response(led, profile, response_text)
-            led.set_state("speaking")
-            audio_file = tts.synthesize_to_mp3(
-                response_text,
-                voice_override=get_personality_voice(profile),
-            )
-            if not audio_file:
-                print("[TTS][WARN] No audio generated; response was printed only.")
             print(f"Bed: Audio saved at {audio_file}")
-            if audio_file and tts_player.play_file(audio_file):
+            if bool(turn_result.get("played", False)):
                 print("Bed: Playing response audio now.")
             interrupt_text = wake_word_manager.capture_barge_in_text()
             if interrupt_text:

@@ -1247,6 +1247,8 @@ async function hydrateUserDashboard() {
 
 function statusClassForUserTimeline(statusText) {
   const status = String(statusText || "").toLowerCase();
+  if (status.includes("override")) return "good";
+  if (status.includes("quiet") || status.includes("cooldown")) return "warn";
   if (status.includes("completed") || status.includes("active") || status.includes("ready") || status.includes("available")) return "good";
   if (status.includes("running")) return "warn";
   if (status.includes("queued")) return "warn";
@@ -1330,6 +1332,7 @@ function bindUserActions() {
     { id: "user-action-optimize-room", action: "optimize_room" },
     { id: "user-action-wake-recovery", action: "wake_recovery" },
     { id: "user-action-reactive-lights", action: "reactive_lights" },
+    { id: "user-action-quiet-override", action: "quiet_hours_override" },
   ];
 
   const runAction = async (action) => {

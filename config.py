@@ -49,6 +49,14 @@ def _env_int(name: str, default: int) -> int:
         return int(default)
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name, str(default))
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return float(default)
+
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -135,6 +143,14 @@ class Settings:
     wake_word_phrase_limit_seconds: int = _env_int("WAKE_WORD_PHRASE_LIMIT_SECONDS", 3)
     wake_word_barge_in_timeout_seconds: int = _env_int("WAKE_WORD_BARGE_IN_TIMEOUT_SECONDS", 1)
     wake_word_barge_in_phrase_limit_seconds: int = _env_int("WAKE_WORD_BARGE_IN_PHRASE_LIMIT_SECONDS", 1)
+    quiet_hours_default_window: str = os.getenv("QUIET_HOURS_DEFAULT_WINDOW", "22:00-07:00")
+    quiet_hours_override_max_minutes: int = _env_int("QUIET_HOURS_OVERRIDE_MAX_MINUTES", 120)
+    voice_circuit_failure_threshold: int = _env_int("VOICE_CIRCUIT_FAILURE_THRESHOLD", 3)
+    voice_circuit_backoff_base_seconds: float = _env_float("VOICE_CIRCUIT_BACKOFF_BASE_SECONDS", 3.0)
+    voice_circuit_backoff_max_seconds: float = _env_float("VOICE_CIRCUIT_BACKOFF_MAX_SECONDS", 60.0)
+    voice_circuit_reset_signal_path: str = str(
+        _env_path("VOICE_CIRCUIT_RESET_SIGNAL_PATH", RUNTIME_DATA_DIR / "voice_circuit_reset_signal.json")
+    )
     enable_sensor_bridge: bool = os.getenv("ENABLE_SENSOR_BRIDGE", "1") == "1"
     sensor_pressure_enabled: bool = os.getenv("SENSOR_PRESSURE_ENABLED", "0") == "1"
     sensor_motion_enabled: bool = os.getenv("SENSOR_MOTION_ENABLED", "0") == "1"

@@ -6,7 +6,7 @@ import re
 import secrets
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 from urllib.error import HTTPError, URLError
@@ -14,6 +14,7 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 import base64
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
@@ -24,9 +25,17 @@ from pydantic import BaseModel
 
 from Storage.io import atomic_write_json, locked_read_json
 from Storage.subscription_store import SubscriptionStore
+from automations.defaults import build_default_automations
+from automations.registry import (
+    DEFAULT_QUIET_HOURS_WINDOW,
+    AutomationRegistry,
+    is_in_quiet_hours,
+    is_quiet_hours_override_active,
+)
 from ai.conversation_engine import ConversationEngine
 from ai.emotion_router import detect_emotion_state
 from ai.long_term_memory import LongTermMemoryStore
+from ai.voice_circuit_breaker import write_voice_circuit_reset_signal
 from config import LONG_TERM_MEMORY_PATH, RUNTIME_DATA_DIR, USER_PROFILE_PATH, settings
 from time_utils import from_iso, to_iso, utcnow
 
@@ -35,6 +44,7 @@ WEB_DIR = BASE_DIR / "web"
 ASSETS_DIR = WEB_DIR / "assets"
 PROFILE_PATH = USER_PROFILE_PATH
 WEB_MEMORY_DIR = RUNTIME_DATA_DIR / "web_memory"
+AUTOMATION_STATE_PATH = RUNTIME_DATA_DIR / "automations_state.json"
 store = SubscriptionStore()
 _CHAT_ENGINE_LOCK = threading.RLock()
 _CHAT_ENGINES: dict[str, ConversationEngine] = {}
@@ -563,6 +573,127 @@ def _default_user_timeline() -> list[dict[str, Any]]:
     ]
 
 
+def _effective_quiet_window(profile: dict[str, Any]) -> str:
+    prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+    return str(
+        prefs.get("quiet_window", settings.quiet_hours_default_window) or settings.quiet_hours_default_window or DEFAULT_QUIET_HOURS_WINDOW
+    ).strip()
+
+
+def _quiet_override_until_utc(profile: dict[str, Any]) -> str:
+    prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+    return str(prefs.get("quiet_hours_override_until_utc", "") or "").strip()
+
+
+def _user_local_now(profile: dict[str, Any], user: dict[str, Any], now_utc: datetime | None = None) -> datetime:
+    now = now_utc if isinstance(now_utc, datetime) else utcnow()
+    now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+    timezone_name = str(_chat_profile_prefs_for_user(profile, user).get("timezone", "UTC") or "UTC").strip() or "UTC"
+    try:
+        return now.astimezone(ZoneInfo(timezone_name))
+    except Exception:
+        return now.astimezone(timezone.utc)
+
+
+def _quiet_window_end_local(now_local: datetime, quiet_window: str) -> datetime:
+    raw = str(quiet_window or "").strip()
+    if "-" not in raw:
+        raw = DEFAULT_QUIET_HOURS_WINDOW
+    _, end_part = [part.strip() for part in raw.split("-", 1)]
+    try:
+        end_h, end_m = end_part.split(":", 1)
+        end_hour = max(0, min(23, int(end_h)))
+        end_minute = max(0, min(59, int(end_m)))
+    except Exception:
+        end_hour, end_minute = 7, 0
+
+    end_local = now_local.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+    if now_local >= end_local:
+        end_local = end_local + timedelta(days=1)
+    return end_local
+
+
+def _compute_quiet_hours_override_until_utc(profile: dict[str, Any], user: dict[str, Any], now_utc: datetime | None = None) -> str:
+    now = now_utc if isinstance(now_utc, datetime) else utcnow()
+    now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+    override_limit_minutes = max(30, min(240, int(settings.quiet_hours_override_max_minutes or 120)))
+    hard_limit_utc = now + timedelta(minutes=override_limit_minutes)
+
+    quiet_window = _effective_quiet_window(profile)
+    now_local = _user_local_now(profile, user, now_utc=now)
+    quiet_end_utc = _quiet_window_end_local(now_local, quiet_window).astimezone(timezone.utc)
+    override_until = hard_limit_utc if hard_limit_utc <= quiet_end_utc else quiet_end_utc
+    return to_iso(override_until)
+
+
+def _quiet_hours_status_timeline_item(profile: dict[str, Any], user: dict[str, Any], now_utc: datetime | None = None) -> dict[str, Any] | None:
+    now = now_utc if isinstance(now_utc, datetime) else utcnow()
+    now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+    quiet_window = _effective_quiet_window(profile)
+    now_local = _user_local_now(profile, user, now_utc=now)
+    override_until = _quiet_override_until_utc(profile)
+    override_active = is_quiet_hours_override_active(now_utc=now, override_until_utc=override_until)
+    quiet_active = is_in_quiet_hours(
+        now_local=now_local,
+        quiet_window=quiet_window,
+        quiet_mode_active=bool(
+            (profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}).get(
+                "quiet_mode_active", False
+            )
+        ),
+    )
+
+    if override_active:
+        try:
+            until_dt = from_iso(override_until)
+            remaining_minutes = max(0, int((ensure_utc(until_dt) - ensure_utc(now)).total_seconds() / 60.0))
+        except Exception:
+            remaining_minutes = 0
+        return {
+            "time": "Now",
+            "event": f"Quiet hours override active ({remaining_minutes} min remaining)",
+            "status": "override",
+        }
+
+    if quiet_active:
+        return {
+            "time": "Now",
+            "event": f"Quiet hours active ({quiet_window}). Non-critical automations are paused.",
+            "status": "quiet",
+        }
+
+    return None
+
+
+def _automation_cooldown_timeline_items(now_utc: datetime | None = None) -> list[dict[str, Any]]:
+    registry = AutomationRegistry(state_path=AUTOMATION_STATE_PATH)
+    for automation in build_default_automations():
+        registry.register(automation)
+
+    statuses = registry.cooldown_status(now_utc=now_utc)
+    rows: list[dict[str, Any]] = []
+    for row in statuses:
+        automation_name = str(row.get("name", "automation") or "automation").replace("_", " ")
+        remaining = max(0, int(row.get("next_run_in_minutes", 0) or 0))
+        if remaining > 0:
+            rows.append(
+                {
+                    "time": f"in {remaining} min",
+                    "event": f"{automation_name}: next run available in {remaining} min",
+                    "status": "cooldown",
+                }
+            )
+        else:
+            rows.append(
+                {
+                    "time": "Anytime",
+                    "event": f"{automation_name}: available now",
+                    "status": "ready",
+                }
+            )
+    return rows[:8]
+
+
 def _normalize_timeline_items(items: list[Any] | None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     source = items if isinstance(items, list) else []
@@ -601,6 +732,11 @@ def _user_action_catalog() -> dict[str, dict[str, str]]:
             "event": "Music-reactive lights enabled",
             "status": "active",
             "message": "Reactive lights are enabled and synced.",
+        },
+        "quiet_hours_override": {
+            "event": "Quiet hours override enabled",
+            "status": "override",
+            "message": "Quiet hours override is active for a short window.",
         },
     }
 
@@ -1635,6 +1771,9 @@ def upsert_mobile_profile(payload: UserProfilePrefsRequest, request: Request) ->
     normalized = _normalize_user_profile_prefs(payload.model_dump())
     section[key] = normalized
     profile["web_profile_prefs"] = section
+    prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+    prefs["timezone"] = str(normalized.get("timezone", "UTC") or "UTC").strip() or "UTC"
+    profile["preferences"] = prefs
     _save_profile(profile)
     _event("info", "user_profile_saved", user_id=str(user.get("user_id", "")), key=key)
     return {"ok": True, "profile": normalized}
@@ -1937,9 +2076,17 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
             profile["web_device_commands"] = cmd_section
             _save_profile(profile)
 
+    now = utcnow()
+    quiet_row = _quiet_hours_status_timeline_item(profile, user, now_utc=now)
+    cooldown_rows = _automation_cooldown_timeline_items(now_utc=now)
+    if cooldown_rows:
+        items = cooldown_rows + items
+    if quiet_row:
+        items = [quiet_row] + items
+
     if not items:
         items = _default_user_timeline()
-    return {"ok": True, "items": items}
+    return {"ok": True, "items": _normalize_timeline_items(items)[:20]}
 
 
 @app.post("/v1/mobile/user-actions")
@@ -1964,6 +2111,43 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
     key = _user_profile_key(user)
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user action key")
+
+    if action_key == "quiet_hours_override":
+        prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+        profile["preferences"] = prefs
+        override_until_utc = _compute_quiet_hours_override_until_utc(profile, user, now_utc=utcnow())
+        prefs["quiet_hours_override_until_utc"] = override_until_utc
+
+        section = _get_scoped_profile_section(profile, "web_timeline")
+        rows = section.get(key, []) if isinstance(section.get(key, []), list) else []
+        rows = _normalize_timeline_items(rows)
+        rows.insert(
+            0,
+            {
+                "time": "Now",
+                "event": "Quiet hours override enabled",
+                "status": "override",
+                "command_id": "",
+            },
+        )
+        section[key] = rows[:20]
+        profile["web_timeline"] = section
+        _save_profile(profile)
+
+        _event(
+            "info",
+            "quiet_hours_override_enabled",
+            user_id=str(user.get("user_id", "")),
+            override_until_utc=override_until_utc,
+        )
+        return {
+            "ok": True,
+            "action": action_key,
+            "command_id": "",
+            "message": f"Quiet hours override active until {override_until_utc}.",
+            "override_until_utc": override_until_utc,
+            "timeline": section[key],
+        }
 
     command_id = f"cmd_{int(datetime.now().timestamp() * 1000)}"
     now_iso = _now_utc_iso()
@@ -2357,6 +2541,29 @@ def admin_actions(payload: AdminActionRequest, request: Request) -> dict[str, An
         "action": action_key,
         "title": str(config.get("title", "Action completed")),
         "message": str(config.get("message", "Action completed.")),
+    }
+
+
+@app.post("/v1/admin/voice/circuit-breaker/reset")
+def admin_voice_circuit_breaker_reset(request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    admin = _require_admin(request)
+
+    source = f"admin_panel:{str(admin.get('user_id', '') or 'unknown')}"
+    payload = write_voice_circuit_reset_signal(settings.voice_circuit_reset_signal_path, source=source)
+
+    store.add_admin_audit_log(
+        actor_user_id=str(admin.get("user_id", "")),
+        actor_role=str(admin.get("role", "viewer")),
+        action="voice_circuit_breaker_reset",
+        resource="voice_pipeline",
+        details={"source": "admin_panel"},
+    )
+    _event("info", "voice_circuit_breaker_reset", actor=str(admin.get("user_id", "")))
+    return {
+        "ok": True,
+        "requested_at": str(payload.get("requested_at", "")),
+        "message": "Voice circuit-breaker reset signal queued.",
     }
 
 
