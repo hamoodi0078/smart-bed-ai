@@ -6,6 +6,7 @@ import re
 import secrets
 import threading
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -38,6 +39,7 @@ from ai.long_term_memory import LongTermMemoryStore
 from ai.voice_circuit_breaker import write_voice_circuit_reset_signal
 from config import LONG_TERM_MEMORY_PATH, RUNTIME_DATA_DIR, USER_PROFILE_PATH, settings
 from core.structured_logging import emit_json_log
+from scenes import SceneStore
 from time_utils import from_iso, to_iso, utcnow
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -46,7 +48,9 @@ ASSETS_DIR = WEB_DIR / "assets"
 PROFILE_PATH = USER_PROFILE_PATH
 WEB_MEMORY_DIR = RUNTIME_DATA_DIR / "web_memory"
 AUTOMATION_STATE_PATH = RUNTIME_DATA_DIR / "automations_state.json"
+SLEEP_HISTORY_PATH = Path("data") / "sleep_history.json"
 store = SubscriptionStore()
+scene_store = SceneStore()
 _CHAT_ENGINE_LOCK = threading.RLock()
 _CHAT_ENGINES: dict[str, ConversationEngine] = {}
 
@@ -213,6 +217,15 @@ class SceneSelectionRequest(BaseModel):
     scene_key: str
 
 
+class SceneComposeRequest(BaseModel):
+    name: str = ""
+    light: dict[str, Any] | None = None
+    audio: dict[str, Any] | None = None
+    premium: bool = False
+    category: str = ""
+    tags: list[str] = []
+
+
 class SpotifyPlaybackRequest(BaseModel):
     action: str
     device_id: str = ""
@@ -235,6 +248,108 @@ def _safe_profile() -> dict[str, Any]:
             },
         )
         raise HTTPException(status_code=500, detail="Profile storage read failed") from exc
+
+
+def _clamp_score(value: int) -> int:
+    return max(0, min(100, int(value)))
+
+
+def _sleep_history_sessions() -> list[dict[str, Any]]:
+    payload = locked_read_json(SLEEP_HISTORY_PATH)
+    if not isinstance(payload, dict):
+        return []
+    raw_sessions = payload.get("sessions", [])
+    if not isinstance(raw_sessions, list):
+        return []
+    return [row for row in raw_sessions if isinstance(row, dict)]
+
+
+def _parse_optional_utc_datetime(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return from_iso(text)
+    except Exception:
+        return None
+
+
+def _sleep_readiness_score(now_utc: datetime) -> int:
+    score = 70
+    sessions = _sleep_history_sessions()
+    last_session = sessions[-1] if sessions else {}
+    last_bedtime = _parse_optional_utc_datetime(last_session.get("bedtime", "")) if isinstance(last_session, dict) else None
+    bedtime_hour = int(last_bedtime.hour) if isinstance(last_bedtime, datetime) else -1
+
+    if 21 <= bedtime_hour < 23:
+        score += 10
+    elif bedtime_hour >= 23:
+        score -= 10
+
+    if len(sessions) >= 3:
+        score += 5
+    else:
+        score -= 5
+
+    return _clamp_score(score)
+
+
+def _sleep_readiness_explanation(score: int) -> str:
+    if score >= 80:
+        return "You have been consistent this week. Great habits!"
+    if score >= 60:
+        return "You are building good sleep habits. Keep going!"
+    return "Let us help you improve your sleep consistency."
+
+
+def _recommended_scene_for_sleep_overview(now_utc: datetime) -> dict[str, Any]:
+    hour = int(now_utc.hour)
+    if 20 <= hour < 23:
+        scene_name = "Cozy Night"
+        reason = "Perfect for winding down"
+    elif (hour >= 23) or (hour < 4):
+        scene_name = "Deep Sleep"
+        reason = "Time to rest deeply"
+    elif 4 <= hour < 9:
+        scene_name = "Gentle Wake"
+        reason = "Start your morning gently"
+    else:
+        scene_name = "Cozy Night"
+        reason = "Best scene for this time of night"
+
+    scene_id: str | None = None
+    for scene in scene_store.get_all_templates():
+        if str(scene.get("name", "")).strip().lower() == scene_name.lower():
+            resolved_id = str(scene.get("id", "")).strip()
+            scene_id = resolved_id or None
+            break
+
+    return {
+        "id": scene_id,
+        "name": scene_name,
+        "reason": reason,
+    }
+
+
+def _sleep_quick_actions(now_utc: datetime) -> list[dict[str, str]]:
+    hour = int(now_utc.hour)
+    if 22 <= hour < 24:
+        return [
+            {"label": "Sleep Now", "action": "sleep_now"},
+            {"label": "Read Mode", "action": "read_mode"},
+            {"label": "Disable Automations", "action": "automations_disable"},
+        ]
+    if hour < 6:
+        return [
+            {"label": "Gentle Wake", "action": "gentle_wake"},
+            {"label": "View Last Night", "action": "view_last_night"},
+            {"label": "Set Alarm", "action": "alarm_set"},
+        ]
+    return [
+        {"label": "Start Wind-Down", "action": "winddown_start"},
+        {"label": "Dim Everything", "action": "dim_all"},
+        {"label": "Set Alarm", "action": "alarm_set"},
+    ]
 
 
 def _latest_emotion_state(profile: dict[str, Any]) -> str:
@@ -1918,6 +2033,91 @@ def mobile_scenes(request: Request) -> dict[str, Any]:
     }
 
 
+@app.get("/v1/scenes/templates")
+def scene_templates(premium_only: bool = False) -> dict[str, Any]:
+    templates = scene_store.get_templates_for_api()
+    if premium_only:
+        templates = [row for row in templates if bool(row.get("premium", False))]
+    return {
+        "ok": True,
+        "templates": templates,
+        "total": len(templates),
+    }
+
+
+@app.get("/v1/sleep/overview")
+def sleep_overview() -> dict[str, Any]:
+    now_utc = utcnow().replace(microsecond=0)
+    readiness_score = _sleep_readiness_score(now_utc)
+    return {
+        "ok": True,
+        "readiness_score": readiness_score,
+        "readiness_explanation": _sleep_readiness_explanation(readiness_score),
+        "recommended_scene": _recommended_scene_for_sleep_overview(now_utc),
+        "pending_reminders": 0,
+        "sensor_confidence": 100,
+        "quick_actions": _sleep_quick_actions(now_utc),
+        "last_updated": to_iso(now_utc),
+    }
+
+
+@app.post("/v1/scenes/compose")
+def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    trace_id = _request_trace_id(request)
+
+    required_fields = {
+        "name": str(payload.name or "").strip(),
+        "light": payload.light if isinstance(payload.light, dict) else None,
+        "audio": payload.audio if isinstance(payload.audio, dict) else None,
+    }
+    for field_name in ("name", "light", "audio"):
+        value = required_fields[field_name]
+        if (value is None) or (isinstance(value, str) and not value):
+            return JSONResponse(
+                status_code=422,
+                content=_error_envelope(
+                    trace_id=trace_id,
+                    code="INVALID_SCENE_CONFIG",
+                    message=f"Missing required field: {field_name}",
+                ),
+                headers={_TRACE_ID_HEADER: trace_id},
+            )
+
+    # Premium enforcement hook; auth is not wired yet so access currently always passes.
+    has_premium_access = True
+    if bool(payload.premium) and (not has_premium_access):
+        return JSONResponse(
+            status_code=403,
+            content=_error_envelope(
+                trace_id=trace_id,
+                code="PREMIUM_REQUIRED",
+                message="This scene requires a premium subscription",
+            ),
+            headers={_TRACE_ID_HEADER: trace_id},
+        )
+
+    scene = scene_store.save_scene(
+        {
+            "name": str(payload.name or "").strip(),
+            "light": dict(payload.light or {}),
+            "audio": dict(payload.audio or {}),
+            "premium": bool(payload.premium),
+            "category": str(payload.category or "").strip(),
+            "tags": [str(tag).strip() for tag in payload.tags if str(tag).strip()],
+        }
+    )
+    return {
+        "ok": True,
+        "scene": scene,
+        "applied_state": {
+            "light": dict(scene.get("light", {})) if isinstance(scene.get("light", {}), dict) else {},
+            "audio": dict(scene.get("audio", {})) if isinstance(scene.get("audio", {}), dict) else {},
+            "activated_at": to_iso(utcnow().replace(microsecond=0)),
+        },
+    }
+
+
 @app.get("/v1/mobile/settings")
 def mobile_settings(request: Request) -> dict[str, Any]:
     user = _require_user(request)
@@ -2560,7 +2760,7 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
             "timeline": section[key],
         }
 
-    command_id = f"cmd_{int(datetime.now().timestamp() * 1000)}"
+    command_id = f"cmd_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
     now_iso = _now_utc_iso()
     command = _normalize_command_item(
         {
