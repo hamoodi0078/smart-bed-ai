@@ -38,3 +38,5 @@ data/*_db.json
 .env
 test_results.txt
 desktop.ini
+data/.scenes_store.json.lock
+ 
