@@ -37,6 +37,7 @@ from ai.emotion_router import detect_emotion_state
 from ai.long_term_memory import LongTermMemoryStore
 from ai.voice_circuit_breaker import write_voice_circuit_reset_signal
 from config import LONG_TERM_MEMORY_PATH, RUNTIME_DATA_DIR, USER_PROFILE_PATH, settings
+from core.structured_logging import emit_json_log
 from time_utils import from_iso, to_iso, utcnow
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -53,6 +54,7 @@ _SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
 _MAX_CHAT_ENGINES = 200
 _DEVICE_STALE_WINDOW_SECONDS = 180
 _TRACE_ID_HEADER = "X-Trace-Id"
+SCENE_PREVIEW_SECONDS = 3.0
 _METRICS_REQUEST_COUNT = Counter(
     "smart_bed_http_requests_total",
     "Total HTTP requests handled by the Smart Bed API",
@@ -207,6 +209,10 @@ class UserDeviceCommandRequest(BaseModel):
     action: str
 
 
+class SceneSelectionRequest(BaseModel):
+    scene_key: str
+
+
 class SpotifyPlaybackRequest(BaseModel):
     action: str
     device_id: str = ""
@@ -218,7 +224,16 @@ def _safe_profile() -> dict[str, Any]:
     try:
         return locked_read_json(PROFILE_PATH)
     except Exception as exc:
-        logger.error("profile_read_failed path=%s error=%s", PROFILE_PATH, exc)
+        emit_json_log(
+            logger,
+            level="error",
+            event_type="profile_read_failed",
+            trace_id="web_runtime",
+            metadata={
+                "path": str(PROFILE_PATH),
+                "error_type": type(exc).__name__,
+            },
+        )
         raise HTTPException(status_code=500, detail="Profile storage read failed") from exc
 
 
@@ -292,7 +307,16 @@ def _save_profile(payload: dict[str, Any]):
     try:
         atomic_write_json(PROFILE_PATH, payload if isinstance(payload, dict) else {})
     except Exception as exc:
-        logger.error("profile_write_failed path=%s error=%s", PROFILE_PATH, exc)
+        emit_json_log(
+            logger,
+            level="error",
+            event_type="profile_write_failed",
+            trace_id="web_runtime",
+            metadata={
+                "path": str(PROFILE_PATH),
+                "error_type": type(exc).__name__,
+            },
+        )
         raise HTTPException(status_code=500, detail="Profile storage write failed") from exc
 
 
@@ -573,6 +597,137 @@ def _default_user_timeline() -> list[dict[str, Any]]:
     ]
 
 
+def _scene_catalog() -> dict[str, dict[str, Any]]:
+    return {
+        "calm_recovery": {
+            "key": "calm_recovery",
+            "label": "Calm Recovery",
+            "summary": "Soft cyan breathing lights with gentle audio.",
+            "brightness": 0.25,
+            "audio_profile": "soft_pad",
+        },
+        "focus_momentum": {
+            "key": "focus_momentum",
+            "label": "Focus Momentum",
+            "summary": "Steady pulse scene for focused evenings.",
+            "brightness": 0.45,
+            "audio_profile": "focus_loop",
+        },
+        "discipline_night": {
+            "key": "discipline_night",
+            "label": "Discipline Night",
+            "summary": "Blue wave pattern with low-distraction audio.",
+            "brightness": 0.35,
+            "audio_profile": "night_drive",
+        },
+        "balanced_default": {
+            "key": "balanced_default",
+            "label": "Balanced Default",
+            "summary": "Neutral white scene for everyday comfort.",
+            "brightness": 0.40,
+            "audio_profile": "ambient_neutral",
+        },
+    }
+
+
+def _scene_gallery_items() -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for row in _scene_catalog().values():
+        items.append(
+            {
+                "scene_key": str(row.get("key", "") or ""),
+                "label": str(row.get("label", "Scene") or "Scene"),
+                "summary": str(row.get("summary", "") or ""),
+                "preview_seconds": SCENE_PREVIEW_SECONDS,
+            }
+        )
+    return items
+
+
+def _resolve_scene_entry(scene_key: str) -> dict[str, Any] | None:
+    key = str(scene_key or "").strip().lower()
+    if not key:
+        return None
+    catalog = _scene_catalog()
+    row = catalog.get(key)
+    return dict(row) if isinstance(row, dict) else None
+
+
+def _scene_preview_controls(current_controls: dict[str, Any], scene_entry: dict[str, Any]) -> dict[str, Any]:
+    try:
+        brightness = float(scene_entry.get("brightness", 0.4) or 0.4)
+    except Exception:
+        brightness = 0.4
+    light_level = max(10, min(100, int(round(brightness * 100.0))))
+    return _normalize_device_controls(
+        {
+            **_normalize_device_controls(current_controls),
+            "lights_on": True,
+            "audio_on": True,
+            "light_level": light_level,
+        }
+    )
+
+
+def _run_scene_preview(
+    *,
+    profile: dict[str, Any],
+    key: str,
+    scene_entry: dict[str, Any],
+    preview_seconds: float = SCENE_PREVIEW_SECONDS,
+    sleep_fn=None,
+    time_fn=None,
+) -> dict[str, Any]:
+    sleep = sleep_fn if callable(sleep_fn) else time.sleep
+    clock = time_fn if callable(time_fn) else time.monotonic
+    controls_section = _get_scoped_profile_section(profile, "web_device_controls")
+    previous_controls = _normalize_device_controls(controls_section.get(key, {}))
+    preview_controls = _scene_preview_controls(previous_controls, scene_entry)
+    controls_section[key] = preview_controls
+    profile["web_device_controls"] = controls_section
+
+    preview_started_at = _now_utc_iso()
+    preview_key = str(scene_entry.get("key", "") or "")
+    preview_section = _get_scoped_profile_section(profile, "web_scene_preview")
+    preview_section[key] = {
+        "scene_key": preview_key,
+        "active": True,
+        "started_at_utc": preview_started_at,
+        "ended_at_utc": "",
+        "duration_seconds": float(preview_seconds),
+    }
+    profile["web_scene_preview"] = preview_section
+    _save_profile(profile)
+
+    start_monotonic = float(clock())
+    try:
+        sleep(float(preview_seconds))
+    finally:
+        controls_section = _get_scoped_profile_section(profile, "web_device_controls")
+        controls_section[key] = previous_controls
+        profile["web_device_controls"] = controls_section
+
+        preview_section = _get_scoped_profile_section(profile, "web_scene_preview")
+        preview_section[key] = {
+            "scene_key": preview_key,
+            "active": False,
+            "started_at_utc": preview_started_at,
+            "ended_at_utc": _now_utc_iso(),
+            "duration_seconds": float(preview_seconds),
+        }
+        profile["web_scene_preview"] = preview_section
+        _save_profile(profile)
+
+    elapsed_seconds = max(0.0, float(clock()) - start_monotonic)
+    return {
+        "scene_key": preview_key,
+        "preview_controls": preview_controls,
+        "restored_controls": previous_controls,
+        "duration_seconds": float(preview_seconds),
+        "elapsed_seconds": elapsed_seconds,
+    }
+
+
 def _effective_quiet_window(profile: dict[str, Any]) -> str:
     prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
     return str(
@@ -763,10 +918,84 @@ def _normalize_command_item(row: dict[str, Any] | None) -> dict[str, Any]:
         "event": str(data.get("event", "Action triggered") or "Action triggered"),
         "message": str(data.get("message", "Action accepted") or "Action accepted"),
         "status": str(data.get("status", "queued") or "queued"),
+        "trace_id": str(data.get("trace_id", "") or ""),
         "created_at": str(data.get("created_at", "") or ""),
         "updated_at": str(data.get("updated_at", "") or ""),
         "completed_at": str(data.get("completed_at", "") or ""),
     }
+
+
+def _safe_command_summary(text: str) -> str:
+    value = str(text or "").strip()
+    if not value:
+        return "Command action"
+    value = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "[redacted-email]", value)
+    value = re.sub(r"(?i)(token|secret|password)\s*[:=]\s*\S+", r"\1=[redacted]", value)
+    value = " ".join(value.split())
+    return value[:160] or "Command action"
+
+
+def _build_last_command_result_from_command(command: dict[str, Any] | None) -> dict[str, Any]:
+    cmd = _normalize_command_item(command)
+    status = str(cmd.get("status", "queued") or "queued").strip().lower() or "queued"
+    action = str(cmd.get("action", "") or "").strip().lower()
+    summary = _safe_command_summary(str(cmd.get("event", "") or action.replace("_", " ")))
+    timestamp_utc = str(
+        cmd.get("completed_at", "")
+        or cmd.get("updated_at", "")
+        or cmd.get("created_at", "")
+        or _now_utc_iso()
+    ).strip()
+    trace_id = str(cmd.get("trace_id", "") or "").strip()
+
+    diagnostic = "Command completed." if status == "completed" else "Command in progress."
+    if status == "failed":
+        diagnostic = "Command failed on device."
+
+    return {
+        "command_id": str(cmd.get("id", "") or ""),
+        "action": action,
+        "summary": summary,
+        "status": status,
+        "success": bool(status == "completed"),
+        "timestamp_utc": timestamp_utc,
+        "trace_id": trace_id,
+        "retry_action": action,
+        "diagnostic": diagnostic,
+    }
+
+
+def _normalize_last_command_result(row: dict[str, Any] | None) -> dict[str, Any]:
+    data = row if isinstance(row, dict) else {}
+    status = str(data.get("status", "queued") or "queued").strip().lower() or "queued"
+    action = str(data.get("action", "") or "").strip().lower()
+    return {
+        "command_id": str(data.get("command_id", "") or ""),
+        "action": action,
+        "summary": _safe_command_summary(str(data.get("summary", "") or "Command action")),
+        "status": status,
+        "success": bool(data.get("success", status == "completed")),
+        "timestamp_utc": str(data.get("timestamp_utc", "") or _now_utc_iso()),
+        "trace_id": str(data.get("trace_id", "") or ""),
+        "retry_action": str(data.get("retry_action", action) or action).strip().lower(),
+        "diagnostic": _safe_command_summary(str(data.get("diagnostic", "") or "")),
+    }
+
+
+def _last_command_result_from_profile(profile: dict[str, Any], key: str) -> dict[str, Any]:
+    section = _get_scoped_profile_section(profile, "web_last_command_result")
+    row = section.get(key, {}) if key else {}
+    if not key or not isinstance(row, dict) or not row:
+        return {}
+    return _normalize_last_command_result(row)
+
+
+def _store_last_command_result(profile: dict[str, Any], key: str, result: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_last_command_result(result)
+    section = _get_scoped_profile_section(profile, "web_last_command_result")
+    section[key] = normalized
+    profile["web_last_command_result"] = section
+    return normalized
 
 
 def _progress_command_state(command: dict[str, Any], now: datetime) -> tuple[dict[str, Any], bool]:
@@ -1022,14 +1251,17 @@ def _bump(metric: str, inc: int = 1):
 
 
 def _event(level: str, action: str, **fields: Any):
-    payload = {"action": action, **fields}
-    text = json.dumps(payload, ensure_ascii=True)
-    if level == "warning":
-        logger.warning(text)
-    elif level == "error":
-        logger.error(text)
-    else:
-        logger.info(text)
+    raw = dict(fields or {})
+    trace_id = str(raw.pop("trace_id", "") or "")
+    user_id = str(raw.pop("user_id", "") or "")
+    emit_json_log(
+        logger,
+        level=level,
+        event_type=action,
+        trace_id=trace_id,
+        user_id=user_id,
+        metadata=raw,
+    )
 
 
 def _request_trace_id(request: Request) -> str:
@@ -1102,7 +1334,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     trace_id = _request_trace_id(request)
-    logger.exception("unhandled_exception trace_id=%s path=%s", trace_id, request.url.path)
+    emit_json_log(
+        logger,
+        level="error",
+        event_type="unhandled_exception",
+        trace_id=trace_id,
+        metadata={
+            "path": request.url.path,
+            "error_type": type(exc).__name__,
+        },
+    )
     return JSONResponse(
         status_code=500,
         content=_error_envelope(trace_id=trace_id, code="INTERNAL_ERROR", message="Internal server error"),
@@ -1642,6 +1883,7 @@ def admin_observability(request: Request) -> dict[str, Any]:
 def mobile_dashboard(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
+    key = _user_profile_key(user)
     prefs = profile.get("preferences", {}) if isinstance(profile, dict) else {}
     sleep = profile.get("sleep", {}) if isinstance(profile, dict) else {}
 
@@ -1662,6 +1904,17 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
         "engagement_level": resolved["engagement_level"],
         "partner_mode_enabled": resolved["partner_mode_enabled"],
         "wind_down_minutes": resolved["wind_down_minutes"],
+        "last_command_result": _last_command_result_from_profile(profile, key),
+    }
+
+
+@app.get("/v1/mobile/scenes")
+def mobile_scenes(request: Request) -> dict[str, Any]:
+    _require_user(request)
+    return {
+        "ok": True,
+        "preview_duration_seconds": SCENE_PREVIEW_SECONDS,
+        "items": _scene_gallery_items(),
     }
 
 
@@ -2070,6 +2323,8 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
         commands, changed = _progress_user_commands(profile, key)
         command_map = {str(c.get("id", "")): c for c in commands if str(c.get("id", ""))}
         items = _apply_command_status_to_timeline(items, command_map)
+        if changed and commands:
+            _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
         if changed:
             cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
             cmd_section[key] = commands
@@ -2094,6 +2349,142 @@ def mobile_user_actions(payload: UserActionRequest, request: Request) -> dict[st
     return create_mobile_device_command(UserDeviceCommandRequest(action=payload.action), request)
 
 
+@app.post("/v1/mobile/scenes/preview")
+def mobile_scene_preview(payload: SceneSelectionRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    key = _user_profile_key(user)
+    if not key:
+        raise HTTPException(status_code=400, detail="Unable to identify user scene key")
+
+    scene_entry = _resolve_scene_entry(payload.scene_key)
+    if not scene_entry:
+        raise HTTPException(status_code=400, detail="Unsupported scene key")
+
+    trace_id = _request_trace_id(request)
+    scene_key = str(scene_entry.get("key", "") or "")
+    _event(
+        "info",
+        "scene_preview_started",
+        trace_id=trace_id,
+        user_id=str(user.get("user_id", "")),
+        scene_key=scene_key,
+        preview_seconds=SCENE_PREVIEW_SECONDS,
+        premium_quota_charged=False,
+    )
+
+    try:
+        preview_result = _run_scene_preview(
+            profile=profile,
+            key=key,
+            scene_entry=scene_entry,
+            preview_seconds=SCENE_PREVIEW_SECONDS,
+        )
+    except Exception as exc:
+        _event(
+            "error",
+            "scene_preview_failed",
+            trace_id=trace_id,
+            user_id=str(user.get("user_id", "")),
+            scene_key=scene_key,
+            error_type=type(exc).__name__,
+        )
+        raise
+
+    _event(
+        "info",
+        "scene_preview_completed",
+        trace_id=trace_id,
+        user_id=str(user.get("user_id", "")),
+        scene_key=scene_key,
+        preview_seconds=SCENE_PREVIEW_SECONDS,
+        elapsed_ms=int(round(float(preview_result.get("elapsed_seconds", 0.0)) * 1000.0)),
+        premium_quota_charged=False,
+    )
+    return {
+        "ok": True,
+        "scene_key": scene_key,
+        "scene_label": str(scene_entry.get("label", "Scene") or "Scene"),
+        "preview_duration_seconds": SCENE_PREVIEW_SECONDS,
+        "elapsed_seconds": round(float(preview_result.get("elapsed_seconds", 0.0)), 3),
+        "post_preview_prompt": "Like it? Save for Tonight",
+        "message": "Preview complete. Like it? Save for Tonight",
+        "premium_quota_exempt": True,
+        "trace_id": trace_id,
+    }
+
+
+@app.post("/v1/mobile/scenes/save-tonight")
+def mobile_scene_save_tonight(payload: SceneSelectionRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    key = _user_profile_key(user)
+    if not key:
+        raise HTTPException(status_code=400, detail="Unable to identify user scene key")
+
+    scene_entry = _resolve_scene_entry(payload.scene_key)
+    if not scene_entry:
+        raise HTTPException(status_code=400, detail="Unsupported scene key")
+
+    scene_key = str(scene_entry.get("key", "") or "")
+    scene_label = str(scene_entry.get("label", "Scene") or "Scene")
+
+    controls_section = _get_scoped_profile_section(profile, "web_device_controls")
+    current_controls = _normalize_device_controls(controls_section.get(key, {}))
+    controls_section[key] = _scene_preview_controls(current_controls, scene_entry)
+    profile["web_device_controls"] = controls_section
+
+    env = profile.get("environment", {}) if isinstance(profile.get("environment", {}), dict) else {}
+    env["last_scene_key"] = scene_key
+    env["last_scene_applied_at"] = _now_utc_iso()
+    env["saved_tonight_scene_key"] = scene_key
+    profile["environment"] = env
+
+    timeline_section = _get_scoped_profile_section(profile, "web_timeline")
+    rows = timeline_section.get(key, []) if isinstance(timeline_section.get(key, []), list) else []
+    rows = _normalize_timeline_items(rows)
+    rows.insert(
+        0,
+        {
+            "time": "Now",
+            "event": f"Scene saved for tonight: {scene_label}",
+            "status": "ready",
+            "command_id": "",
+        },
+    )
+    timeline_section[key] = rows[:20]
+    profile["web_timeline"] = timeline_section
+
+    _save_profile(profile)
+
+    trace_id = _request_trace_id(request)
+    _event(
+        "info",
+        "scene_saved_for_tonight",
+        trace_id=trace_id,
+        user_id=str(user.get("user_id", "")),
+        scene_key=scene_key,
+        premium_quota_charged=False,
+    )
+    return {
+        "ok": True,
+        "scene_key": scene_key,
+        "scene_label": scene_label,
+        "saved_for_tonight": True,
+        "message": "Scene saved for tonight.",
+        "premium_quota_exempt": True,
+        "trace_id": trace_id,
+    }
+
+
 @app.post("/v1/mobile/device-commands")
 def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
@@ -2111,10 +2502,12 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
     key = _user_profile_key(user)
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user action key")
+    request_trace_id = _request_trace_id(request)
 
     if action_key == "quiet_hours_override":
         prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
         profile["preferences"] = prefs
+        now_iso = _now_utc_iso()
         override_until_utc = _compute_quiet_hours_override_until_utc(profile, user, now_utc=utcnow())
         prefs["quiet_hours_override_until_utc"] = override_until_utc
 
@@ -2132,11 +2525,28 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
         )
         section[key] = rows[:20]
         profile["web_timeline"] = section
+        last_command_result = _store_last_command_result(
+            profile,
+            key,
+            _build_last_command_result_from_command(
+                {
+                    "id": "",
+                    "action": action_key,
+                    "event": str(entry.get("event", "Action triggered")),
+                    "status": "completed",
+                    "trace_id": request_trace_id,
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                    "completed_at": now_iso,
+                }
+            ),
+        )
         _save_profile(profile)
 
         _event(
             "info",
             "quiet_hours_override_enabled",
+            trace_id=request_trace_id,
             user_id=str(user.get("user_id", "")),
             override_until_utc=override_until_utc,
         )
@@ -2146,6 +2556,7 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
             "command_id": "",
             "message": f"Quiet hours override active until {override_until_utc}.",
             "override_until_utc": override_until_utc,
+            "last_command_result": last_command_result,
             "timeline": section[key],
         }
 
@@ -2158,6 +2569,7 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
             "event": str(entry.get("event", "Action triggered")),
             "message": str(entry.get("message", "Action accepted")),
             "status": "queued",
+            "trace_id": request_trace_id,
             "created_at": now_iso,
             "updated_at": now_iso,
             "completed_at": "",
@@ -2185,14 +2597,27 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
     )
     section[key] = rows[:20]
     profile["web_timeline"] = section
+    last_command_result = _store_last_command_result(
+        profile,
+        key,
+        _build_last_command_result_from_command(command),
+    )
     _save_profile(profile)
 
-    _event("info", "user_action", user_id=str(user.get("user_id", "")), action=action_key, command_id=command_id)
+    _event(
+        "info",
+        "user_action",
+        trace_id=request_trace_id,
+        user_id=str(user.get("user_id", "")),
+        command_action=action_key,
+        command_id=command_id,
+    )
     return {
         "ok": True,
         "action": action_key,
         "command_id": command_id,
         "command": command,
+        "last_command_result": last_command_result,
         "message": str(entry.get("message", "Action completed.")),
         "timeline": section[key],
     }
@@ -2210,6 +2635,12 @@ def mobile_device_command_status(command_id: str, request: Request) -> dict[str,
         profile = {}
 
     commands, changed = _progress_user_commands(profile, key)
+    last_command_result = _last_command_result_from_profile(profile, key)
+    if commands:
+        latest_result = _build_last_command_result_from_command(commands[0])
+        last_command_result = latest_result
+        if changed:
+            _store_last_command_result(profile, key, latest_result)
     cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
     cmd_section[key] = commands
     profile["web_device_commands"] = cmd_section
@@ -2233,7 +2664,7 @@ def mobile_device_command_status(command_id: str, request: Request) -> dict[str,
     if not target:
         raise HTTPException(status_code=404, detail="Command not found")
 
-    return {"ok": True, "command": target}
+    return {"ok": True, "command": target, "last_command_result": last_command_result}
 
 
 @app.get("/v1/mobile/devices")

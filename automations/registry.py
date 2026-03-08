@@ -15,10 +15,13 @@ from automations.base import (
     normalize_automation_criticality,
     normalize_cooldown_minutes,
 )
+from automations.idempotency import IdempotencyStore, make_fingerprint
+from core.structured_logging import emit_json_log
 from core.types import Effect
 from time_utils import ensure_utc, from_iso, to_iso, utcnow
 
 DEFAULT_QUIET_HOURS_WINDOW = "22:00-07:00"
+AUTOMATION_IDEMPOTENCY_WINDOW_SECONDS = 60
 _LOG = logging.getLogger("automations.registry")
 
 
@@ -84,6 +87,7 @@ class AutomationRegistry:
         self._state_path = Path(state_path)
         self._automations: list[Automation] = []
         self._state = self._load_state()
+        self._idempotency_store = IdempotencyStore(path=self._state_path.with_name("idempotency_store.json"))
 
     def register(self, automation: Automation) -> None:
         normalized_cooldown = normalize_cooldown_minutes(automation.cooldown_minutes)
@@ -135,6 +139,21 @@ class AutomationRegistry:
         run_ctx["quiet_window"] = quiet_window
         run_ctx["quiet_hours_active"] = quiet_active_now
         run_ctx["quiet_hours_override_active"] = override_active
+        trace_id = str(run_ctx.get("trace_id", "automation_runtime") or "automation_runtime")
+
+        if quiet_active_now or override_active:
+            emit_json_log(
+                _LOG,
+                level="info",
+                event_type="quiet_hours_decision",
+                trace_id=trace_id,
+                metadata={
+                    "quiet_window": quiet_window,
+                    "quiet_active": quiet_active_now,
+                    "override_active": override_active,
+                    "timezone": timezone_name,
+                },
+            )
 
         emitted: list[Effect] = []
         state_changed = False
@@ -144,11 +163,16 @@ class AutomationRegistry:
 
             criticality = normalize_automation_criticality(automation.criticality)
             if quiet_active_now and criticality != AUTOMATION_CRITICALITY_CRITICAL:
-                _LOG.info(
-                    "automation_blocked_quiet_hours automation=%s criticality=%s quiet_window=%s",
-                    automation.name,
-                    criticality,
-                    quiet_window,
+                emit_json_log(
+                    _LOG,
+                    level="info",
+                    event_type="automation_blocked_quiet_hours",
+                    trace_id=trace_id,
+                    metadata={
+                        "automation": automation.name,
+                        "criticality": criticality,
+                        "quiet_window": quiet_window,
+                    },
                 )
                 continue
 
@@ -182,8 +206,64 @@ class AutomationRegistry:
             except Exception:
                 continue
 
+            valid_effects = []
             if isinstance(effects, list):
-                emitted.extend(effect for effect in effects if isinstance(effect, Effect))
+                for effect in effects:
+                    if not isinstance(effect, Effect):
+                        continue
+
+                    action_type = str(effect.kind or "").strip().lower() or "effect"
+                    fingerprint = make_fingerprint(
+                        automation_id=automation.name,
+                        action_type=action_type,
+                        ts=now_utc,
+                    )
+                    if self._idempotency_store.is_duplicate(
+                        fingerprint=fingerprint,
+                        window_seconds=AUTOMATION_IDEMPOTENCY_WINDOW_SECONDS,
+                    ):
+                        emit_json_log(
+                            _LOG,
+                            level="info",
+                            event_type="automation_dedup_blocked",
+                            trace_id=trace_id,
+                            metadata={
+                                "automation_id": automation.name,
+                                "fingerprint": fingerprint,
+                                "window_seconds": AUTOMATION_IDEMPOTENCY_WINDOW_SECONDS,
+                            },
+                        )
+                        continue
+
+                    self._idempotency_store.record(
+                        fingerprint=fingerprint,
+                        window_seconds=AUTOMATION_IDEMPOTENCY_WINDOW_SECONDS,
+                    )
+                    emit_json_log(
+                        _LOG,
+                        level="info",
+                        event_type="idempotency_record_saved",
+                        trace_id=trace_id,
+                        metadata={
+                            "fingerprint": fingerprint,
+                            "expires_at": self._idempotency_store.last_recorded_expires_at,
+                        },
+                    )
+                    valid_effects.append(effect)
+                emitted.extend(valid_effects)
+
+            emit_json_log(
+                _LOG,
+                level="info",
+                event_type="automation_triggered",
+                trace_id=trace_id,
+                metadata={
+                    "automation": automation.name,
+                    "criticality": criticality,
+                    "effects_count": len(valid_effects),
+                    "quiet_hours_active": quiet_active_now,
+                },
+            )
 
             record["last_ran_utc"] = to_iso(now_utc)
             if current_window_key:

@@ -20,6 +20,8 @@ const USER_PROFILE_KEY = "dana_user_profile_v1";
 const DEVICE_CONTROL_KEY = "dana_device_controls_v1";
 const DEVICE_STATUS_ONLINE_MS = 30 * 1000;
 const DEVICE_STATUS_STALE_MS = 5 * 60 * 1000;
+let lastCommandResultState = null;
+let lastScenePreviewKey = "";
 
 async function apiFetch(url, options = {}) {
   const merged = {
@@ -969,6 +971,27 @@ async function loadUserTimelineFromApi() {
   return res;
 }
 
+async function loadScenesFromApi() {
+  const res = await apiFetch("/v1/mobile/scenes");
+  return res;
+}
+
+async function previewSceneFromApi(sceneKey) {
+  const res = await apiFetch("/v1/mobile/scenes/preview", {
+    method: "POST",
+    body: JSON.stringify({ scene_key: sceneKey }),
+  });
+  return res;
+}
+
+async function saveSceneForTonight(sceneKey) {
+  const res = await apiFetch("/v1/mobile/scenes/save-tonight", {
+    method: "POST",
+    body: JSON.stringify({ scene_key: sceneKey }),
+  });
+  return res;
+}
+
 async function triggerUserAction(action) {
   const res = await apiFetch("/v1/mobile/user-actions", {
     method: "POST",
@@ -1011,6 +1034,73 @@ async function spotifyPlaybackAction(action, payload = {}) {
 async function spotifyPlaybackStatus() {
   const res = await apiFetch("/v1/mobile/spotify/playback-status");
   return res;
+}
+
+function normalizeLastCommandResult(row) {
+  const data = row && typeof row === "object" ? row : {};
+  const status = String(data.status || "queued").toLowerCase();
+  return {
+    command_id: String(data.command_id || ""),
+    action: String(data.action || "").toLowerCase(),
+    summary: String(data.summary || "").trim() || "Command action",
+    status: status || "queued",
+    success: Boolean(data.success),
+    timestamp_utc: String(data.timestamp_utc || ""),
+    trace_id: String(data.trace_id || ""),
+    retry_action: String(data.retry_action || data.action || "").toLowerCase(),
+    diagnostic: String(data.diagnostic || "").trim(),
+  };
+}
+
+function formatLocalTimestamp(utcText) {
+  const raw = String(utcText || "").trim();
+  if (!raw) return "-";
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return raw;
+  return dt.toLocaleString();
+}
+
+function statusClassForLastCommand(statusText) {
+  const status = String(statusText || "").toLowerCase();
+  if (status === "completed" || status === "success") return "good";
+  if (status === "failed" || status === "failure" || status === "error") return "bad";
+  return "warn";
+}
+
+function renderLastCommandResultCard(result) {
+  const empty = document.getElementById("last-command-empty");
+  const content = document.getElementById("last-command-content");
+  const summary = document.getElementById("last-command-summary");
+  const status = document.getElementById("last-command-status");
+  const time = document.getElementById("last-command-time");
+  const trace = document.getElementById("last-command-trace-id");
+  const commandId = document.getElementById("last-command-id");
+  const diagnostic = document.getElementById("last-command-diagnostic");
+  const retry = document.getElementById("last-command-retry");
+  if (!empty || !content || !summary || !status || !time || !trace || !commandId || !diagnostic || !retry) return;
+
+  const raw = result && typeof result === "object" ? result : {};
+  const hasContent = Boolean(raw.action || raw.command_id || raw.summary || raw.timestamp_utc || raw.trace_id);
+  if (!hasContent) {
+    lastCommandResultState = null;
+    empty.hidden = false;
+    content.hidden = true;
+    return;
+  }
+
+  const normalized = normalizeLastCommandResult(raw);
+  lastCommandResultState = normalized;
+  empty.hidden = true;
+  content.hidden = false;
+  summary.textContent = normalized.summary;
+  const statusLabel = normalized.success ? "success" : normalized.status || "queued";
+  status.textContent = statusLabel;
+  status.className = `status ${statusClassForLastCommand(statusLabel)}`;
+  time.textContent = formatLocalTimestamp(normalized.timestamp_utc);
+  trace.textContent = normalized.trace_id || "-";
+  commandId.textContent = normalized.command_id || "-";
+  diagnostic.textContent = normalized.diagnostic || "";
+  retry.disabled = !normalized.retry_action;
 }
 
 async function persistUserSettings(payload) {
@@ -1173,6 +1263,157 @@ function initUserSettingsPanel(baseSettings) {
   };
 }
 
+function normalizeSceneItem(row) {
+  const data = row && typeof row === "object" ? row : {};
+  return {
+    scene_key: String(data.scene_key || "").trim().toLowerCase(),
+    label: String(data.label || "Scene").trim() || "Scene",
+    summary: String(data.summary || "").trim(),
+    preview_seconds: Number(data.preview_seconds || 3),
+  };
+}
+
+async function initScenePreviewTap() {
+  if (!location.pathname.includes("user-dashboard")) return;
+  const list = document.getElementById("scene-preview-list");
+  const status = document.getElementById("scene-preview-status");
+  const prompt = document.getElementById("scene-preview-prompt");
+  const promptText = document.getElementById("scene-preview-prompt-text");
+  const saveBtn = document.getElementById("scene-preview-save");
+  if (!list || !status || !prompt || !promptText || !saveBtn) return;
+
+  status.textContent = "Loading scenes...";
+  prompt.hidden = true;
+  lastScenePreviewKey = "";
+
+  try {
+    const res = await loadScenesFromApi();
+    if (res.status === 401) {
+      redirectToLogin("user");
+      return;
+    }
+    if (!res.ok) {
+      status.textContent = "Scene previews unavailable right now.";
+      return;
+    }
+
+    const payload = await res.json().catch(() => ({}));
+    const items = Array.isArray(payload?.items) ? payload.items.map((row) => normalizeSceneItem(row)) : [];
+    const scenes = items.filter((scene) => scene.scene_key);
+    if (!scenes.length) {
+      list.innerHTML = "";
+      status.textContent = "No scenes available right now.";
+      return;
+    }
+
+    list.innerHTML = "";
+    const sceneMap = new Map();
+    scenes.forEach((scene) => {
+      sceneMap.set(scene.scene_key, scene);
+      const row = document.createElement("div");
+      row.className = "row";
+
+      const textWrap = document.createElement("div");
+      const title = document.createElement("div");
+      title.textContent = scene.label;
+      const summary = document.createElement("p");
+      summary.className = "muted";
+      summary.style.margin = "4px 0 0";
+      summary.textContent = scene.summary;
+      textWrap.appendChild(title);
+      textWrap.appendChild(summary);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn alt";
+      button.textContent = "Preview 3s";
+      button.dataset.sceneKey = scene.scene_key;
+
+      button.addEventListener("click", async () => {
+        const previewButtons = list.querySelectorAll("button[data-scene-key]");
+        previewButtons.forEach((el) => {
+          el.disabled = true;
+        });
+        saveBtn.disabled = true;
+        prompt.hidden = true;
+        status.textContent = `Previewing ${scene.label}...`;
+
+        try {
+          const previewRes = await previewSceneFromApi(scene.scene_key);
+          if (previewRes.status === 401) {
+            redirectToLogin("user");
+            return;
+          }
+          if (!previewRes.ok) {
+            const err = await previewRes.json().catch(() => ({}));
+            status.textContent = String(err?.detail || "Scene preview failed.");
+            return;
+          }
+
+          const previewPayload = await previewRes.json().catch(() => ({}));
+          lastScenePreviewKey = scene.scene_key;
+          promptText.textContent = String(previewPayload?.post_preview_prompt || "Like it? Save for Tonight");
+          prompt.hidden = false;
+          status.textContent = String(previewPayload?.message || "Preview complete. Like it? Save for Tonight");
+        } catch (_err) {
+          status.textContent = "Network error while previewing scene.";
+        } finally {
+          previewButtons.forEach((el) => {
+            el.disabled = false;
+          });
+          saveBtn.disabled = false;
+        }
+      });
+
+      row.appendChild(textWrap);
+      row.appendChild(button);
+      list.appendChild(row);
+    });
+
+    if (saveBtn.dataset.bound !== "1") {
+      saveBtn.dataset.bound = "1";
+      saveBtn.addEventListener("click", async () => {
+        const selectedKey = String(lastScenePreviewKey || "").trim().toLowerCase();
+        if (!selectedKey) {
+          status.textContent = "Preview a scene first.";
+          return;
+        }
+        const selectedScene = sceneMap.get(selectedKey);
+        status.textContent = "Saving scene for tonight...";
+        saveBtn.disabled = true;
+        try {
+          const saveRes = await saveSceneForTonight(selectedKey);
+          if (saveRes.status === 401) {
+            redirectToLogin("user");
+            return;
+          }
+          if (!saveRes.ok) {
+            const err = await saveRes.json().catch(() => ({}));
+            status.textContent = String(err?.detail || "Could not save scene right now.");
+            return;
+          }
+          const savePayload = await saveRes.json().catch(() => ({}));
+          status.textContent = String(
+            savePayload?.message || `Saved ${selectedScene?.label || "scene"} for tonight.`,
+          );
+          prompt.hidden = true;
+          lastScenePreviewKey = "";
+          await hydrateUserTimeline();
+        } catch (_err) {
+          status.textContent = "Network error while saving scene.";
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+    }
+
+    const previewSeconds = Number(payload?.preview_duration_seconds || 3);
+    status.textContent = `Tap any scene for a ${Math.max(1, Math.round(previewSeconds))}-second preview.`;
+  } catch (_err) {
+    status.textContent = "Scene previews unavailable right now.";
+  }
+}
+
 async function hydrateUserDashboard() {
   const recovery = document.getElementById("metric-recovery");
   const consistency = document.getElementById("metric-consistency");
@@ -1194,6 +1435,7 @@ async function hydrateUserDashboard() {
     }
     if (!dashboardRes.ok) return;
     const dashboard = await dashboardRes.json();
+    renderLastCommandResultCard(dashboard?.last_command_result || null);
 
     const defaults = {
       response_style: String(dashboard?.response_style || "balanced"),
@@ -1218,6 +1460,7 @@ async function hydrateUserDashboard() {
     await initSpotifyConnect();
     await hydrateUserTimeline();
     bindUserActions();
+    await initScenePreviewTap();
     if (consistencyBar && !consistencyBar.style.width) consistencyBar.style.width = "76%";
   } catch (_err) {
     // Keep default placeholder values on network failures.
@@ -1239,7 +1482,9 @@ async function hydrateUserDashboard() {
     await initDeviceControls();
     await initSpotifyConnect();
     await hydrateUserTimeline();
+    renderLastCommandResultCard(null);
     bindUserActions();
+    await initScenePreviewTap();
   } finally {
     setMetricLoading([recovery, consistency, health, partner, winddown, style, locationMetric], false);
   }
@@ -1257,7 +1502,7 @@ function statusClassForUserTimeline(statusText) {
   return "warn";
 }
 
-async function awaitDeviceCommand(commandId, onProgress) {
+async function awaitDeviceCommand(commandId, onProgress, onPayload) {
   const maxAttempts = 8;
   for (let i = 0; i < maxAttempts; i += 1) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -1269,6 +1514,9 @@ async function awaitDeviceCommand(commandId, onProgress) {
       }
       if (!res.ok) continue;
       const payload = await res.json().catch(() => ({}));
+      if (typeof onPayload === "function") {
+        onPayload(payload);
+      }
       const command = payload?.command || null;
       if (!command) continue;
       if (typeof onProgress === "function") {
@@ -1334,6 +1582,7 @@ function bindUserActions() {
     { id: "user-action-reactive-lights", action: "reactive_lights" },
     { id: "user-action-quiet-override", action: "quiet_hours_override" },
   ];
+  const retryBtn = document.getElementById("last-command-retry");
 
   const runAction = async (action) => {
     if (status) status.textContent = "Executing action...";
@@ -1349,20 +1598,27 @@ function bindUserActions() {
         return;
       }
       const payload = await res.json().catch(() => ({}));
+      renderLastCommandResultCard(payload?.last_command_result || null);
       const commandId = String(payload?.command_id || "");
       if (status) status.textContent = payload?.message || "Command queued.";
       await hydrateUserTimeline();
 
       if (commandId) {
-        const finalCommand = await awaitDeviceCommand(commandId, (cmd) => {
-          if (!status) return;
-          const cur = String(cmd?.status || "running").toLowerCase();
-          if (cur === "running") {
-            status.textContent = "Command running on device...";
-          } else if (cur === "queued") {
-            status.textContent = "Command queued...";
-          }
-        });
+        const finalCommand = await awaitDeviceCommand(
+          commandId,
+          (cmd) => {
+            if (!status) return;
+            const cur = String(cmd?.status || "running").toLowerCase();
+            if (cur === "running") {
+              status.textContent = "Command running on device...";
+            } else if (cur === "queued") {
+              status.textContent = "Command queued...";
+            }
+          },
+          (commandPayload) => {
+            renderLastCommandResultCard(commandPayload?.last_command_result || null);
+          },
+        );
 
         if (finalCommand && status) {
           const finalStatus = String(finalCommand?.status || "").toLowerCase();
@@ -1386,6 +1642,18 @@ function bindUserActions() {
     btn.dataset.bound = "1";
     btn.addEventListener("click", () => runAction(cfg.action));
   });
+
+  if (retryBtn && retryBtn.dataset.bound !== "1") {
+    retryBtn.dataset.bound = "1";
+    retryBtn.addEventListener("click", () => {
+      const retryAction = String(lastCommandResultState?.retry_action || "").trim();
+      if (!retryAction) {
+        if (status) status.textContent = "No command available to retry.";
+        return;
+      }
+      runAction(retryAction);
+    });
+  }
 }
 
 async function hydrateAdminOverview() {

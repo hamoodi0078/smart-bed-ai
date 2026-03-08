@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
+import logging
 from pathlib import Path
 from threading import RLock
 from typing import Callable, TypeVar
 
 from Storage.io import atomic_write_json, locked_read_json
+from core.structured_logging import emit_json_log
 
 
 STATE_CLOSED = "closed"
@@ -14,6 +16,7 @@ STATE_OPEN = "open"
 STATE_HALF_OPEN = "half_open"
 
 T = TypeVar("T")
+_LOG = logging.getLogger("voice.circuit_breaker")
 
 
 def _utc_iso_now() -> str:
@@ -64,6 +67,16 @@ class VoiceCircuitBreaker:
         self._last_failure_time: float | None = None
         self._next_retry_time: float | None = None
         self._last_reset_signal_token = ""
+        self._trace_id = "voice_runtime"
+
+    def _log_event(self, *, level: str, event_type: str, metadata: dict | None = None) -> None:
+        emit_json_log(
+            _LOG,
+            level=level,
+            event_type=event_type,
+            trace_id=self._trace_id,
+            metadata=metadata or {},
+        )
 
     def _snapshot_unlocked(self, now: float | None = None) -> dict:
         timestamp_now = float(self._time_fn() if now is None else now)
@@ -92,22 +105,48 @@ class VoiceCircuitBreaker:
             now = float(self._time_fn())
             if self._state == STATE_OPEN:
                 if isinstance(self._next_retry_time, (int, float)) and now >= float(self._next_retry_time):
+                    previous_state = self._state
                     self._state = STATE_HALF_OPEN
+                    self._log_event(
+                        level="info",
+                        event_type="voice_circuit_state_change",
+                        metadata={
+                            "from_state": previous_state,
+                            "to_state": self._state,
+                            "reason": "cooldown_elapsed",
+                            "failure_count": int(self._failure_count),
+                        },
+                    )
                     return True, STATE_HALF_OPEN
                 return False, STATE_OPEN
             return True, self._state
 
     def record_success(self) -> dict:
         with self._lock:
+            previous_state = self._state
+            previous_failures = int(self._failure_count)
             self._state = STATE_CLOSED
             self._failure_count = 0
             self._last_failure_time = None
             self._next_retry_time = None
-            return self._snapshot_unlocked()
+            snapshot = self._snapshot_unlocked()
+            if previous_state != STATE_CLOSED or previous_failures > 0:
+                self._log_event(
+                    level="info",
+                    event_type="voice_circuit_state_change",
+                    metadata={
+                        "from_state": previous_state,
+                        "to_state": STATE_CLOSED,
+                        "reason": "record_success",
+                        "failure_count": 0,
+                    },
+                )
+            return snapshot
 
     def record_failure(self) -> dict:
         with self._lock:
             now = float(self._time_fn())
+            previous_state = self._state
             self._failure_count += 1
             self._last_failure_time = now
 
@@ -120,11 +159,50 @@ class VoiceCircuitBreaker:
                 self._state = STATE_CLOSED
                 self._next_retry_time = None
 
-            return self._snapshot_unlocked(now=now)
+            snapshot = self._snapshot_unlocked(now=now)
+            self._log_event(
+                level="warning",
+                event_type="voice_circuit_failure",
+                metadata={
+                    "state": self._state,
+                    "failure_count": int(self._failure_count),
+                    "failure_threshold": int(self.failure_threshold),
+                    "cooldown_seconds_remaining": float(snapshot.get("cooldown_seconds_remaining", 0.0) or 0.0),
+                },
+            )
+            if previous_state != self._state:
+                self._log_event(
+                    level="warning",
+                    event_type="voice_circuit_state_change",
+                    metadata={
+                        "from_state": previous_state,
+                        "to_state": self._state,
+                        "reason": "record_failure",
+                        "failure_count": int(self._failure_count),
+                    },
+                )
+            return snapshot
 
     def manual_reset(self, reason: str = "manual") -> dict:
-        del reason
-        return self.record_success()
+        reason_text = str(reason or "manual").strip() or "manual"
+        with self._lock:
+            previous_state = self._state
+            self._state = STATE_CLOSED
+            self._failure_count = 0
+            self._last_failure_time = None
+            self._next_retry_time = None
+            snapshot = self._snapshot_unlocked()
+            self._log_event(
+                level="info",
+                event_type="voice_circuit_state_change",
+                metadata={
+                    "from_state": previous_state,
+                    "to_state": STATE_CLOSED,
+                    "reason": reason_text,
+                    "failure_count": 0,
+                },
+            )
+            return snapshot
 
     def consume_manual_reset_signal(self) -> bool:
         signal_path = self.reset_signal_path

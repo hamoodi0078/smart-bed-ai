@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+from time_utils import to_iso, utcnow
+
+
+def get_default_scenes() -> list[dict]:
+    created_at = to_iso(utcnow().replace(microsecond=0))
+    return [
+        {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "name": "Cozy Night",
+            "light": {"color": "#FF8C42", "intensity": 30, "duration": 5},
+            "audio": {"type": "fireplace", "volume": 20},
+            "premium": False,
+            "category": "relaxation",
+            "tags": ["cozy", "warm"],
+            "is_system_template": True,
+            "usage_count": 0,
+            "created_at": created_at,
+        },
+        {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "name": "Deep Sleep",
+            "light": {"color": "#1A0033", "intensity": 5, "duration": 10},
+            "audio": {"type": "white_noise", "volume": 15},
+            "premium": False,
+            "category": "sleep",
+            "tags": ["deep", "quiet"],
+            "is_system_template": True,
+            "usage_count": 0,
+            "created_at": created_at,
+        },
+        {
+            "id": "33333333-3333-4333-8333-333333333333",
+            "name": "Gentle Wake",
+            "light": {"color": "#FFD700", "intensity": 20, "duration": 15},
+            "audio": {"type": "birds", "volume": 25},
+            "premium": False,
+            "category": "morning",
+            "tags": ["morning", "gentle"],
+            "is_system_template": True,
+            "usage_count": 0,
+            "created_at": created_at,
+        },
+        {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "Focus Mode",
+            "light": {"color": "#FFFFFF", "intensity": 70, "duration": 0},
+            "audio": {"type": "none", "volume": 0},
+            "premium": True,
+            "category": "focus",
+            "tags": ["focus", "productivity"],
+            "is_system_template": True,
+            "usage_count": 0,
+            "created_at": created_at,
+        },
+        {
+            "id": "55555555-5555-4555-8555-555555555555",
+            "name": "Ocean Breeze",
+            "light": {"color": "#006994", "intensity": 40, "duration": 8},
+            "audio": {"type": "ocean_waves", "volume": 30},
+            "premium": True,
+            "category": "relaxation",
+            "tags": ["ocean", "calm"],
+            "is_system_template": True,
+            "usage_count": 0,
+            "created_at": created_at,
+        },
+    ]

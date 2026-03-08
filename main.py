@@ -56,6 +56,7 @@ from ai.wake_word_manager import WakeWordManager
 from automations.defaults import build_default_automations
 from automations.registry import AutomationRegistry
 from config import RUNTIME_DATA_DIR, settings
+from core.structured_logging import emit_json_log
 from core.types import CommandResult
 from commands.lights import handle_light_intent_result
 from commands.reflection import process_reflection_turn
@@ -184,6 +185,7 @@ def run_automations():
 
     ctx = {
         "now_utc": now_utc,
+        "trace_id": "automation_runtime",
         "timezone": timezone_name,
         "sleep_mode_active": bool(sleep_mode_active),
         "quiet_window": str(
@@ -203,12 +205,29 @@ def run_automations():
             reply = str(payload.get("text", "") or "").strip()
             if not reply:
                 continue
-            logger.info("[AUTOMATION] fired with reply=%r", reply)
+            emit_json_log(
+                logger,
+                level="info",
+                event_type="automation_triggered",
+                trace_id="automation_runtime",
+                metadata={
+                    "automation_effect_kind": "say",
+                    "reply_chars": len(reply),
+                },
+            )
             try:
                 if callable(automation_reply_handler):
                     automation_reply_handler(reply)
-            except Exception:
-                logger.exception("[AUTOMATION] reply handler failed.")
+            except Exception as exc:
+                emit_json_log(
+                    logger,
+                    level="error",
+                    event_type="automation_reply_handler_failed",
+                    trace_id="automation_runtime",
+                    metadata={
+                        "error_type": type(exc).__name__,
+                    },
+                )
             continue
 
         if kind == "led":
@@ -5665,6 +5684,17 @@ def main():
         while True:
             if voice_circuit_breaker.consume_manual_reset_signal():
                 breaker_state = voice_circuit_breaker.snapshot()
+                emit_json_log(
+                    logger,
+                    level="info",
+                    event_type="voice_circuit_manual_reset",
+                    trace_id="voice_runtime",
+                    metadata={
+                        "source": "control_signal",
+                        "state": str(breaker_state.get("state", "")),
+                        "failure_count": int(breaker_state.get("failure_count", 0) or 0),
+                    },
+                )
                 print(
                     "[VOICE][CIRCUIT] Manual reset applied from control signal. "
                     f"state={breaker_state.get('state')} failures={breaker_state.get('failure_count')}"
@@ -5721,6 +5751,17 @@ def main():
 
             if _is_voice_circuit_reset_command(user_text):
                 breaker_state = voice_circuit_breaker.manual_reset(reason="runtime_command")
+                emit_json_log(
+                    logger,
+                    level="info",
+                    event_type="voice_circuit_manual_reset",
+                    trace_id="voice_runtime",
+                    metadata={
+                        "source": "runtime_command",
+                        "state": str(breaker_state.get("state", "")),
+                        "failure_count": int(breaker_state.get("failure_count", 0) or 0),
+                    },
+                )
                 print(
                     "[VOICE][CIRCUIT] Manual reset requested from runtime command. "
                     f"state={breaker_state.get('state')} failures={breaker_state.get('failure_count')}"
@@ -5786,8 +5827,9 @@ def main():
                 led.set_state("listening")
                 continue
 
-            print(f"[FLOW] STT text: {user_text}")
+            print(f"[FLOW] STT captured chars={len(user_text)}")
             voice_failure_type = {"name": ""}
+            voice_trace_id = f"voice_{time.time_ns()}"
 
             def _run_voice_pipeline_operation() -> dict:
                 raw_response_text = str(handle_bed_command(user_text) or "").strip()
@@ -5826,6 +5868,15 @@ def main():
 
             def _on_voice_failure(exc: Exception):
                 voice_failure_type["name"] = type(exc).__name__
+                emit_json_log(
+                    logger,
+                    level="error",
+                    event_type="voice_pipeline_failure",
+                    trace_id=voice_trace_id,
+                    metadata={
+                        "error_type": voice_failure_type["name"],
+                    },
+                )
 
             turn_result, used_fallback, breaker_reason, breaker_snapshot = voice_circuit_breaker.run(
                 operation=_run_voice_pipeline_operation,
@@ -5855,6 +5906,19 @@ def main():
                 failure_suffix = (
                     f" failure_type={voice_failure_type['name']}" if voice_failure_type["name"] else ""
                 )
+                emit_json_log(
+                    logger,
+                    level="warning",
+                    event_type="voice_pipeline_fallback",
+                    trace_id=voice_trace_id,
+                    metadata={
+                        "reason": breaker_reason,
+                        "state": str(breaker_snapshot.get("state", "")),
+                        "failure_count": int(breaker_snapshot.get("failure_count", 0) or 0),
+                        "cooldown_seconds_remaining": round(cooldown_remaining, 2),
+                        "failure_type": str(voice_failure_type["name"] or ""),
+                    },
+                )
                 print(
                     "[VOICE][CIRCUIT] Offline fallback engaged "
                     f"reason={breaker_reason} "
@@ -5870,7 +5934,20 @@ def main():
                 continue
 
             audio_file = str(turn_result.get("audio_file", "") or "")
-            print(f"[FLOW] Reply text: {response_text}")
+            emit_json_log(
+                logger,
+                level="info",
+                event_type="voice_pipeline_success",
+                trace_id=voice_trace_id,
+                metadata={
+                    "used_fallback": False,
+                    "breaker_state": str(breaker_snapshot.get("state", "")),
+                    "audio_played": bool(turn_result.get("played", False)),
+                    "audio_file_present": bool(audio_file),
+                    "response_chars": len(response_text),
+                },
+            )
+            print(f"[FLOW] Reply text chars={len(response_text)}")
             last_assistant_response = response_text
 
             print(f"Bed: {response_text}")
@@ -6153,7 +6230,7 @@ def main():
                 gpt_diag = _build_gpt_route_diagnostics(backend_client)
                 if not effective_realtime_query:
                     led.set_state("thinking")
-                print(f"[FLOW] STT text: {user_text}")
+                print(f"[FLOW] STT captured chars={len(user_text)}")
                 print("[FLOW] Open-question route -> GPT completion")
 
                 response_text = ""
@@ -6168,7 +6245,7 @@ def main():
                     )
                     if ok_openai:
                         response_text = str(openai_text or "").strip()
-                        print(f"[FLOW] GPT reply text: {response_text}")
+                        print(f"[FLOW] GPT reply text chars={len(response_text)}")
                     else:
                         print(f"[FLOW][WARN] Direct OpenAI GPT failed: {openai_text}")
 
@@ -6187,7 +6264,7 @@ def main():
                         )
                         if ok_cloud:
                             response_text = str(cloud_text or "").strip()
-                            print(f"[FLOW] GPT reply text: {response_text}")
+                            print(f"[FLOW] GPT reply text chars={len(response_text)}")
                         else:
                             print(f"[FLOW][WARN] Backend GPT request failed: {cloud_text}")
                             offline_response, handled_offline = offline_pack.handle(user_text)

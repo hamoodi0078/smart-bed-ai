@@ -128,6 +128,40 @@
         </article>
       </section>
 
+      <section style="margin-top: 14px;">
+        <article class="card">
+          <h3>Scene Preview Tap</h3>
+          <p class="muted">Tap any scene to preview LED/audio for 3 seconds.</p>
+          <div id="scene-preview-list" class="grid" style="margin-top: 10px;"></div>
+          <p id="scene-preview-status" class="muted" style="margin-top: 10px;">Scene previews ready.</p>
+          <div id="scene-preview-prompt" class="row" style="margin-top: 10px;" hidden>
+            <span id="scene-preview-prompt-text" class="muted">Like it? Save for Tonight</span>
+            <button id="scene-preview-save" class="btn" type="button">Save for Tonight</button>
+          </div>
+        </article>
+      </section>
+
+      <section style="margin-top: 14px;">
+        <article class="card">
+          <h3>Last Command Result</h3>
+          <p id="last-command-empty" class="muted">No commands run yet.</p>
+          <div id="last-command-content" hidden>
+            <p id="last-command-summary" class="muted">Command action</p>
+            <div class="row"><span>Status</span><span id="last-command-status" class="status warn">queued</span></div>
+            <div class="row"><span>Time</span><span id="last-command-time" class="muted">-</span></div>
+            <div class="settings-actions" style="margin-top: 10px;">
+              <button id="last-command-retry" class="btn" type="button">Retry</button>
+            </div>
+            <details style="margin-top: 8px;">
+              <summary class="muted">Debug details</summary>
+              <p class="muted" style="margin-top: 8px;">Trace ID: <code id="last-command-trace-id">-</code></p>
+              <p class="muted">Command ID: <code id="last-command-id">-</code></p>
+              <p id="last-command-diagnostic" class="muted"></p>
+            </details>
+          </div>
+        </article>
+      </section>
+
       <section class="grid grid-2" style="margin-top: 14px;">
         <article class="card">
           <h3>Sleep Trends (Last 7 Days)</h3>
