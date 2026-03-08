@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import secrets
 import threading
@@ -53,6 +54,10 @@ store = SubscriptionStore()
 scene_store = SceneStore()
 _CHAT_ENGINE_LOCK = threading.RLock()
 _CHAT_ENGINES: dict[str, ConversationEngine] = {}
+_DB_CONNECTION: Any | None = None
+_DB_CONNECTION_URL = ""
+_DB_USER_REPOSITORY: Any | None = None
+_SUBSCRIPTION_GATE: Any | None = None
 
 _SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
 _MAX_CHAT_ENGINES = 200
@@ -224,6 +229,10 @@ class SceneComposeRequest(BaseModel):
     premium: bool = False
     category: str = ""
     tags: list[str] = []
+
+
+class TrialStartRequest(BaseModel):
+    user_id: str = ""
 
 
 class SpotifyPlaybackRequest(BaseModel):
@@ -1701,6 +1710,105 @@ def _require_admin(request: Request) -> dict[str, Any]:
     return admin
 
 
+def _database_connection():
+    global _DB_CONNECTION
+    global _DB_CONNECTION_URL
+    global _DB_USER_REPOSITORY
+    global _SUBSCRIPTION_GATE
+
+    env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
+    if (_DB_CONNECTION is None) or (_DB_CONNECTION_URL != env_url):
+        from database import DatabaseConnection
+
+        connection = DatabaseConnection(database_url=env_url or None)
+        connection.create_tables()
+        _DB_CONNECTION = connection
+        _DB_CONNECTION_URL = env_url
+        _DB_USER_REPOSITORY = None
+        _SUBSCRIPTION_GATE = None
+    return _DB_CONNECTION
+
+
+def _db_user_repository():
+    global _DB_USER_REPOSITORY
+    if _DB_USER_REPOSITORY is None:
+        from database import UserRepository
+
+        _DB_USER_REPOSITORY = UserRepository(db=_database_connection())
+    return _DB_USER_REPOSITORY
+
+
+def _subscription_gate():
+    global _SUBSCRIPTION_GATE
+    if _SUBSCRIPTION_GATE is None:
+        from subscriptions import SubscriptionGate
+
+        _SUBSCRIPTION_GATE = SubscriptionGate(user_repo=_db_user_repository())
+    return _SUBSCRIPTION_GATE
+
+
+def _to_iso_nullable(value: Any) -> str | None:
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return to_iso(value)
+
+
+def _subscription_features(subscription_status: str) -> dict[str, int]:
+    premium_like = str(subscription_status or "free").strip().lower() in {"trial", "premium"}
+    return {
+        "max_scenes": 999 if premium_like else 3,
+        "wind_down_minutes": 30 if premium_like else 10,
+        "automations_limit": 999 if premium_like else 2,
+    }
+
+
+def _subscription_status_payload(user_id: str) -> dict[str, Any]:
+    user_key = str(user_id or "").strip()
+    if not user_key:
+        return {
+            "subscription_status": "free",
+            "trial_active": False,
+            "trial_days_remaining": None,
+            "trial_end_date": None,
+            "features": _subscription_features("free"),
+        }
+
+    user = _db_user_repository().get_user_by_id(user_key)
+    if user is None:
+        return {
+            "subscription_status": "free",
+            "trial_active": False,
+            "trial_days_remaining": None,
+            "trial_end_date": None,
+            "features": _subscription_features("free"),
+        }
+
+    status_value = str(getattr(user, "subscription_status", "free") or "free").strip().lower()
+    if status_value not in {"free", "trial", "premium"}:
+        status_value = "free"
+
+    trial_active = False
+    trial_days_remaining: int | None = None
+    if status_value == "trial":
+        gate = _subscription_gate()
+        trial_active = bool(gate.is_trial_active(user))
+        trial_days_remaining = int(gate.get_trial_days_remaining(user))
+
+    effective_status = status_value
+    if status_value == "trial" and not trial_active:
+        effective_status = "free"
+
+    return {
+        "subscription_status": effective_status,
+        "trial_active": trial_active,
+        "trial_days_remaining": trial_days_remaining,
+        "trial_end_date": _to_iso_nullable(getattr(user, "trial_end_date", None)),
+        "features": _subscription_features(effective_status),
+    }
+
+
 @app.get("/")
 def root() -> RedirectResponse:
     return RedirectResponse(url="/login")
@@ -2084,18 +2192,26 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
                 headers={_TRACE_ID_HEADER: trace_id},
             )
 
-    # Premium enforcement hook; auth is not wired yet so access currently always passes.
-    has_premium_access = True
-    if bool(payload.premium) and (not has_premium_access):
-        return JSONResponse(
-            status_code=403,
-            content=_error_envelope(
-                trace_id=trace_id,
-                code="PREMIUM_REQUIRED",
-                message="This scene requires a premium subscription",
-            ),
-            headers={_TRACE_ID_HEADER: trace_id},
+    if bool(payload.premium):
+        actor = _cookie_user(request)
+        access = _subscription_gate().check_scene_access(
+            user_id=str((actor or {}).get("user_id", "") or ""),
+            scene_name=str(payload.name or "").strip(),
+            scene_is_premium=True,
         )
+        if not bool(access.get("allowed", False)):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": {
+                        "code": "PREMIUM_REQUIRED",
+                        "message": "Upgrade to premium to access this scene.",
+                        "trial_available": True,
+                    },
+                },
+                headers={_TRACE_ID_HEADER: trace_id},
+            )
 
     scene = scene_store.save_scene(
         {
@@ -2115,6 +2231,86 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
             "audio": dict(scene.get("audio", {})) if isinstance(scene.get("audio", {}), dict) else {},
             "activated_at": to_iso(utcnow().replace(microsecond=0)),
         },
+    }
+
+
+@app.post("/v1/subscriptions/trial/start")
+def start_trial_subscription(payload: TrialStartRequest, request: Request):
+    _enforce_same_origin(request)
+    trace_id = _request_trace_id(request)
+    user_id = str(payload.user_id or "").strip()
+    if not user_id:
+        return JSONResponse(
+            status_code=400,
+            content=_error_envelope(
+                trace_id=trace_id,
+                code="INVALID_USER_ID",
+                message="User ID is required.",
+            ),
+            headers={_TRACE_ID_HEADER: trace_id},
+        )
+
+    repo = _db_user_repository()
+    user = repo.get_user_by_id(user_id)
+    if user is None:
+        return JSONResponse(
+            status_code=404,
+            content=_error_envelope(
+                trace_id=trace_id,
+                code="USER_NOT_FOUND",
+                message="User not found.",
+            ),
+            headers={_TRACE_ID_HEADER: trace_id},
+        )
+
+    status_value = str(getattr(user, "subscription_status", "free") or "free").strip().lower()
+    trial_already_used = bool(getattr(user, "trial_start_date", None))
+    if trial_already_used or status_value in {"trial", "premium"}:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "ok": False,
+                "error": {
+                    "code": "TRIAL_ALREADY_USED",
+                    "message": "Trial already activated.",
+                },
+            },
+            headers={_TRACE_ID_HEADER: trace_id},
+        )
+
+    start_at = utcnow().replace(microsecond=0)
+    end_at = start_at + timedelta(days=7)
+    updated_user = repo.update_subscription(
+        user_id=user_id,
+        status="trial",
+        trial_start=start_at,
+        trial_end=end_at,
+    )
+    return {
+        "ok": True,
+        "trial_start": _to_iso_nullable(getattr(updated_user, "trial_start_date", start_at)),
+        "trial_end": _to_iso_nullable(getattr(updated_user, "trial_end_date", end_at)),
+        "days": 7,
+        "message": "Your 7-day premium trial has started!",
+    }
+
+
+@app.get("/v1/subscriptions/status")
+def subscription_status(user_id: str = "") -> dict[str, Any]:
+    payload = _subscription_status_payload(user_id)
+    return {"ok": True, **payload}
+
+
+@app.get("/v1/subscriptions/trial/status")
+def trial_subscription_status(user_id: str = "") -> dict[str, Any]:
+    payload = _subscription_status_payload(user_id)
+    return {
+        "ok": True,
+        "subscription_status": payload.get("subscription_status", "free"),
+        "trial_active": bool(payload.get("trial_active", False)),
+        "trial_days_remaining": payload.get("trial_days_remaining"),
+        "trial_end_date": payload.get("trial_end_date"),
+        "features": payload.get("features", _subscription_features("free")),
     }
 
 
