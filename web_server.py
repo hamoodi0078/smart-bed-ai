@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from copy import deepcopy
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -38,6 +44,7 @@ from ai.conversation_engine import ConversationEngine
 from ai.emotion_router import detect_emotion_state
 from ai.long_term_memory import LongTermMemoryStore
 from ai.voice_circuit_breaker import write_voice_circuit_reset_signal
+from commands.undo_manager import UndoManager
 from config import LONG_TERM_MEMORY_PATH, RUNTIME_DATA_DIR, USER_PROFILE_PATH, settings
 from core.structured_logging import emit_json_log
 from scenes import SceneStore
@@ -52,6 +59,7 @@ AUTOMATION_STATE_PATH = RUNTIME_DATA_DIR / "automations_state.json"
 SLEEP_HISTORY_PATH = Path("data") / "sleep_history.json"
 store = SubscriptionStore()
 scene_store = SceneStore()
+undo_manager = UndoManager()
 _CHAT_ENGINE_LOCK = threading.RLock()
 _CHAT_ENGINES: dict[str, ConversationEngine] = {}
 _DB_CONNECTION: Any | None = None
@@ -232,6 +240,10 @@ class SceneComposeRequest(BaseModel):
 
 
 class TrialStartRequest(BaseModel):
+    user_id: str = ""
+
+
+class UndoActionRequest(BaseModel):
     user_id: str = ""
 
 
@@ -775,6 +787,44 @@ def _resolve_scene_entry(scene_key: str) -> dict[str, Any] | None:
     catalog = _scene_catalog()
     row = catalog.get(key)
     return dict(row) if isinstance(row, dict) else None
+
+
+def _scene_store_snapshot() -> list[dict[str, Any]]:
+    return deepcopy(scene_store.get_all_templates())
+
+
+def _restore_scene_store_snapshot(previous_state: Any) -> bool:
+    rows = previous_state if isinstance(previous_state, list) else None
+    if rows is None:
+        return False
+
+    normalize_scene = getattr(scene_store, "_normalize_scene", None)
+    save_state = getattr(scene_store, "_save_state", None)
+    current_state = getattr(scene_store, "_state", None)
+    if not callable(normalize_scene) or not callable(save_state) or not isinstance(current_state, dict):
+        return False
+
+    restored_scenes: list[dict[str, Any]] = []
+    for row in rows:
+        if isinstance(row, dict):
+            restored_scenes.append(normalize_scene(row))
+
+    scene_store._state = {
+        "version": current_state.get("version", 1),
+        "scenes": restored_scenes,
+    }
+    save_state()
+    return True
+
+
+def _undo_seconds_remaining(action: dict[str, Any]) -> int | None:
+    expires_at = _parse_iso_timestamp(str(action.get("expires_at", "") or ""))
+    if expires_at is None:
+        return None
+    remaining_seconds = (expires_at - utcnow()).total_seconds()
+    if remaining_seconds <= 0:
+        return None
+    return int(math.ceil(remaining_seconds))
 
 
 def _scene_preview_controls(current_controls: dict[str, Any], scene_entry: dict[str, Any]) -> dict[str, Any]:
@@ -2213,6 +2263,7 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
                 headers={_TRACE_ID_HEADER: trace_id},
             )
 
+    previous_scene_state = _scene_store_snapshot()
     scene = scene_store.save_scene(
         {
             "name": str(payload.name or "").strip(),
@@ -2223,6 +2274,17 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
             "tags": [str(tag).strip() for tag in payload.tags if str(tag).strip()],
         }
     )
+
+    undo_user = _cookie_user(request)
+    undo_user_key = _user_profile_key(undo_user) if isinstance(undo_user, dict) else ""
+    if undo_user_key:
+        undo_manager.record_action(
+            undo_user_key,
+            "scene_compose",
+            previous_scene_state,
+            _scene_store_snapshot(),
+        )
+
     return {
         "ok": True,
         "scene": scene,
@@ -2231,6 +2293,78 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
             "audio": dict(scene.get("audio", {})) if isinstance(scene.get("audio", {}), dict) else {},
             "activated_at": to_iso(utcnow().replace(microsecond=0)),
         },
+    }
+
+
+@app.post("/v1/actions/undo")
+def undo_last_action(payload: UndoActionRequest, request: Request):
+    _enforce_same_origin(request)
+    trace_id = _request_trace_id(request)
+    user_id = str(payload.user_id or "").strip()
+    if not user_id:
+        return JSONResponse(
+            status_code=400,
+            content=_error_envelope(
+                trace_id=trace_id,
+                code="INVALID_USER_ID",
+                message="User ID is required.",
+            ),
+            headers={_TRACE_ID_HEADER: trace_id},
+        )
+
+    action = undo_manager.pop_undo(user_id)
+    if not isinstance(action, dict):
+        return JSONResponse(
+            status_code=404,
+            content={"ok": False, "error": {"code": "NOTHING_TO_UNDO"}},
+            headers={_TRACE_ID_HEADER: trace_id},
+        )
+
+    action_type = str(action.get("action_type", "") or "").strip()
+    previous_state = action.get("previous_state")
+    if action_type == "scene_compose":
+        restored = _restore_scene_store_snapshot(previous_state)
+        if not restored:
+            return JSONResponse(
+                status_code=500,
+                content=_error_envelope(
+                    trace_id=trace_id,
+                    code="UNDO_RESTORE_FAILED",
+                    message="Unable to restore previous scene state.",
+                ),
+                headers={_TRACE_ID_HEADER: trace_id},
+            )
+    elif action_type == "device_command" and isinstance(previous_state, dict):
+        _save_profile(previous_state)
+
+    return {
+        "ok": True,
+        "undone": action_type,
+        "restored_state": previous_state,
+        "message": "Action undone successfully.",
+    }
+
+
+@app.get("/v1/actions/undo/status")
+def undo_action_status(user_id: str = "") -> dict[str, Any]:
+    key = str(user_id or "").strip()
+    action = undo_manager.get_undoable_action(key) if key else None
+    if not isinstance(action, dict):
+        return {
+            "ok": True,
+            "can_undo": False,
+            "action_type": None,
+            "seconds_remaining": None,
+        }
+
+    action_type = str(action.get("action_type", "") or "").strip() or None
+    seconds_remaining = _undo_seconds_remaining(action)
+    can_undo = action_type is not None and seconds_remaining is not None
+    return {
+        "ok": True,
+        "can_undo": can_undo,
+        "action_type": action_type if can_undo else None,
+        "seconds_remaining": seconds_remaining if can_undo else None,
     }
 
 
@@ -2888,6 +3022,7 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
     profile = _safe_profile()
     if not isinstance(profile, dict):
         profile = {}
+    previous_profile_state = deepcopy(profile)
 
     action_key = str(payload.action or "").strip().lower()
     catalog = _user_action_catalog()
@@ -2938,6 +3073,7 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
             ),
         )
         _save_profile(profile)
+        undo_manager.record_action(key, "device_command", previous_profile_state, deepcopy(profile))
 
         _event(
             "info",
@@ -2999,6 +3135,7 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
         _build_last_command_result_from_command(command),
     )
     _save_profile(profile)
+    undo_manager.record_action(key, "device_command", previous_profile_state, deepcopy(profile))
 
     _event(
         "info",

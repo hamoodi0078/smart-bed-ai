@@ -4,7 +4,7 @@ from datetime import date as date_type
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from time_utils import utcnow
 
@@ -54,6 +54,12 @@ class UserRepository:
                 return None
             statement = select(User).where(User.email == normalized).limit(1)
             return session.execute(statement).scalar_one_or_none()
+
+    def list_all(self, limit: int = 1000) -> list[User]:
+        with self.db.get_session() as session:
+            safe_limit = max(1, min(int(limit or 1000), 5000))
+            statement = select(User).order_by(User.created_at.desc()).limit(safe_limit)
+            return list(session.execute(statement).scalars().all())
 
     def update_subscription(
         self,
@@ -133,6 +139,19 @@ class EventRepository:
             statement = statement.order_by(Event.timestamp.desc()).limit(safe_limit)
             return list(session.execute(statement).scalars().all())
 
+    def get_events_for_date(self, user_id: str, for_date: date_type) -> list[Event]:
+        with self.db.get_session() as session:
+            user_key = _clean_user_id(user_id)
+            if not user_key:
+                return []
+            target_date = _coerce_date(for_date)
+            statement = (
+                select(Event)
+                .where(Event.user_id == user_key, func.date(Event.timestamp) == target_date.isoformat())
+                .order_by(Event.timestamp.desc())
+            )
+            return list(session.execute(statement).scalars().all())
+
     def cleanup_old_events(self, days: int = 90) -> int:
         with self.db.get_session() as session:
             age_days = max(1, int(days or 90))
@@ -192,6 +211,29 @@ class SleepSessionRepository:
             statement = (
                 select(SleepSession)
                 .where(SleepSession.user_id == user_key)
+                .order_by(SleepSession.date.desc())
+                .limit(safe_limit)
+            )
+            return list(session.execute(statement).scalars().all())
+
+    def get_sessions_for_month(self, user_id: str, year: int, month: int, limit: int = 40) -> list[SleepSession]:
+        with self.db.get_session() as session:
+            user_key = _clean_user_id(user_id)
+            if not user_key:
+                return []
+
+            safe_year = int(year)
+            safe_month = int(month)
+            try:
+                month_start = date_type(safe_year, safe_month, 1)
+            except ValueError:
+                return []
+            month_end = date_type(safe_year + 1, 1, 1) if safe_month == 12 else date_type(safe_year, safe_month + 1, 1)
+            safe_limit = max(1, min(int(limit or 40), 200))
+
+            statement = (
+                select(SleepSession)
+                .where(SleepSession.user_id == user_key, SleepSession.date >= month_start, SleepSession.date < month_end)
                 .order_by(SleepSession.date.desc())
                 .limit(safe_limit)
             )
