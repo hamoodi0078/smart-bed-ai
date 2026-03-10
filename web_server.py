@@ -97,6 +97,21 @@ _METRICS_ERROR_COUNT = Counter(
     "Total HTTP error responses from the Smart Bed API",
     ["method", "path", "status_code"],
 )
+REQUEST_COUNT = Counter(
+    "http_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status_code"],
+)
+REQUEST_LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request latency in seconds",
+    ["endpoint"],
+)
+ERROR_COUNT = Counter(
+    "http_errors_total",
+    "Total HTTP errors",
+    ["endpoint", "error_code"],
+)
 
 
 _cors_origins_raw = str(settings.web_allowed_origins_raw or "http://127.0.0.1:8001,http://localhost:8001")
@@ -141,11 +156,18 @@ async def trace_id_middleware(request: Request, call_next):
     method = str(request.method or "GET")
     path = str(request.url.path or "/")
     status_key = str(status_code)
+    REQUEST_COUNT.labels(
+        method=method,
+        endpoint=path,
+        status_code=str(status_code)
+    ).inc()
+    REQUEST_LATENCY.labels(endpoint=path).observe(elapsed)
 
     _METRICS_REQUEST_COUNT.labels(method=method, path=path, status_code=status_key).inc()
     _METRICS_REQUEST_LATENCY.labels(method=method, path=path).observe(elapsed)
     if status_code >= 400:
         _METRICS_ERROR_COUNT.labels(method=method, path=path, status_code=status_key).inc()
+        ERROR_COUNT.labels(endpoint=path, error_code=str(status_code)).inc()
 
     response.headers[_TRACE_ID_HEADER] = trace_id
     try:
@@ -1984,6 +2006,65 @@ def bed_state_bridge(request: Request) -> dict[str, Any]:
         "source": "device",
         "capabilities": ["led", "audio", "voice"],
         "state": state,
+    }
+
+
+@app.get("/v1/device/status")
+def device_status(request: Request) -> dict[str, Any]:
+    """
+    Returns simple device status for UI indicator dot.
+    Green = online, Yellow = stale, Red = offline
+    """
+    trace_id_raw = getattr(request.state, "trace_id", "")
+    trace_id = str(trace_id_raw).strip() or "no-trace"
+    now = utcnow()
+    updated_at = _now_utc_iso()
+
+    latest_seen: datetime | None = None
+    try:
+        devices = store.list_fleet_devices(limit=1000)
+    except Exception:
+        devices = []
+
+    if isinstance(devices, list):
+        for row in devices:
+            if not isinstance(row, dict):
+                continue
+            seen_raw = str(row.get("last_seen", "") or row.get("last_seen_at", "") or "")
+            seen_at = _parse_iso_timestamp(seen_raw)
+            if seen_at is not None and (latest_seen is None or seen_at > latest_seen):
+                latest_seen = seen_at
+
+    last_seen_iso: str | None = to_iso(latest_seen) if latest_seen is not None else None
+
+    if latest_seen is None:
+        status_value = "offline"
+        color = "red"
+        message = "Bed is offline. Last seen unavailable."
+    else:
+        age_seconds = max(0.0, (now - latest_seen).total_seconds())
+        age_int = int(age_seconds)
+        if age_seconds <= 30.0:
+            status_value = "online"
+            color = "green"
+            message = f"Bed is online. Last seen {age_int} seconds ago."
+        elif age_seconds <= 300.0:
+            status_value = "stale"
+            color = "yellow"
+            message = f"Bed status is stale. Last seen {age_int} seconds ago."
+        else:
+            status_value = "offline"
+            color = "red"
+            age_minutes = max(1, int(age_seconds // 60))
+            message = f"Bed is offline. Last seen {age_minutes} minutes ago."
+
+    return {
+        "status": status_value,
+        "color": color,
+        "message": message,
+        "last_seen": last_seen_iso,
+        "updated_at": updated_at,
+        "trace_id": trace_id,
     }
 
 
