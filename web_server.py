@@ -14,6 +14,7 @@ import secrets
 import threading
 import time
 import uuid
+from http import HTTPStatus
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -46,6 +47,15 @@ from ai.long_term_memory import LongTermMemoryStore
 from ai.voice_circuit_breaker import write_voice_circuit_reset_signal
 from commands.undo_manager import UndoManager
 from config import LONG_TERM_MEMORY_PATH, RUNTIME_DATA_DIR, USER_PROFILE_PATH, settings
+from core.errors import (
+    APIError,
+    DEVICE_OFFLINE,
+    INTERNAL_ERROR,
+    RATE_LIMITED,
+    UNAUTHORIZED,
+    VALIDATION_ERROR,
+    error_response,
+)
 from core.structured_logging import emit_json_log
 from scenes import SceneStore
 from time_utils import from_iso, to_iso, utcnow
@@ -70,7 +80,7 @@ _SUBSCRIPTION_GATE: Any | None = None
 _SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
 _MAX_CHAT_ENGINES = 200
 _DEVICE_STALE_WINDOW_SECONDS = 180
-_TRACE_ID_HEADER = "X-Trace-Id"
+_TRACE_ID_HEADER = "X-Trace-ID"
 SCENE_PREVIEW_SECONDS = 3.0
 _METRICS_REQUEST_COUNT = Counter(
     "smart_bed_http_requests_total",
@@ -122,7 +132,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def trace_id_middleware(request: Request, call_next):
-    trace_id = f"req_{secrets.token_hex(4)}"
+    trace_id = f"req-{uuid.uuid4().hex[:8]}"
     request.state.trace_id = trace_id
     started = time.perf_counter()
     response = await call_next(request)
@@ -138,6 +148,12 @@ async def trace_id_middleware(request: Request, call_next):
         _METRICS_ERROR_COUNT.labels(method=method, path=path, status_code=status_key).inc()
 
     response.headers[_TRACE_ID_HEADER] = trace_id
+    try:
+        reason = HTTPStatus(status_code).phrase
+    except Exception:
+        reason = "UNKNOWN"
+    elapsed_ms = int(round(elapsed * 1000.0))
+    logger.info("[TRACE: %s] %s %s - %d %s - %dms", trace_id, method, path, status_code, reason, elapsed_ms)
     _event(
         "info",
         "http_request",
@@ -145,7 +161,7 @@ async def trace_id_middleware(request: Request, call_next):
         method=method,
         path=path,
         status_code=status_code,
-        latency_ms=round(elapsed * 1000.0, 2),
+        latency_ms=elapsed_ms,
     )
     return response
 
@@ -1442,30 +1458,43 @@ def _request_trace_id(request: Request) -> str:
     trace_id = getattr(request.state, "trace_id", "")
     if str(trace_id or "").strip():
         return str(trace_id)
-    fallback = f"req_{secrets.token_hex(4)}"
+    fallback = f"req-{uuid.uuid4().hex[:8]}"
     request.state.trace_id = fallback
     return fallback
 
 
 def _status_error_code(status_code: int) -> str:
-    mapping = {
-        400: "BAD_REQUEST",
-        401: "UNAUTHORIZED",
-        403: "FORBIDDEN",
-        404: "NOT_FOUND",
-    }
-    return mapping.get(int(status_code), "HTTP_ERROR")
+    code = int(status_code)
+    if code == 429:
+        return RATE_LIMITED
+    if code == 503:
+        return DEVICE_OFFLINE
+    if code in {401, 403}:
+        return UNAUTHORIZED
+    if code >= 500:
+        return INTERNAL_ERROR
+    return VALIDATION_ERROR
 
 
-def _error_envelope(*, trace_id: str, code: str, message: str) -> dict[str, Any]:
+def _error_envelope(*, trace_id: str, code: str, message: str, retry_after: int | None = None) -> dict[str, Any]:
     return {
         "ok": False,
         "error": {
-            "code": str(code or "INTERNAL_ERROR"),
+            "code": str(code or INTERNAL_ERROR),
             "message": str(message or "Request failed"),
             "trace_id": str(trace_id),
+            "retry_after": int(retry_after) if retry_after is not None else None,
         },
     }
+
+
+@app.exception_handler(APIError)
+async def api_error_handler(request: Request, exc: APIError):
+    trace_id = _request_trace_id(request)
+    response = error_response(exc.code, exc.message, trace_id, retry_after=exc.retry_after)
+    response.status_code = int(exc.status_code)
+    response.headers[_TRACE_ID_HEADER] = trace_id
+    return response
 
 
 @app.exception_handler(HTTPException)
@@ -1473,6 +1502,14 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     trace_id = _request_trace_id(request)
     message = str(exc.detail) if isinstance(exc.detail, str) and str(exc.detail).strip() else "Request failed"
     code = _status_error_code(exc.status_code)
+    retry_after: int | None = None
+    if isinstance(exc.headers, dict):
+        raw_retry = exc.headers.get("Retry-After")
+        if raw_retry is not None:
+            try:
+                retry_after = max(0, int(float(str(raw_retry))))
+            except Exception:
+                retry_after = None
     _event(
         "warning",
         "http_exception",
@@ -1481,11 +1518,10 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         status_code=exc.status_code,
         code=code,
     )
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=_error_envelope(trace_id=trace_id, code=code, message=message),
-        headers={_TRACE_ID_HEADER: trace_id},
-    )
+    response = error_response(code, message, trace_id, retry_after=retry_after)
+    response.status_code = int(exc.status_code)
+    response.headers[_TRACE_ID_HEADER] = trace_id
+    return response
 
 
 @app.exception_handler(RequestValidationError)
@@ -1498,11 +1534,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         path=request.url.path,
         error_count=len(exc.errors()),
     )
-    return JSONResponse(
-        status_code=422,
-        content=_error_envelope(trace_id=trace_id, code="VALIDATION_ERROR", message="Request validation failed"),
-        headers={_TRACE_ID_HEADER: trace_id},
-    )
+    response = error_response(VALIDATION_ERROR, "Request validation failed", trace_id)
+    response.status_code = 422
+    response.headers[_TRACE_ID_HEADER] = trace_id
+    return response
 
 
 @app.exception_handler(Exception)
@@ -1518,11 +1553,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
             "error_type": type(exc).__name__,
         },
     )
-    return JSONResponse(
-        status_code=500,
-        content=_error_envelope(trace_id=trace_id, code="INTERNAL_ERROR", message="Internal server error"),
-        headers={_TRACE_ID_HEADER: trace_id},
-    )
+    response = error_response(INTERNAL_ERROR, "Internal server error", trace_id)
+    response.status_code = 500
+    response.headers[_TRACE_ID_HEADER] = trace_id
+    return response
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -1887,22 +1921,69 @@ def metrics() -> Response:
 
 
 @app.get("/v1/bed/state")
+@app.get("/v1/bedstate")
 def bed_state_bridge(request: Request) -> dict[str, Any]:
-    if not (_cookie_user(request) or _cookie_admin(request)):
-        raise HTTPException(status_code=401, detail="Login required")
+    user = _cookie_user(request)
+    admin = _cookie_admin(request)
+    if not (user or admin):
+        raise APIError(code=UNAUTHORIZED, message="Login required", status_code=401)
 
     profile = _safe_profile()
     if not isinstance(profile, dict):
         profile = {}
 
+    snapshot = _stable_state_snapshot(profile)
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+
+    latest_seen: datetime | None = None
+    for row in store.list_fleet_devices(limit=1000):
+        if not isinstance(row, dict):
+            continue
+        seen_raw = str(row.get("last_seen", "") or row.get("last_seen_at", "") or "")
+        seen_at = _parse_iso_timestamp(seen_raw)
+        if seen_at is not None and (latest_seen is None or seen_at > latest_seen):
+            latest_seen = seen_at
+
+    device_online = False
+    stale = False
+    updated_at = _now_utc_iso()
+    if latest_seen is not None:
+        age_seconds = max(0.0, (utcnow() - latest_seen).total_seconds())
+        device_online = age_seconds <= 30.0
+        stale = 30.0 < age_seconds <= 300.0
+        updated_at = to_iso(latest_seen)
+
+    controls = _normalize_device_controls({"lights_on": False, "audio_on": False, "alarm_on": True, "light_level": 30})
+    if user:
+        key = _user_profile_key(user)
+        section = _get_scoped_profile_section(profile, "web_device_controls")
+        scoped = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
+        controls = _normalize_device_controls({**controls, **scoped})
+
+    state = dict(snapshot)
+    lights = state.get("lights", {})
+    if not isinstance(lights, dict):
+        lights = {}
+    lights["brightness"] = int(lights.get("brightness", controls.get("light_level", 30)) or 30)
+    lights["color"] = str(lights.get("color", "#FF8C42") or "#FF8C42")
+    state["lights"] = lights
+
+    audio = state.get("audio", {})
+    if not isinstance(audio, dict):
+        audio = {}
+    audio["playing"] = bool(audio.get("playing", controls.get("audio_on", False)))
+    audio["volume"] = int(audio.get("volume", 0) or 0)
+    state["audio"] = audio
+
     return {
-        "ok": True,
-        "generated_at": _now_utc_iso(),
-        "emotion_state": _latest_emotion_state(profile),
-        "active_personality": _active_personality(profile),
-        "last_memory_context": _last_memory_context(),
-        "biometric_summary": _biometric_summary(profile),
-        "device_health_status": _device_health_status(profile),
+        "schema_version": "2.0",
+        "device_online": bool(device_online),
+        "stale": bool(stale),
+        "updated_at": updated_at,
+        "source": "device",
+        "capabilities": ["led", "audio", "voice"],
+        "state": state,
     }
 
 
@@ -2236,7 +2317,7 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
                 status_code=422,
                 content=_error_envelope(
                     trace_id=trace_id,
-                    code="INVALID_SCENE_CONFIG",
+                    code=VALIDATION_ERROR,
                     message=f"Missing required field: {field_name}",
                 ),
                 headers={_TRACE_ID_HEADER: trace_id},
@@ -2252,14 +2333,11 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
         if not bool(access.get("allowed", False)):
             return JSONResponse(
                 status_code=403,
-                content={
-                    "ok": False,
-                    "error": {
-                        "code": "PREMIUM_REQUIRED",
-                        "message": "Upgrade to premium to access this scene.",
-                        "trial_available": True,
-                    },
-                },
+                content=_error_envelope(
+                    trace_id=trace_id,
+                    code=UNAUTHORIZED,
+                    message="Upgrade to premium to access this scene.",
+                ),
                 headers={_TRACE_ID_HEADER: trace_id},
             )
 
@@ -2306,7 +2384,7 @@ def undo_last_action(payload: UndoActionRequest, request: Request):
             status_code=400,
             content=_error_envelope(
                 trace_id=trace_id,
-                code="INVALID_USER_ID",
+                code=VALIDATION_ERROR,
                 message="User ID is required.",
             ),
             headers={_TRACE_ID_HEADER: trace_id},
@@ -2316,7 +2394,11 @@ def undo_last_action(payload: UndoActionRequest, request: Request):
     if not isinstance(action, dict):
         return JSONResponse(
             status_code=404,
-            content={"ok": False, "error": {"code": "NOTHING_TO_UNDO"}},
+            content=_error_envelope(
+                trace_id=trace_id,
+                code=VALIDATION_ERROR,
+                message="No undo action found for this user.",
+            ),
             headers={_TRACE_ID_HEADER: trace_id},
         )
 
@@ -2329,7 +2411,7 @@ def undo_last_action(payload: UndoActionRequest, request: Request):
                 status_code=500,
                 content=_error_envelope(
                     trace_id=trace_id,
-                    code="UNDO_RESTORE_FAILED",
+                    code=INTERNAL_ERROR,
                     message="Unable to restore previous scene state.",
                 ),
                 headers={_TRACE_ID_HEADER: trace_id},
@@ -2378,7 +2460,7 @@ def start_trial_subscription(payload: TrialStartRequest, request: Request):
             status_code=400,
             content=_error_envelope(
                 trace_id=trace_id,
-                code="INVALID_USER_ID",
+                code=VALIDATION_ERROR,
                 message="User ID is required.",
             ),
             headers={_TRACE_ID_HEADER: trace_id},
@@ -2391,7 +2473,7 @@ def start_trial_subscription(payload: TrialStartRequest, request: Request):
             status_code=404,
             content=_error_envelope(
                 trace_id=trace_id,
-                code="USER_NOT_FOUND",
+                code=VALIDATION_ERROR,
                 message="User not found.",
             ),
             headers={_TRACE_ID_HEADER: trace_id},
@@ -2402,13 +2484,11 @@ def start_trial_subscription(payload: TrialStartRequest, request: Request):
     if trial_already_used or status_value in {"trial", "premium"}:
         return JSONResponse(
             status_code=409,
-            content={
-                "ok": False,
-                "error": {
-                    "code": "TRIAL_ALREADY_USED",
-                    "message": "Trial already activated.",
-                },
-            },
+            content=_error_envelope(
+                trace_id=trace_id,
+                code=VALIDATION_ERROR,
+                message="Trial already activated.",
+            ),
             headers={_TRACE_ID_HEADER: trace_id},
         )
 
