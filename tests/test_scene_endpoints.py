@@ -91,6 +91,7 @@ class TestSceneEndpoints(unittest.TestCase):
         self.assertEqual(error.get("code"), "INVALID_SCENE_CONFIG")
         self.assertEqual(error.get("message"), "Missing required field: name")
         self.assertRegex(str(error.get("trace_id", "")), r"^req_[a-f0-9]{8}$")
+        self.assertEqual(str(response.headers.get("X-Trace-Id", "")), str(error.get("trace_id", "")))
 
     def test_compose_scene_missing_light_returns_422(self):
         payload = {

@@ -16,6 +16,8 @@ class TestSubscriptionEndpoints(unittest.TestCase):
         web_server._DB_CONNECTION_URL = ""
         web_server._DB_USER_REPOSITORY = None
         web_server._SUBSCRIPTION_GATE = None
+        web_server._DB_SLEEP_SESSION_REPOSITORY = None
+        web_server._DB_COMMAND_REPOSITORY = None
 
         self.user_repo = web_server._db_user_repository()
         self.user = self.user_repo.create_user("trial-endpoint@example.com", "hashed_pw", "Trial Endpoint User")
@@ -26,6 +28,8 @@ class TestSubscriptionEndpoints(unittest.TestCase):
         web_server._DB_CONNECTION_URL = ""
         web_server._DB_USER_REPOSITORY = None
         web_server._SUBSCRIPTION_GATE = None
+        web_server._DB_SLEEP_SESSION_REPOSITORY = None
+        web_server._DB_COMMAND_REPOSITORY = None
 
         if self._old_database_url is None:
             os.environ.pop("DATABASE_URL", None)
@@ -57,7 +61,20 @@ class TestSubscriptionEndpoints(unittest.TestCase):
         self.assertEqual(second.status_code, 409)
         body = second.json()
         self.assertFalse(body.get("ok"))
-        self.assertEqual((body.get("error", {}) or {}).get("code"), "TRIAL_ALREADY_USED")
+        error = body.get("error", {}) if isinstance(body.get("error", {}), dict) else {}
+        self.assertEqual(error.get("code"), "TRIAL_ALREADY_USED")
+        self.assertRegex(str(error.get("trace_id", "")), r"^req_[a-f0-9]{8}$")
+        self.assertEqual(str(second.headers.get("X-Trace-Id", "")), str(error.get("trace_id", "")))
+
+    def test_start_trial_missing_user_id_returns_contract_error(self):
+        response = self.client.post("/v1/subscriptions/trial/start", json={"user_id": ""})
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertFalse(body.get("ok"))
+        error = body.get("error", {}) if isinstance(body.get("error", {}), dict) else {}
+        self.assertEqual(error.get("code"), "VALIDATION_ERROR")
+        self.assertRegex(str(error.get("trace_id", "")), r"^req_[a-f0-9]{8}$")
+        self.assertEqual(str(response.headers.get("X-Trace-Id", "")), str(error.get("trace_id", "")))
 
     def test_get_status_returns_subscription_status(self):
         response = self.client.get("/v1/subscriptions/status", params={"user_id": self.user.id})

@@ -1,6 +1,23 @@
 from .connection import DatabaseConnection
-from .models import Base, Bed, Event, SceneRecord, SleepSession, User
-from .repositories import EventRepository, SleepSessionRepository, UserRepository
+from .models import (
+    Base,
+    Bed,
+    BetaMetricsSnapshot,
+    Event,
+    FirstThreeNightsProgress,
+    MobileCommandRecord,
+    NightlySummaryFeedbackProgress,
+    SceneRecord,
+    SleepSession,
+    User,
+)
+from .repositories import (
+    BetaProgressRepository,
+    EventRepository,
+    MobileCommandRepository,
+    SleepSessionRepository,
+    UserRepository,
+)
 
 __all__ = [
     "Base",
@@ -9,8 +26,14 @@ __all__ = [
     "SceneRecord",
     "Event",
     "SleepSession",
+    "MobileCommandRecord",
+    "FirstThreeNightsProgress",
+    "NightlySummaryFeedbackProgress",
+    "BetaMetricsSnapshot",
     "DatabaseConnection",
     "UserRepository",
+    "BetaProgressRepository",
     "EventRepository",
+    "MobileCommandRepository",
     "SleepSessionRepository",
 ]

@@ -49,6 +49,18 @@ python -m uvicorn web_server:app --host 127.0.0.1 --port 8001 --reload
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
+### 7) Run mobile smoke flow (manual E2E helper)
+With backend running on `127.0.0.1:8001`, execute:
+```powershell
+.\.venv311\Scripts\python.exe .\scripts\mobile_smoke.py --base-url http://127.0.0.1:8001
+```
+This validates: `signup/register -> dashboard -> quick action -> scene preview -> timeline update`.
+
+### 8) Check Day 36-45 beta exit gate (admin API)
+- Endpoint: `GET /v1/admin/mobile/beta-acceptance?max_testers=5&min_required=3`
+- Auth: admin session required
+- Returns: scoped tester rows + blockers + `exit_gate_pass` so you can decide if the cohort is ready to move past the first 45-day window.
+
 ## Flutter Mobile Shell
 
 The primary customer surface is now the Flutter app in [`mobile_app/`](/c:/Users/PC#####/Desktop/smart%20bed%20by%20me/mobile_app).
@@ -66,6 +78,13 @@ Notes:
 - Android emulator defaults to `http://10.0.2.2:8001`
 - iOS simulator defaults to `http://127.0.0.1:8001`
 - Use `--dart-define=SMART_BED_API_BASE_URL=https://your-host` for staging or physical-device testing
+
+## CI Quality Gates
+
+GitHub Actions now blocks merges unless both lanes pass:
+
+- `backend`: Python 3.11 dependency install + `ruff check .` + `python -m unittest discover -s tests -p "test_*.py"`
+- `mobile`: Flutter 3.41.4 + `flutter pub get` + `flutter analyze` + `flutter test`
 
 ## New Unified State Bridge API
 

@@ -114,6 +114,8 @@ class TestUndoEndpoints(unittest.TestCase):
         self.assertFalse(body.get("ok"))
         error = body.get("error", {})
         self.assertEqual(str(error.get("code", "")), "NOTHING_TO_UNDO")
+        self.assertRegex(str(error.get("trace_id", "")), r"^req_[a-f0-9]{8}$")
+        self.assertEqual(str(response.headers.get("X-Trace-Id", "")), str(error.get("trace_id", "")))
 
     def test_undo_status_shows_can_undo_true(self):
         self.undo_manager.record_action("u1", "device_command", {"before": 1}, {"after": 2})

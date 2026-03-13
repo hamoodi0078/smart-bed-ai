@@ -90,4 +90,82 @@ class SleepSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
 
-__all__ = ["Base", "User", "Bed", "SceneRecord", "Event", "SleepSession"]
+class MobileCommandRecord(Base):
+    __tablename__ = "mobile_command_records"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    command_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    event_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    trace_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    command_created_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    command_updated_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    command_completed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class FirstThreeNightsProgress(Base):
+    __tablename__ = "first_three_nights_progress"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(191), unique=True, nullable=False, index=True)
+    signup_completed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_scene_preview_completed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_automation_completed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_winddown_completed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    timeline_review_completed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class NightlySummaryFeedbackProgress(Base):
+    __tablename__ = "nightly_summary_feedback_progress"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(191), unique=True, nullable=False, index=True)
+    helpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    not_helpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_vote: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    last_vote_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_summary_generated_at_utc: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class BetaMetricsSnapshot(Base):
+    __tablename__ = "beta_metrics_snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(191), unique=True, nullable=False, index=True)
+    window_days: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    activation_progress_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    first_3_nights_completed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    first_3_nights_total: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    command_total_7d: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    command_completion_rate_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    wind_down_sessions_7d: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    nightly_feedback_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    nightly_feedback_helpful_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cohort_status_line: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    quality_gate_line: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    generated_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+__all__ = [
+    "Base",
+    "User",
+    "Bed",
+    "SceneRecord",
+    "Event",
+    "SleepSession",
+    "MobileCommandRecord",
+    "FirstThreeNightsProgress",
+    "NightlySummaryFeedbackProgress",
+    "BetaMetricsSnapshot",
+]

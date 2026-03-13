@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -7,6 +10,45 @@ import web_server
 
 
 class TestMobileFirst3NightsAndBetaMetrics(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._db_path = Path(self._tmp.name) / "beta_progress.sqlite3"
+        self._env_patch = patch.dict(
+            os.environ,
+            {"DATABASE_URL": f"sqlite:///{self._db_path.as_posix()}"},
+            clear=False,
+        )
+        self._env_patch.start()
+        web_server._DB_CONNECTION = None
+        web_server._DB_CONNECTION_URL = ""
+        web_server._DB_USER_REPOSITORY = None
+        web_server._SUBSCRIPTION_GATE = None
+        web_server._DB_BETA_PROGRESS_REPOSITORY = None
+        web_server._DB_EVENT_REPOSITORY = None
+        web_server._DB_SLEEP_SESSION_REPOSITORY = None
+        web_server._DB_COMMAND_REPOSITORY = None
+        self.client = TestClient(web_server.app)
+
+    def tearDown(self):
+        connection = getattr(web_server, "_DB_CONNECTION", None)
+        if connection is not None:
+            engine = getattr(connection, "engine", None)
+            if engine is not None:
+                try:
+                    engine.dispose()
+                except Exception:
+                    pass
+        web_server._DB_CONNECTION = None
+        web_server._DB_CONNECTION_URL = ""
+        web_server._DB_USER_REPOSITORY = None
+        web_server._SUBSCRIPTION_GATE = None
+        web_server._DB_BETA_PROGRESS_REPOSITORY = None
+        web_server._DB_EVENT_REPOSITORY = None
+        web_server._DB_SLEEP_SESSION_REPOSITORY = None
+        web_server._DB_COMMAND_REPOSITORY = None
+        self._env_patch.stop()
+        self._tmp.cleanup()
+
     @patch("web_server._save_profile")
     @patch("web_server._safe_profile")
     @patch("web_server._require_user")
@@ -20,8 +62,7 @@ class TestMobileFirst3NightsAndBetaMetrics(unittest.TestCase):
         mock_safe_profile.return_value = profile
         mock_require_user.return_value = {"user_id": "u1", "email": "u1@example.com"}
 
-        client = TestClient(web_server.app)
-        response = client.get("/v1/mobile/dashboard")
+        response = self.client.get("/v1/mobile/dashboard")
         self.assertEqual(response.status_code, 200)
         body = response.json()
 
@@ -34,7 +75,7 @@ class TestMobileFirst3NightsAndBetaMetrics(unittest.TestCase):
         self.assertEqual(int(feedback.get("helpful_count", 0)), 0)
         self.assertEqual(int(feedback.get("not_helpful_count", 0)), 0)
 
-        stored = profile.get("web_first_3_nights", {}).get("u1", {})
+        stored = web_server._db_beta_progress_repository().get_first_three_nights_state("u1")
         self.assertTrue(str(stored.get("signup_completed_at_utc", "")).strip())
 
     @patch("web_server._save_profile")
@@ -70,14 +111,13 @@ class TestMobileFirst3NightsAndBetaMetrics(unittest.TestCase):
         mock_safe_profile.return_value = profile
         mock_require_user.return_value = {"user_id": "u1", "email": "u1@example.com"}
 
-        client = TestClient(web_server.app)
-        initial = client.get("/v1/mobile/first-3-nights")
+        initial = self.client.get("/v1/mobile/first-3-nights")
         self.assertEqual(initial.status_code, 200)
         initial_checklist = initial.json().get("checklist", {})
         self.assertEqual(int(initial_checklist.get("completed_steps", 0)), 4)
         self.assertEqual(str(initial_checklist.get("next_step_key", "")), "timeline_review")
 
-        completed = client.post(
+        completed = self.client.post(
             "/v1/mobile/first-3-nights/complete",
             json={"step_key": "timeline_review"},
         )
@@ -112,9 +152,7 @@ class TestMobileFirst3NightsAndBetaMetrics(unittest.TestCase):
         mock_safe_profile.return_value = profile
         mock_require_user.return_value = {"user_id": "u1", "email": "u1@example.com"}
 
-        client = TestClient(web_server.app)
-
-        helpful = client.post(
+        helpful = self.client.post(
             "/v1/mobile/nightly-summary/feedback",
             json={
                 "vote": "helpful",
@@ -124,7 +162,7 @@ class TestMobileFirst3NightsAndBetaMetrics(unittest.TestCase):
         self.assertEqual(helpful.status_code, 200)
         self.assertEqual(int(helpful.json().get("feedback", {}).get("helpful_count", 0)), 1)
 
-        duplicate = client.post(
+        duplicate = self.client.post(
             "/v1/mobile/nightly-summary/feedback",
             json={
                 "vote": "helpful",
@@ -134,7 +172,7 @@ class TestMobileFirst3NightsAndBetaMetrics(unittest.TestCase):
         self.assertEqual(duplicate.status_code, 200)
         self.assertEqual(int(duplicate.json().get("feedback", {}).get("helpful_count", 0)), 1)
 
-        not_helpful = client.post(
+        not_helpful = self.client.post(
             "/v1/mobile/nightly-summary/feedback",
             json={
                 "vote": "not_helpful",
@@ -144,12 +182,14 @@ class TestMobileFirst3NightsAndBetaMetrics(unittest.TestCase):
         self.assertEqual(not_helpful.status_code, 200)
         self.assertEqual(int(not_helpful.json().get("feedback", {}).get("not_helpful_count", 0)), 1)
 
-        metrics_response = client.get("/v1/mobile/beta/metrics")
+        metrics_response = self.client.get("/v1/mobile/beta/metrics")
         self.assertEqual(metrics_response.status_code, 200)
         metrics = metrics_response.json().get("metrics", {})
         self.assertEqual(int(metrics.get("nightly_feedback_total", 0)), 2)
         self.assertEqual(int(metrics.get("nightly_feedback_helpful_pct", 0)), 50)
         self.assertIn("activation_progress_pct", metrics)
+        snapshot = web_server._db_beta_progress_repository().get_beta_metrics_snapshot("u1")
+        self.assertEqual(int(snapshot.get("nightly_feedback_total", 0)), 2)
 
 
 if __name__ == "__main__":

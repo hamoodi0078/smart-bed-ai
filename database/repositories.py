@@ -6,10 +6,18 @@ from typing import Any
 
 from sqlalchemy import delete, func, select
 
-from time_utils import utcnow
+from time_utils import ensure_utc, from_iso, to_iso, utcnow
 
 from .connection import DatabaseConnection
-from .models import Event, SleepSession, User
+from .models import (
+    BetaMetricsSnapshot,
+    Event,
+    FirstThreeNightsProgress,
+    MobileCommandRecord,
+    NightlySummaryFeedbackProgress,
+    SleepSession,
+    User,
+)
 
 
 def _clean_user_id(value: str | None) -> str | None:
@@ -21,6 +29,31 @@ def _coerce_date(value: date_type | str) -> date_type:
     if isinstance(value, date_type):
         return value
     return date_type.fromisoformat(str(value))
+
+
+def _to_iso_optional(value: datetime | None) -> str:
+    if not isinstance(value, datetime):
+        return ""
+    return to_iso(ensure_utc(value))
+
+
+def _parse_optional_iso_datetime(value: str | None) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return ensure_utc(from_iso(raw))
+    except Exception:
+        return None
+
+
+_FIRST_3_NIGHTS_STEP_FIELD_MAP = {
+    "signup": "signup_completed_at_utc",
+    "first_scene_preview": "first_scene_preview_completed_at_utc",
+    "first_automation": "first_automation_completed_at_utc",
+    "first_winddown": "first_winddown_completed_at_utc",
+    "timeline_review": "timeline_review_completed_at_utc",
+}
 
 
 class UserRepository:
@@ -256,3 +289,385 @@ class SleepSessionRepository:
                 .limit(safe_limit)
             )
             return list(session.execute(statement).scalars().all())
+
+
+class MobileCommandRepository:
+    def __init__(self, db: DatabaseConnection | None = None):
+        self.db = db or DatabaseConnection()
+        self.db.create_tables()
+
+    @staticmethod
+    def _payload_from_row(row: MobileCommandRecord | None) -> dict[str, Any]:
+        if row is None:
+            return {}
+        return {
+            "user_id": str(row.user_id or ""),
+            "command_id": str(row.command_id or ""),
+            "action": str(row.action or ""),
+            "status": str(row.status or "queued"),
+            "event": str(row.event_summary or ""),
+            "message": str(row.message or ""),
+            "trace_id": str(row.trace_id or ""),
+            "created_at": _to_iso_optional(row.command_created_at_utc),
+            "updated_at": _to_iso_optional(row.command_updated_at_utc),
+            "completed_at": _to_iso_optional(row.command_completed_at_utc),
+        }
+
+    def upsert_command(self, user_id: str, command: dict[str, Any] | None, now_utc: datetime | None = None) -> dict[str, Any]:
+        user_key = _clean_user_id(user_id)
+        payload = command if isinstance(command, dict) else {}
+        command_id = str(payload.get("id", "") or payload.get("command_id", "")).strip()
+        if not user_key or not command_id:
+            return {}
+
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        action = str(payload.get("action", "") or "").strip().lower()
+        status = str(payload.get("status", "queued") or "queued").strip().lower() or "queued"
+        event_summary = str(payload.get("event", "") or "").strip()
+        message = str(payload.get("message", "") or "").strip()
+        trace_id = str(payload.get("trace_id", "") or "").strip() or None
+        created_at = _parse_optional_iso_datetime(str(payload.get("created_at", "") or ""))
+        updated_at = _parse_optional_iso_datetime(str(payload.get("updated_at", "") or ""))
+        completed_at = _parse_optional_iso_datetime(str(payload.get("completed_at", "") or ""))
+
+        with self.db.get_session() as session:
+            statement = select(MobileCommandRecord).where(MobileCommandRecord.command_id == command_id).limit(1)
+            row = session.execute(statement).scalar_one_or_none()
+            if row is None:
+                row = MobileCommandRecord(
+                    user_id=user_key,
+                    command_id=command_id,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
+                session.flush()
+
+            row.user_id = user_key
+            row.action = action
+            row.status = status
+            row.event_summary = event_summary
+            row.message = message
+            row.trace_id = trace_id
+            if created_at is not None:
+                row.command_created_at_utc = created_at
+            elif row.command_created_at_utc is None:
+                row.command_created_at_utc = now
+            if updated_at is not None:
+                row.command_updated_at_utc = updated_at
+            else:
+                row.command_updated_at_utc = now
+            if completed_at is not None:
+                row.command_completed_at_utc = completed_at
+            elif status == "completed" and row.command_completed_at_utc is None:
+                row.command_completed_at_utc = row.command_updated_at_utc or now
+            row.updated_at = now
+
+            session.add(row)
+            session.flush()
+            session.refresh(row)
+            return self._payload_from_row(row)
+
+    def get_recent_commands(
+        self,
+        user_id: str,
+        limit: int = 200,
+        since: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return []
+        safe_limit = max(1, min(int(limit or 200), 1000))
+        with self.db.get_session() as session:
+            order_col = func.coalesce(
+                MobileCommandRecord.command_updated_at_utc,
+                MobileCommandRecord.command_created_at_utc,
+                MobileCommandRecord.created_at,
+            )
+            statement = select(MobileCommandRecord).where(MobileCommandRecord.user_id == user_key)
+            if since is not None:
+                statement = statement.where(order_col >= ensure_utc(since))
+            statement = statement.order_by(order_col.desc()).limit(safe_limit)
+            rows = session.execute(statement).scalars().all()
+            return [self._payload_from_row(row) for row in rows]
+
+    def command_metrics_window(
+        self,
+        user_id: str,
+        *,
+        now_utc: datetime | None = None,
+        window_days: int = 7,
+    ) -> dict[str, int]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return {"total": 0, "completed": 0, "completion_rate_pct": 0}
+        days = max(1, min(int(window_days or 7), 31))
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        since = now - timedelta(days=days)
+        rows = self.get_recent_commands(user_key, since=since, limit=1000)
+        total = len(rows)
+        completed = sum(
+            1
+            for row in rows
+            if str(row.get("status", "queued") or "queued").strip().lower() == "completed"
+        )
+        completion_rate_pct = int(round((completed / total) * 100.0)) if total > 0 else 0
+        return {
+            "total": int(total),
+            "completed": int(completed),
+            "completion_rate_pct": int(completion_rate_pct),
+        }
+
+
+class BetaProgressRepository:
+    def __init__(self, db: DatabaseConnection | None = None):
+        self.db = db or DatabaseConnection()
+        self.db.create_tables()
+
+    @staticmethod
+    def _first_three_nights_state_from_row(row: FirstThreeNightsProgress | None) -> dict[str, str]:
+        if row is None:
+            return {
+                "signup_completed_at_utc": "",
+                "first_scene_preview_completed_at_utc": "",
+                "first_automation_completed_at_utc": "",
+                "first_winddown_completed_at_utc": "",
+                "timeline_review_completed_at_utc": "",
+                "created_at_utc": "",
+                "updated_at_utc": "",
+            }
+        return {
+            "signup_completed_at_utc": _to_iso_optional(row.signup_completed_at_utc),
+            "first_scene_preview_completed_at_utc": _to_iso_optional(row.first_scene_preview_completed_at_utc),
+            "first_automation_completed_at_utc": _to_iso_optional(row.first_automation_completed_at_utc),
+            "first_winddown_completed_at_utc": _to_iso_optional(row.first_winddown_completed_at_utc),
+            "timeline_review_completed_at_utc": _to_iso_optional(row.timeline_review_completed_at_utc),
+            "created_at_utc": _to_iso_optional(row.created_at),
+            "updated_at_utc": _to_iso_optional(row.updated_at),
+        }
+
+    @staticmethod
+    def _feedback_payload_from_row(row: NightlySummaryFeedbackProgress | None) -> dict[str, Any]:
+        if row is None:
+            return {
+                "helpful_count": 0,
+                "not_helpful_count": 0,
+                "last_vote": "",
+                "last_vote_at_utc": "",
+                "last_summary_generated_at_utc": "",
+            }
+        last_vote = str(row.last_vote or "").strip().lower()
+        if last_vote not in {"helpful", "not_helpful"}:
+            last_vote = ""
+        return {
+            "helpful_count": max(0, int(row.helpful_count or 0)),
+            "not_helpful_count": max(0, int(row.not_helpful_count or 0)),
+            "last_vote": last_vote,
+            "last_vote_at_utc": _to_iso_optional(row.last_vote_at_utc),
+            "last_summary_generated_at_utc": str(row.last_summary_generated_at_utc or "").strip(),
+        }
+
+    @staticmethod
+    def _int_metric(value: Any, default: int = 0) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return int(default)
+
+    @staticmethod
+    def _metrics_payload_from_row(row: BetaMetricsSnapshot | None) -> dict[str, Any]:
+        if row is None:
+            return {}
+        return {
+            "window_days": int(row.window_days or 7),
+            "activation_progress_pct": int(row.activation_progress_pct or 0),
+            "first_3_nights_completed": int(row.first_3_nights_completed or 0),
+            "first_3_nights_total": int(row.first_3_nights_total or 5),
+            "command_total_7d": int(row.command_total_7d or 0),
+            "command_completion_rate_pct": int(row.command_completion_rate_pct or 0),
+            "wind_down_sessions_7d": int(row.wind_down_sessions_7d or 0),
+            "nightly_feedback_total": int(row.nightly_feedback_total or 0),
+            "nightly_feedback_helpful_pct": int(row.nightly_feedback_helpful_pct or 0),
+            "cohort_status_line": str(row.cohort_status_line or ""),
+            "quality_gate_line": str(row.quality_gate_line or ""),
+            "generated_at_utc": _to_iso_optional(row.generated_at_utc),
+        }
+
+    def get_first_three_nights_state(self, user_id: str) -> dict[str, str]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return self._first_three_nights_state_from_row(None)
+        with self.db.get_session() as session:
+            statement = select(FirstThreeNightsProgress).where(FirstThreeNightsProgress.user_id == user_key).limit(1)
+            row = session.execute(statement).scalar_one_or_none()
+            return self._first_three_nights_state_from_row(row)
+
+    def sync_first_three_nights_steps(
+        self,
+        user_id: str,
+        step_keys: list[str] | tuple[str, ...],
+        now_utc: datetime | None = None,
+    ) -> tuple[dict[str, str], bool]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return self._first_three_nights_state_from_row(None), False
+
+        normalized_steps = []
+        for raw_step in step_keys:
+            step = str(raw_step or "").strip().lower()
+            if step in _FIRST_3_NIGHTS_STEP_FIELD_MAP and step not in normalized_steps:
+                normalized_steps.append(step)
+
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        changed = False
+        with self.db.get_session() as session:
+            statement = select(FirstThreeNightsProgress).where(FirstThreeNightsProgress.user_id == user_key).limit(1)
+            row = session.execute(statement).scalar_one_or_none()
+            if row is None:
+                row = FirstThreeNightsProgress(user_id=user_key, created_at=now, updated_at=now)
+                session.add(row)
+                session.flush()
+
+            for step in normalized_steps:
+                field = _FIRST_3_NIGHTS_STEP_FIELD_MAP.get(step, "")
+                if not field:
+                    continue
+                if getattr(row, field) is None:
+                    setattr(row, field, now)
+                    changed = True
+
+            if changed:
+                row.updated_at = now
+            session.add(row)
+            session.flush()
+            session.refresh(row)
+            return self._first_three_nights_state_from_row(row), changed
+
+    def mark_first_three_nights_step(
+        self,
+        user_id: str,
+        step_key: str,
+        now_utc: datetime | None = None,
+    ) -> tuple[dict[str, str], bool]:
+        return self.sync_first_three_nights_steps(
+            user_id=user_id,
+            step_keys=[step_key],
+            now_utc=now_utc,
+        )
+
+    def get_nightly_summary_feedback(self, user_id: str) -> dict[str, Any]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return self._feedback_payload_from_row(None)
+        with self.db.get_session() as session:
+            statement = select(NightlySummaryFeedbackProgress).where(NightlySummaryFeedbackProgress.user_id == user_key).limit(1)
+            row = session.execute(statement).scalar_one_or_none()
+            return self._feedback_payload_from_row(row)
+
+    def record_nightly_summary_feedback(
+        self,
+        user_id: str,
+        *,
+        vote: str,
+        summary_generated_at_utc: str = "",
+        now_utc: datetime | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        user_key = _clean_user_id(user_id)
+        normalized_vote = str(vote or "").strip().lower()
+        if (not user_key) or (normalized_vote not in {"helpful", "not_helpful"}):
+            return self._feedback_payload_from_row(None), False
+
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        summary_marker = str(summary_generated_at_utc or "").strip()
+        changed = False
+        with self.db.get_session() as session:
+            statement = select(NightlySummaryFeedbackProgress).where(NightlySummaryFeedbackProgress.user_id == user_key).limit(1)
+            row = session.execute(statement).scalar_one_or_none()
+            if row is None:
+                row = NightlySummaryFeedbackProgress(
+                    user_id=user_key,
+                    helpful_count=0,
+                    not_helpful_count=0,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
+                session.flush()
+
+            duplicate_vote = (
+                bool(summary_marker)
+                and str(row.last_summary_generated_at_utc or "").strip() == summary_marker
+                and str(row.last_vote or "").strip().lower() == normalized_vote
+            )
+
+            if not duplicate_vote:
+                if normalized_vote == "helpful":
+                    row.helpful_count = max(0, int(row.helpful_count or 0)) + 1
+                else:
+                    row.not_helpful_count = max(0, int(row.not_helpful_count or 0)) + 1
+                changed = True
+
+            row.last_vote = normalized_vote
+            row.last_vote_at_utc = now
+            if summary_marker:
+                row.last_summary_generated_at_utc = summary_marker
+            row.updated_at = now
+            session.add(row)
+            session.flush()
+            session.refresh(row)
+            return self._feedback_payload_from_row(row), (changed or bool(summary_marker))
+
+    def upsert_beta_metrics_snapshot(
+        self,
+        user_id: str,
+        metrics: dict[str, Any],
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return {}
+
+        source = metrics if isinstance(metrics, dict) else {}
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        generated_at = _parse_optional_iso_datetime(str(source.get("generated_at_utc", "") or "")) or now
+        with self.db.get_session() as session:
+            statement = select(BetaMetricsSnapshot).where(BetaMetricsSnapshot.user_id == user_key).limit(1)
+            row = session.execute(statement).scalar_one_or_none()
+            if row is None:
+                row = BetaMetricsSnapshot(user_id=user_key, created_at=now, updated_at=now)
+                session.add(row)
+                session.flush()
+
+            row.window_days = max(1, self._int_metric(source.get("window_days", 7), default=7))
+            row.activation_progress_pct = max(0, min(100, self._int_metric(source.get("activation_progress_pct", 0))))
+            row.first_3_nights_completed = max(0, self._int_metric(source.get("first_3_nights_completed", 0)))
+            row.first_3_nights_total = max(1, self._int_metric(source.get("first_3_nights_total", 5), default=5))
+            row.command_total_7d = max(0, self._int_metric(source.get("command_total_7d", 0)))
+            row.command_completion_rate_pct = max(
+                0,
+                min(100, self._int_metric(source.get("command_completion_rate_pct", 0))),
+            )
+            row.wind_down_sessions_7d = max(0, self._int_metric(source.get("wind_down_sessions_7d", 0)))
+            row.nightly_feedback_total = max(0, self._int_metric(source.get("nightly_feedback_total", 0)))
+            row.nightly_feedback_helpful_pct = max(
+                0,
+                min(100, self._int_metric(source.get("nightly_feedback_helpful_pct", 0))),
+            )
+            row.cohort_status_line = str(source.get("cohort_status_line", "") or "")
+            row.quality_gate_line = str(source.get("quality_gate_line", "") or "")
+            row.generated_at_utc = generated_at
+            row.updated_at = now
+
+            session.add(row)
+            session.flush()
+            session.refresh(row)
+            return self._metrics_payload_from_row(row)
+
+    def get_beta_metrics_snapshot(self, user_id: str) -> dict[str, Any]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return {}
+        with self.db.get_session() as session:
+            statement = select(BetaMetricsSnapshot).where(BetaMetricsSnapshot.user_id == user_key).limit(1)
+            row = session.execute(statement).scalar_one_or_none()
+            return self._metrics_payload_from_row(row)
