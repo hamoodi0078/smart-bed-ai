@@ -11,8 +11,8 @@ Production-ready backend runtime for the Smart Bed voice assistant, with realtim
 
 ### 2) Install dependencies
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+python -m venv .venv311
+.\.venv311\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
@@ -46,8 +46,26 @@ python -m uvicorn web_server:app --host 127.0.0.1 --port 8001 --reload
 - `GET /healthz` -> should return `{"ok": true, "service": "web_runtime"}`
 - Run test gate:
 ```powershell
-python -m unittest tests.final_system_check tests.test_realtime_voice_pipeline tests.test_long_term_memory
+python -m unittest discover -s tests -p "test_*.py"
 ```
+
+## Flutter Mobile Shell
+
+The primary customer surface is now the Flutter app in [`mobile_app/`](/c:/Users/PC#####/Desktop/smart%20bed%20by%20me/mobile_app).
+
+### Mobile quick start
+```powershell
+cd mobile_app
+flutter pub get
+flutter analyze
+flutter test
+flutter run --dart-define=SMART_BED_API_BASE_URL=http://10.0.2.2:8001
+```
+
+Notes:
+- Android emulator defaults to `http://10.0.2.2:8001`
+- iOS simulator defaults to `http://127.0.0.1:8001`
+- Use `--dart-define=SMART_BED_API_BASE_URL=https://your-host` for staging or physical-device testing
 
 ## New Unified State Bridge API
 

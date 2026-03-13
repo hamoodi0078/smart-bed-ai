@@ -28,9 +28,16 @@ class UserRepository:
         self.db = db or DatabaseConnection()
         self.db.create_tables()
 
-    def create_user(self, email: str, password_hash: str, full_name: str | None = None) -> User:
+    def create_user(
+        self,
+        email: str,
+        password_hash: str,
+        full_name: str | None = None,
+        user_id: str | None = None,
+    ) -> User:
         with self.db.get_session() as session:
             user = User(
+                id=str(user_id or "").strip() or None,
                 email=str(email or "").strip().lower(),
                 password_hash=str(password_hash or "").strip(),
                 full_name=str(full_name or "").strip() or None,
@@ -54,6 +61,17 @@ class UserRepository:
                 return None
             statement = select(User).where(User.email == normalized).limit(1)
             return session.execute(statement).scalar_one_or_none()
+
+    def delete_user(self, user_id: str) -> bool:
+        with self.db.get_session() as session:
+            key = _clean_user_id(user_id)
+            if not key:
+                return False
+            user = session.get(User, key)
+            if user is None:
+                return False
+            session.delete(user)
+            return True
 
     def list_all(self, limit: int = 1000) -> list[User]:
         with self.db.get_session() as session:

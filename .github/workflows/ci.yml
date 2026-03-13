@@ -21,21 +21,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff pytest
+          pip install ruff
 
       - name: Ruff lint
         run: |
           ruff check .
 
-      - name: Pytest (non-blocking for now)
-        id: pytest
-        continue-on-error: true
+      - name: Backend contract suite
         run: |
-          pytest -q
-
-      - name: TODO enforce green tests
-        if: always()
-        run: |
-          if [ "${{ steps.pytest.outcome }}" != "success" ]; then
-            echo "::warning::Pytest reported failures. TODO: remove continue-on-error and enforce green tests before merge."
-          fi
+          python -m unittest discover -s tests -p "test_*.py"

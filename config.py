@@ -112,6 +112,10 @@ enforce_sensitive_data_path_guard()
 @dataclass
 class Settings:
     web_allowed_origins_raw: str = os.getenv("WEB_ALLOWED_ORIGINS", "http://127.0.0.1:8001,http://localhost:8001")
+    web_allowed_origin_regex: str = os.getenv(
+        "WEB_ALLOWED_ORIGIN_REGEX",
+        r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    )
     deepgram_api_key: str = os.getenv("DEEPGRAM_API_KEY", "")
     deepgram_tts_api_key: str = os.getenv("DEEPGRAM_TTS_API_KEY", os.getenv("TTS_API_KEY", os.getenv("DEEPGRAM_API_KEY", "")))
     deepgram_voice_agent_model: str = os.getenv("DEEPGRAM_VOICE_AGENT_MODEL", "voice-agent-conversational")

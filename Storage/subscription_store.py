@@ -95,6 +95,8 @@ class SubscriptionStore:
             "usage_daily": [],
             "usage_monthly": [],
             "user_sessions": {},
+            "mobile_sessions": {},
+            "mobile_refresh_sessions": {},
             "device_sessions": {},
             "device_refresh_sessions": {},
             "checkout_sessions": [],
@@ -200,6 +202,96 @@ class SubscriptionStore:
         self.save()
         return user
 
+    def issue_mobile_tokens(
+        self,
+        user_id: str,
+        client_name: str = "",
+        access_minutes: int = 60,
+        refresh_days: int = 30,
+    ) -> dict:
+        access_token = token_urlsafe(32)
+        refresh_token = token_urlsafe(48)
+        issued_at = self._now_iso()
+        access_exp = to_iso((self._utc_now() + timedelta(minutes=access_minutes)).replace(microsecond=0))
+        refresh_exp = to_iso((self._utc_now() + timedelta(days=refresh_days)).replace(microsecond=0))
+        session_payload = {
+            "user_id": str(user_id or "").strip(),
+            "client_name": str(client_name or "").strip(),
+            "issued_at": issued_at,
+            "revoked": False,
+        }
+        self.db["mobile_sessions"][access_token] = {
+            **session_payload,
+            "expires_at": access_exp,
+        }
+        self.db["mobile_refresh_sessions"][refresh_token] = {
+            **session_payload,
+            "expires_at": refresh_exp,
+        }
+        self.save()
+        return {
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "expires_at": access_exp,
+            "expires_in": access_minutes * 60,
+            "refresh_token": refresh_token,
+            "refresh_expires_at": refresh_exp,
+            "client_name": str(client_name or "").strip(),
+        }
+
+    def validate_mobile_access_token(self, token: str) -> Optional[dict]:
+        sess = self.db.get("mobile_sessions", {}).get(token)
+        if not sess or sess.get("revoked"):
+            return None
+        expires_at = self._parse_datetime_utc(sess.get("expires_at", ""))
+        if expires_at is None or expires_at < self._utc_now():
+            return None
+        user = self.get_user(sess.get("user_id", ""))
+        if not isinstance(user, dict):
+            return None
+        payload = dict(user)
+        payload["client_name"] = str(sess.get("client_name", "") or "")
+        payload["auth_type"] = "mobile_bearer"
+        return payload
+
+    def refresh_mobile_access_token(
+        self,
+        refresh_token: str,
+        access_minutes: int = 60,
+        refresh_days: int = 30,
+    ) -> Optional[dict]:
+        token_key = str(refresh_token or "").strip()
+        if not token_key:
+            return None
+        sess = self.db.get("mobile_refresh_sessions", {}).get(token_key)
+        if not sess or sess.get("revoked"):
+            return None
+        expires_at = self._parse_datetime_utc(sess.get("expires_at", ""))
+        if expires_at is None or expires_at < self._utc_now():
+            return None
+        self.db["mobile_refresh_sessions"][token_key]["revoked"] = True
+        self.save()
+        return self.issue_mobile_tokens(
+            user_id=str(sess.get("user_id", "") or ""),
+            client_name=str(sess.get("client_name", "") or ""),
+            access_minutes=access_minutes,
+            refresh_days=refresh_days,
+        )
+
+    def revoke_mobile_tokens(self, access_token: str = "", refresh_token: str = "") -> bool:
+        removed = False
+        access_key = str(access_token or "").strip()
+        refresh_key = str(refresh_token or "").strip()
+        if access_key and access_key in self.db.get("mobile_sessions", {}):
+            del self.db["mobile_sessions"][access_key]
+            removed = True
+        if refresh_key and refresh_key in self.db.get("mobile_refresh_sessions", {}):
+            del self.db["mobile_refresh_sessions"][refresh_key]
+            removed = True
+        if removed:
+            self.save()
+        return removed
+
     def authenticate_user(self, email: str, password: str) -> Optional[dict]:
         email_norm = (email or "").strip().lower()
         for user in self.db["users"]:
@@ -254,6 +346,12 @@ class SubscriptionStore:
             removed = True
         if token_key in self.db.get("admin_sessions", {}):
             del self.db["admin_sessions"][token_key]
+            removed = True
+        if token_key in self.db.get("mobile_sessions", {}):
+            del self.db["mobile_sessions"][token_key]
+            removed = True
+        if token_key in self.db.get("mobile_refresh_sessions", {}):
+            del self.db["mobile_refresh_sessions"][token_key]
             removed = True
         if removed:
             self.save()
@@ -1147,6 +1245,8 @@ class SubscriptionStore:
             "admin_users": 0,
             "user_sessions": 0,
             "admin_sessions": 0,
+            "mobile_sessions": 0,
+            "mobile_refresh_sessions": 0,
             "device_sessions": 0,
             "device_refresh_sessions": 0,
             "devices_unlinked": 0,
@@ -1190,6 +1290,16 @@ class SubscriptionStore:
             if isinstance(session, dict) and session.get("user_id") == user_key:
                 del self.db["admin_sessions"][token]
                 deleted["admin_sessions"] += 1
+
+        for token, session in list(self.db.get("mobile_sessions", {}).items()):
+            if isinstance(session, dict) and session.get("user_id") == user_key:
+                del self.db["mobile_sessions"][token]
+                deleted["mobile_sessions"] += 1
+
+        for token, session in list(self.db.get("mobile_refresh_sessions", {}).items()):
+            if isinstance(session, dict) and session.get("user_id") == user_key:
+                del self.db["mobile_refresh_sessions"][token]
+                deleted["mobile_refresh_sessions"] += 1
 
         for token, session in list(self.db.get("device_sessions", {}).items()):
             if isinstance(session, dict) and session.get("user_id") == user_key:

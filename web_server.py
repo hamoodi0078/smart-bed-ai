@@ -30,7 +30,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from Storage.io import atomic_write_json, locked_read_json
 from Storage.subscription_store import SubscriptionStore
@@ -44,21 +44,25 @@ from automations.registry import (
 from ai.conversation_engine import ConversationEngine
 from ai.emotion_router import detect_emotion_state
 from ai.long_term_memory import LongTermMemoryStore
+from ai.sleep_intelligence import SleepIntelligenceEngine
 from ai.voice_circuit_breaker import write_voice_circuit_reset_signal
 from commands.undo_manager import UndoManager
 from config import LONG_TERM_MEMORY_PATH, RUNTIME_DATA_DIR, USER_PROFILE_PATH, settings
 from core.errors import (
     APIError,
     DEVICE_OFFLINE,
+    INVALID_SCENE_CONFIG,
     INTERNAL_ERROR,
+    NOTHING_TO_UNDO,
     RATE_LIMITED,
+    TRIAL_ALREADY_USED,
     UNAUTHORIZED,
     VALIDATION_ERROR,
     error_response,
 )
 from core.structured_logging import emit_json_log
 from scenes import SceneStore
-from time_utils import from_iso, to_iso, utcnow
+from time_utils import ensure_utc, from_iso, to_iso, utcnow
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
@@ -76,11 +80,12 @@ _DB_CONNECTION: Any | None = None
 _DB_CONNECTION_URL = ""
 _DB_USER_REPOSITORY: Any | None = None
 _SUBSCRIPTION_GATE: Any | None = None
+_SLEEP_ENGINE = SleepIntelligenceEngine()
 
 _SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
 _MAX_CHAT_ENGINES = 200
 _DEVICE_STALE_WINDOW_SECONDS = 180
-_TRACE_ID_HEADER = "X-Trace-ID"
+_TRACE_ID_HEADER = "X-Trace-Id"
 SCENE_PREVIEW_SECONDS = 3.0
 _METRICS_REQUEST_COUNT = Counter(
     "smart_bed_http_requests_total",
@@ -116,6 +121,7 @@ ERROR_COUNT = Counter(
 
 _cors_origins_raw = str(settings.web_allowed_origins_raw or "http://127.0.0.1:8001,http://localhost:8001")
 ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+ALLOWED_ORIGIN_REGEX = str(settings.web_allowed_origin_regex or "").strip() or None
 logger = logging.getLogger("web_runtime")
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -139,15 +145,25 @@ app = FastAPI(title="Dana Abuhalifa Web Runtime", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+@app.on_event("startup")
+async def _log_cors_config() -> None:
+    logger.info(
+        "CORS configured allow_origins=%s allow_origin_regex=%s",
+        ALLOWED_ORIGINS,
+        ALLOWED_ORIGIN_REGEX,
+    )
+
+
 @app.middleware("http")
 async def trace_id_middleware(request: Request, call_next):
-    trace_id = f"req-{uuid.uuid4().hex[:8]}"
+    trace_id = _new_trace_id()
     request.state.trace_id = trace_id
     started = time.perf_counter()
     response = await call_next(request)
@@ -274,7 +290,7 @@ class SceneComposeRequest(BaseModel):
     audio: dict[str, Any] | None = None
     premium: bool = False
     category: str = ""
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
 
 
 class TrialStartRequest(BaseModel):
@@ -290,6 +306,42 @@ class SpotifyPlaybackRequest(BaseModel):
     device_id: str = ""
     playlist_uri: str = ""
     volume_percent: int = 50
+
+
+class MobileRegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: str = ""
+    client_name: str = "flutter_app"
+
+
+class MobileLoginRequest(BaseModel):
+    email: str
+    password: str
+    client_name: str = "flutter_app"
+
+
+class MobileRefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class MobileLogoutRequest(BaseModel):
+    refresh_token: str = ""
+
+
+class FirstThreeNightsStepRequest(BaseModel):
+    step_key: Literal[
+        "signup",
+        "first_scene_preview",
+        "first_automation",
+        "first_winddown",
+        "timeline_review",
+    ]
+
+
+class NightlySummaryFeedbackRequest(BaseModel):
+    vote: Literal["helpful", "not_helpful"]
+    summary_generated_at_utc: str = ""
 
 
 def _safe_profile() -> dict[str, Any]:
@@ -1247,6 +1299,498 @@ def _progress_user_commands(profile: dict[str, Any], key: str) -> tuple[list[dic
     return out[:60], changed_any
 
 
+def _command_timestamp_utc(command: dict[str, Any], fallback_now: datetime) -> datetime:
+    for key in ("completed_at", "updated_at", "created_at"):
+        parsed = _parse_iso_timestamp(str(command.get(key, "") or ""))
+        if parsed is not None:
+            return ensure_utc(parsed)
+    return ensure_utc(fallback_now)
+
+
+def _weekly_insight_payload(
+    commands: list[dict[str, Any]] | None,
+    *,
+    now_utc: datetime | None = None,
+    wind_down_minutes: int = 45,
+) -> dict[str, Any]:
+    now = now_utc if isinstance(now_utc, datetime) else utcnow()
+    now = ensure_utc(now)
+    week_start = now - timedelta(days=7)
+
+    normalized = [
+        _normalize_command_item(row if isinstance(row, dict) else {})
+        for row in (commands if isinstance(commands, list) else [])
+    ]
+    recent: list[dict[str, Any]] = []
+    for row in normalized:
+        ts = _command_timestamp_utc(row, now)
+        if ts >= week_start:
+            recent.append(row)
+
+    action_count = len(recent)
+    completed_count = sum(
+        1
+        for row in recent
+        if str(row.get("status", "queued") or "queued").strip().lower() == "completed"
+    )
+    wind_down_rows = [
+        row
+        for row in recent
+        if str(row.get("action", "") or "").strip().lower() == "winddown"
+    ]
+    wind_down_sessions = len(wind_down_rows)
+    wind_down_completed = sum(
+        1
+        for row in wind_down_rows
+        if str(row.get("status", "queued") or "queued").strip().lower() == "completed"
+    )
+    quiet_overrides = sum(
+        1
+        for row in recent
+        if str(row.get("action", "") or "").strip().lower() == "quiet_hours_override"
+    )
+    completion_rate_pct = int(round((completed_count / action_count) * 100.0)) if action_count > 0 else 0
+
+    if wind_down_completed <= 0:
+        trend = "attention"
+        headline = "No completed wind-down sessions this week"
+        summary = (
+            f"Start wind-down tonight and aim for {int(wind_down_minutes)} minutes "
+            "to begin your consistency streak."
+        )
+    elif completion_rate_pct >= 80:
+        trend = "up"
+        headline = f"{wind_down_completed} wind-down session(s) completed this week"
+        summary = "Strong momentum. Keep bedtime timing stable for better next-day energy."
+    else:
+        trend = "steady"
+        headline = f"{wind_down_completed} wind-down session(s) completed this week"
+        summary = (
+            "Consistency is building. Repeat your wind-down at a similar time tonight "
+            "to improve recovery."
+        )
+
+    return {
+        "window_days": 7,
+        "wind_down_sessions": wind_down_sessions,
+        "completed_actions": completed_count,
+        "automation_actions": action_count,
+        "quiet_overrides": quiet_overrides,
+        "completion_rate_pct": completion_rate_pct,
+        "trend": trend,
+        "headline": headline,
+        "summary": summary,
+    }
+
+
+def _sleep_engine_now(now_utc: datetime | None = None) -> datetime:
+    now = now_utc if isinstance(now_utc, datetime) else utcnow()
+    now = ensure_utc(now)
+    # The sleep intelligence engine uses local-style hour/date gates, so we
+    # pass a naive UTC snapshot for deterministic API behavior.
+    return now.replace(tzinfo=None)
+
+
+def _nightly_summary_payload(
+    profile: dict[str, Any],
+    *,
+    weekly_insight: dict[str, Any],
+    last_command_result: dict[str, Any] | None,
+    now_utc: datetime | None = None,
+) -> dict[str, Any]:
+    _SLEEP_ENGINE.ensure_shape(profile)
+    quality_line = _SLEEP_ENGINE.sleep_quality_score(profile)
+    consistency_line = _SLEEP_ENGINE.sleep_consistency_score(profile)
+    recovery_plan_line = _SLEEP_ENGINE.sleep_debt_recovery_plan(profile)
+    focus_line = "No command executed yet tonight. Start with wind-down."
+    if isinstance(last_command_result, dict):
+        summary = str(last_command_result.get("summary", "") or "").strip()
+        action = str(last_command_result.get("action", "") or "").strip().replace("_", " ")
+        if summary:
+            focus_line = f"Latest command: {summary}"
+        elif action:
+            focus_line = f"Latest command action: {action}"
+    trend = str(weekly_insight.get("trend", "steady") or "steady").strip().lower()
+    trend_title = {
+        "up": "Momentum is improving",
+        "attention": "Drift risk detected",
+        "steady": "Steady progress",
+    }.get(trend, "Steady progress")
+    return {
+        "headline": "Tonight's sleep summary",
+        "trend_title": trend_title,
+        "focus_line": focus_line,
+        "sleep_quality_line": quality_line,
+        "consistency_line": consistency_line,
+        "recovery_plan_line": recovery_plan_line,
+        "generated_at_utc": to_iso(ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())),
+    }
+
+
+_FIRST_3_NIGHTS_STEP_FIELDS = {
+    "signup": "signup_completed_at_utc",
+    "first_scene_preview": "first_scene_preview_completed_at_utc",
+    "first_automation": "first_automation_completed_at_utc",
+    "first_winddown": "first_winddown_completed_at_utc",
+    "timeline_review": "timeline_review_completed_at_utc",
+}
+
+_FIRST_3_NIGHTS_STEP_DEFINITIONS = (
+    {
+        "key": "signup",
+        "label": "Create mobile access",
+        "description": "Sign up and sign in from the mobile app.",
+    },
+    {
+        "key": "first_scene_preview",
+        "label": "Preview first scene",
+        "description": "Run one scene preview and confirm the mood fit.",
+    },
+    {
+        "key": "first_automation",
+        "label": "Trigger first automation",
+        "description": "Use one quick action from the command center.",
+    },
+    {
+        "key": "first_winddown",
+        "label": "Start wind-down",
+        "description": "Run wind-down once so bedtime habit tracking begins.",
+    },
+    {
+        "key": "timeline_review",
+        "label": "Review timeline",
+        "description": "Open timeline the next day and review what happened.",
+    },
+)
+
+
+def _normalize_first_3_nights_state(row: dict[str, Any] | None) -> dict[str, Any]:
+    data = row if isinstance(row, dict) else {}
+    out: dict[str, Any] = {}
+    for field in _FIRST_3_NIGHTS_STEP_FIELDS.values():
+        out[field] = str(data.get(field, "") or "").strip()
+    out["created_at_utc"] = str(data.get("created_at_utc", "") or "").strip()
+    out["updated_at_utc"] = str(data.get("updated_at_utc", "") or "").strip()
+    return out
+
+
+def _mark_first_3_nights_step(state: dict[str, Any], step_key: str, now_iso: str) -> bool:
+    field = _FIRST_3_NIGHTS_STEP_FIELDS.get(str(step_key or "").strip(), "")
+    if not field:
+        return False
+    if str(state.get(field, "") or "").strip():
+        return False
+    state[field] = now_iso
+    return True
+
+
+def _first_3_nights_payload(state: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_first_3_nights_state(state)
+    steps: list[dict[str, Any]] = []
+    completed_steps = 0
+    next_step_key = ""
+
+    for meta in _FIRST_3_NIGHTS_STEP_DEFINITIONS:
+        key = str(meta.get("key", "") or "")
+        field = _FIRST_3_NIGHTS_STEP_FIELDS.get(key, "")
+        completed_at = str(normalized.get(field, "") or "").strip()
+        completed = bool(completed_at)
+        if completed:
+            completed_steps += 1
+        elif not next_step_key:
+            next_step_key = key
+        steps.append(
+            {
+                "key": key,
+                "label": str(meta.get("label", "Step") or "Step"),
+                "description": str(meta.get("description", "") or ""),
+                "completed": completed,
+                "completed_at_utc": completed_at,
+            }
+        )
+
+    total_steps = len(_FIRST_3_NIGHTS_STEP_DEFINITIONS)
+    progress_pct = int(round((completed_steps / total_steps) * 100.0)) if total_steps > 0 else 0
+    return {
+        "title": "First 3 Nights",
+        "completed_steps": completed_steps,
+        "total_steps": total_steps,
+        "progress_pct": progress_pct,
+        "is_complete": bool(completed_steps >= total_steps and total_steps > 0),
+        "next_step_key": next_step_key,
+        "steps": steps,
+    }
+
+
+def _has_scene_preview_for_user(profile: dict[str, Any], key: str) -> bool:
+    preview_section = _get_scoped_profile_section(profile, "web_scene_preview")
+    preview_row = preview_section.get(key, {}) if key else {}
+    if isinstance(preview_row, dict) and str(preview_row.get("scene_key", "") or "").strip():
+        return True
+
+    timeline_section = _get_scoped_profile_section(profile, "web_timeline")
+    rows = timeline_section.get(key, []) if isinstance(timeline_section.get(key, []), list) else []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        event = str(row.get("event", "") or "").strip().lower()
+        if "scene preview" in event or "scene saved for tonight" in event:
+            return True
+    return False
+
+
+def _commands_for_user(
+    profile: dict[str, Any],
+    key: str,
+    *,
+    commands: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    if isinstance(commands, list):
+        return [_normalize_command_item(row if isinstance(row, dict) else {}) for row in commands]
+
+    cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
+    raw = cmd_section.get(key, []) if isinstance(cmd_section.get(key, []), list) else []
+    return [_normalize_command_item(row if isinstance(row, dict) else {}) for row in raw]
+
+
+def _sync_first_3_nights_state(
+    profile: dict[str, Any],
+    user: dict[str, Any],
+    *,
+    commands: list[dict[str, Any]] | None = None,
+    mark_step_key: str = "",
+    now_utc: datetime | None = None,
+) -> tuple[dict[str, Any], bool]:
+    key = _user_profile_key(user)
+    if not key:
+        return _first_3_nights_payload(_normalize_first_3_nights_state({})), False
+
+    now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+    now_iso = to_iso(now)
+    section = _get_scoped_profile_section(profile, "web_first_3_nights")
+    state = _normalize_first_3_nights_state(section.get(key, {}))
+    changed = False
+
+    if not str(state.get("created_at_utc", "") or "").strip():
+        state["created_at_utc"] = now_iso
+        changed = True
+
+    if _mark_first_3_nights_step(state, "signup", now_iso):
+        changed = True
+
+    normalized_commands = _commands_for_user(profile, key, commands=commands)
+    if _has_scene_preview_for_user(profile, key):
+        if _mark_first_3_nights_step(state, "first_scene_preview", now_iso):
+            changed = True
+
+    if any(str(cmd.get("action", "") or "").strip().lower() for cmd in normalized_commands):
+        if _mark_first_3_nights_step(state, "first_automation", now_iso):
+            changed = True
+
+    has_winddown_command = any(
+        str(cmd.get("action", "") or "").strip().lower() == "winddown"
+        for cmd in normalized_commands
+    )
+    sleep = profile.get("sleep", {}) if isinstance(profile.get("sleep", {}), dict) else {}
+    if has_winddown_command or str(sleep.get("wind_down_started_at_utc", "") or "").strip():
+        if _mark_first_3_nights_step(state, "first_winddown", now_iso):
+            changed = True
+
+    if mark_step_key:
+        if _mark_first_3_nights_step(state, mark_step_key, now_iso):
+            changed = True
+
+    if changed:
+        state["updated_at_utc"] = now_iso
+        section[key] = state
+        profile["web_first_3_nights"] = section
+    elif not str(state.get("updated_at_utc", "") or "").strip():
+        state["updated_at_utc"] = str(state.get("created_at_utc", "") or now_iso).strip()
+
+    return _first_3_nights_payload(state), changed
+
+
+def _normalize_nightly_summary_feedback(row: dict[str, Any] | None) -> dict[str, Any]:
+    data = row if isinstance(row, dict) else {}
+    try:
+        helpful_count = int(data.get("helpful_count", 0) or 0)
+    except Exception:
+        helpful_count = 0
+    try:
+        not_helpful_count = int(data.get("not_helpful_count", 0) or 0)
+    except Exception:
+        not_helpful_count = 0
+    helpful_count = max(0, helpful_count)
+    not_helpful_count = max(0, not_helpful_count)
+    last_vote = str(data.get("last_vote", "") or "").strip().lower()
+    if last_vote not in {"helpful", "not_helpful"}:
+        last_vote = ""
+    return {
+        "helpful_count": helpful_count,
+        "not_helpful_count": not_helpful_count,
+        "last_vote": last_vote,
+        "last_vote_at_utc": str(data.get("last_vote_at_utc", "") or "").strip(),
+        "last_summary_generated_at_utc": str(data.get("last_summary_generated_at_utc", "") or "").strip(),
+    }
+
+
+def _nightly_summary_feedback_payload(row: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_nightly_summary_feedback(row)
+    helpful_count = int(normalized.get("helpful_count", 0) or 0)
+    not_helpful_count = int(normalized.get("not_helpful_count", 0) or 0)
+    total_votes = helpful_count + not_helpful_count
+    helpful_pct = int(round((helpful_count / total_votes) * 100.0)) if total_votes > 0 else 0
+    return {
+        "helpful_count": helpful_count,
+        "not_helpful_count": not_helpful_count,
+        "total_votes": total_votes,
+        "helpful_pct": helpful_pct,
+        "last_vote": str(normalized.get("last_vote", "") or ""),
+        "last_vote_at_utc": str(normalized.get("last_vote_at_utc", "") or ""),
+    }
+
+
+def _nightly_summary_feedback_for_user(profile: dict[str, Any], key: str) -> dict[str, Any]:
+    section = _get_scoped_profile_section(profile, "web_nightly_summary_feedback")
+    row = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
+    return _normalize_nightly_summary_feedback(row if isinstance(row, dict) else {})
+
+
+def _record_nightly_summary_feedback(
+    profile: dict[str, Any],
+    key: str,
+    *,
+    vote: str,
+    summary_generated_at_utc: str = "",
+    now_utc: datetime | None = None,
+) -> tuple[dict[str, Any], bool]:
+    if not key:
+        return _nightly_summary_feedback_payload(_normalize_nightly_summary_feedback({})), False
+
+    section = _get_scoped_profile_section(profile, "web_nightly_summary_feedback")
+    normalized_vote = str(vote or "").strip().lower()
+    if normalized_vote not in {"helpful", "not_helpful"}:
+        return _nightly_summary_feedback_payload(_normalize_nightly_summary_feedback({})), False
+
+    state = _normalize_nightly_summary_feedback(section.get(key, {}))
+    summary_marker = str(summary_generated_at_utc or "").strip()
+    duplicate_vote = (
+        bool(summary_marker)
+        and str(state.get("last_summary_generated_at_utc", "") or "").strip() == summary_marker
+        and str(state.get("last_vote", "") or "").strip().lower() == normalized_vote
+    )
+
+    if not duplicate_vote:
+        target_key = "helpful_count" if normalized_vote == "helpful" else "not_helpful_count"
+        state[target_key] = int(state.get(target_key, 0) or 0) + 1
+
+    now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+    state["last_vote"] = normalized_vote
+    state["last_vote_at_utc"] = to_iso(now)
+    if summary_marker:
+        state["last_summary_generated_at_utc"] = summary_marker
+
+    section[key] = state
+    profile["web_nightly_summary_feedback"] = section
+    return _nightly_summary_feedback_payload(state), True
+
+
+def _beta_metrics_payload(
+    *,
+    checklist: dict[str, Any],
+    commands: list[dict[str, Any]],
+    feedback: dict[str, Any],
+    now_utc: datetime | None = None,
+) -> dict[str, Any]:
+    now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+    week_start = now - timedelta(days=7)
+    normalized_commands = [_normalize_command_item(row if isinstance(row, dict) else {}) for row in commands]
+
+    recent_commands: list[dict[str, Any]] = []
+    for row in normalized_commands:
+        ts = _command_timestamp_utc(row, now)
+        if ts >= week_start:
+            recent_commands.append(row)
+
+    command_total_7d = len(recent_commands)
+    completed_commands_7d = sum(
+        1
+        for row in recent_commands
+        if str(row.get("status", "queued") or "queued").strip().lower() == "completed"
+    )
+    wind_down_sessions_7d = sum(
+        1
+        for row in recent_commands
+        if str(row.get("action", "") or "").strip().lower() == "winddown"
+    )
+    command_completion_rate_pct = int(round((completed_commands_7d / command_total_7d) * 100.0)) if command_total_7d > 0 else 0
+
+    checklist_progress = max(0, min(100, int(checklist.get("progress_pct", 0) or 0)))
+    helpful_pct = max(0, min(100, int(feedback.get("helpful_pct", 0) or 0)))
+    feedback_total = max(0, int(feedback.get("total_votes", 0) or 0))
+
+    activation_progress_pct = int(
+        round(
+            min(
+                100.0,
+                (checklist_progress * 0.7)
+                + min(20.0, float(completed_commands_7d) * 4.0)
+                + (10.0 if feedback_total > 0 else 0.0),
+            )
+        )
+    )
+
+    if activation_progress_pct >= 80:
+        cohort_status_line = "Activation is strong for this beta account."
+    elif activation_progress_pct >= 50:
+        cohort_status_line = "Activation is building. Keep nightly loops consistent."
+    else:
+        cohort_status_line = "Activation is early. Finish First 3 Nights to stabilize usage."
+
+    if command_total_7d == 0:
+        quality_gate_line = "Run tonight's flow to start collecting reliability signals."
+    elif command_completion_rate_pct >= 90 and (feedback_total == 0 or helpful_pct >= 70):
+        quality_gate_line = "Scripted flow quality is healthy for beta progression."
+    else:
+        quality_gate_line = "Hold feature expansion and improve reliability before scaling beta."
+
+    return {
+        "window_days": 7,
+        "activation_progress_pct": activation_progress_pct,
+        "first_3_nights_completed": int(checklist.get("completed_steps", 0) or 0),
+        "first_3_nights_total": int(checklist.get("total_steps", 5) or 5),
+        "command_total_7d": command_total_7d,
+        "command_completion_rate_pct": command_completion_rate_pct,
+        "wind_down_sessions_7d": wind_down_sessions_7d,
+        "nightly_feedback_total": feedback_total,
+        "nightly_feedback_helpful_pct": helpful_pct,
+        "cohort_status_line": cohort_status_line,
+        "quality_gate_line": quality_gate_line,
+        "generated_at_utc": to_iso(now),
+    }
+
+
+def _bedtime_drift_timeline_item(
+    profile: dict[str, Any],
+    *,
+    now_utc: datetime | None = None,
+) -> tuple[dict[str, Any] | None, bool]:
+    _SLEEP_ENGINE.ensure_shape(profile)
+    now_for_engine = _sleep_engine_now(now_utc)
+    alert_line = _SLEEP_ENGINE.bedtime_drift_alert(profile)
+    if not str(alert_line).startswith("Predictive alert:"):
+        return None, False
+    should_mark = bool(_SLEEP_ENGINE.should_send_bedtime_drift_alert(profile, now=now_for_engine))
+    if should_mark:
+        _SLEEP_ENGINE.mark_bedtime_drift_alert_sent(profile, now=now_for_engine)
+    return {
+        "time": "Tonight",
+        "event": str(alert_line),
+        "status": "review",
+        "command_id": "",
+    }, should_mark
+
+
 def _apply_command_status_to_timeline(items: list[dict[str, Any]], commands: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in items:
@@ -1462,6 +2006,10 @@ def _bump(metric: str, inc: int = 1):
     TELEMETRY[metric] = int(TELEMETRY.get(metric, 0)) + int(inc)
 
 
+def _new_trace_id() -> str:
+    return f"req_{uuid.uuid4().hex[:8]}"
+
+
 def _event(level: str, action: str, **fields: Any):
     raw = dict(fields or {})
     trace_id = str(raw.pop("trace_id", "") or "")
@@ -1480,7 +2028,7 @@ def _request_trace_id(request: Request) -> str:
     trace_id = getattr(request.state, "trace_id", "")
     if str(trace_id or "").strip():
         return str(trace_id)
-    fallback = f"req-{uuid.uuid4().hex[:8]}"
+    fallback = _new_trace_id()
     request.state.trace_id = fallback
     return fallback
 
@@ -1790,6 +2338,24 @@ def _cookie_user(request: Request) -> dict[str, Any] | None:
     return user if isinstance(user, dict) else None
 
 
+def _bearer_token(request: Request) -> str:
+    header = str(request.headers.get("authorization", "") or "").strip()
+    if not header:
+        return ""
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer":
+        return ""
+    return str(token or "").strip()
+
+
+def _mobile_user(request: Request) -> dict[str, Any] | None:
+    token = _bearer_token(request)
+    if not token:
+        return None
+    user = store.validate_mobile_access_token(token)
+    return user if isinstance(user, dict) else None
+
+
 def _cookie_admin(request: Request) -> dict[str, Any] | None:
     token = request.cookies.get("sb_admin_token", "")
     if not token:
@@ -1798,8 +2364,16 @@ def _cookie_admin(request: Request) -> dict[str, Any] | None:
     return admin if isinstance(admin, dict) else None
 
 
+def _authenticated_user(request: Request) -> dict[str, Any] | None:
+    return _mobile_user(request) or _cookie_user(request)
+
+
+def _authenticated_actor(request: Request) -> dict[str, Any] | None:
+    return _authenticated_user(request) or _cookie_admin(request)
+
+
 def _require_user(request: Request) -> dict[str, Any]:
-    user = _cookie_user(request)
+    user = _authenticated_user(request)
     if not user:
         _bump("guard_user_denied")
         _event("warning", "user_guard_denied", path=request.url.path)
@@ -1945,7 +2519,7 @@ def metrics() -> Response:
 @app.get("/v1/bed/state")
 @app.get("/v1/bedstate")
 def bed_state_bridge(request: Request) -> dict[str, Any]:
-    user = _cookie_user(request)
+    user = _authenticated_user(request)
     admin = _cookie_admin(request)
     if not (user or admin):
         raise APIError(code=UNAUTHORIZED, message="Login required", status_code=401)
@@ -1957,55 +2531,21 @@ def bed_state_bridge(request: Request) -> dict[str, Any]:
     snapshot = _stable_state_snapshot(profile)
     if not isinstance(snapshot, dict):
         snapshot = {}
-
-    latest_seen: datetime | None = None
-    for row in store.list_fleet_devices(limit=1000):
-        if not isinstance(row, dict):
-            continue
-        seen_raw = str(row.get("last_seen", "") or row.get("last_seen_at", "") or "")
-        seen_at = _parse_iso_timestamp(seen_raw)
-        if seen_at is not None and (latest_seen is None or seen_at > latest_seen):
-            latest_seen = seen_at
-
-    device_online = False
-    stale = False
-    updated_at = _now_utc_iso()
-    if latest_seen is not None:
-        age_seconds = max(0.0, (utcnow() - latest_seen).total_seconds())
-        device_online = age_seconds <= 30.0
-        stale = 30.0 < age_seconds <= 300.0
-        updated_at = to_iso(latest_seen)
-
-    controls = _normalize_device_controls({"lights_on": False, "audio_on": False, "alarm_on": True, "light_level": 30})
-    if user:
-        key = _user_profile_key(user)
-        section = _get_scoped_profile_section(profile, "web_device_controls")
-        scoped = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
-        controls = _normalize_device_controls({**controls, **scoped})
-
-    state = dict(snapshot)
-    lights = state.get("lights", {})
-    if not isinstance(lights, dict):
-        lights = {}
-    lights["brightness"] = int(lights.get("brightness", controls.get("light_level", 30)) or 30)
-    lights["color"] = str(lights.get("color", "#FF8C42") or "#FF8C42")
-    state["lights"] = lights
-
-    audio = state.get("audio", {})
-    if not isinstance(audio, dict):
-        audio = {}
-    audio["playing"] = bool(audio.get("playing", controls.get("audio_on", False)))
-    audio["volume"] = int(audio.get("volume", 0) or 0)
-    state["audio"] = audio
-
+    updated_at, stale, device_online, source = _bed_state_freshness_meta()
     return {
-        "schema_version": "2.0",
+        "ok": True,
+        "generated_at": _now_utc_iso(),
+        "emotion_state": str(snapshot.get("emotion_state", "neutral") or "neutral"),
+        "active_personality": str(snapshot.get("active_personality", "guide") or "guide"),
+        "last_memory_context": _last_memory_context(),
+        "biometric_summary": snapshot.get("biometric_summary", {}),
+        "device_health_status": snapshot.get("device_health_status", {}),
+        "schema_version": "1.1",
         "device_online": bool(device_online),
         "stale": bool(stale),
         "updated_at": updated_at,
-        "source": "device",
-        "capabilities": ["led", "audio", "voice"],
-        "state": state,
+        "source": source,
+        "capabilities": _bed_capabilities(snapshot),
     }
 
 
@@ -2070,7 +2610,7 @@ def device_status(request: Request) -> dict[str, Any]:
 
 @app.get("/v1/state")
 def v1_state(request: Request) -> dict[str, Any]:
-    if not (_cookie_user(request) or _cookie_admin(request)):
+    if not (_authenticated_user(request) or _cookie_admin(request)):
         raise HTTPException(status_code=401, detail="Login required")
 
     profile = _safe_profile()
@@ -2086,7 +2626,7 @@ def v1_state(request: Request) -> dict[str, Any]:
 
 @app.get("/v2/bed/state", response_model=BedStateV2Response)
 def v2_bed_state(request: Request) -> BedStateV2Response:
-    if not (_cookie_user(request) or _cookie_admin(request)):
+    if not (_authenticated_user(request) or _cookie_admin(request)):
         raise HTTPException(status_code=401, detail="Login required")
 
     profile = _safe_profile()
@@ -2331,6 +2871,48 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
         }
     )
     resolved = _profile_user_settings(profile, user, defaults)
+    commands: list[dict[str, Any]] = []
+    last_command_result = _last_command_result_from_profile(profile, key)
+    profile_dirty = False
+    if key:
+        commands, changed = _progress_user_commands(profile, key)
+        if commands:
+            latest_result = _build_last_command_result_from_command(commands[0])
+            last_command_result = latest_result
+            if changed:
+                _store_last_command_result(profile, key, latest_result)
+        if changed:
+            cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
+            cmd_section[key] = commands
+            profile["web_device_commands"] = cmd_section
+            profile_dirty = True
+    first_3_nights_checklist = _first_3_nights_payload(_normalize_first_3_nights_state({}))
+    nightly_summary_feedback = _nightly_summary_feedback_payload(_normalize_nightly_summary_feedback({}))
+    if key:
+        first_3_nights_checklist, checklist_changed = _sync_first_3_nights_state(
+            profile,
+            user,
+            commands=commands,
+        )
+        if checklist_changed:
+            profile_dirty = True
+        nightly_summary_feedback = _nightly_summary_feedback_payload(
+            _nightly_summary_feedback_for_user(profile, key)
+        )
+    if profile_dirty:
+        _save_profile(profile)
+    weekly_insight = _weekly_insight_payload(
+        commands,
+        wind_down_minutes=int(resolved.get("wind_down_minutes", 45) or 45),
+    )
+    bedtime_drift_alert = _SLEEP_ENGINE.bedtime_drift_alert(profile)
+    if not str(bedtime_drift_alert).startswith("Predictive alert:"):
+        bedtime_drift_alert = ""
+    nightly_summary = _nightly_summary_payload(
+        profile,
+        weekly_insight=weekly_insight,
+        last_command_result=last_command_result,
+    )
 
     return {
         "name": profile.get("name", "Guest"),
@@ -2339,7 +2921,12 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
         "engagement_level": resolved["engagement_level"],
         "partner_mode_enabled": resolved["partner_mode_enabled"],
         "wind_down_minutes": resolved["wind_down_minutes"],
-        "last_command_result": _last_command_result_from_profile(profile, key),
+        "last_command_result": last_command_result,
+        "bedtime_drift_alert": bedtime_drift_alert,
+        "weekly_insight": weekly_insight,
+        "nightly_summary": nightly_summary,
+        "first_3_nights_checklist": first_3_nights_checklist,
+        "nightly_summary_feedback": nightly_summary_feedback,
     }
 
 
@@ -2398,7 +2985,7 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
                 status_code=422,
                 content=_error_envelope(
                     trace_id=trace_id,
-                    code=VALIDATION_ERROR,
+                    code=INVALID_SCENE_CONFIG,
                     message=f"Missing required field: {field_name}",
                 ),
                 headers={_TRACE_ID_HEADER: trace_id},
@@ -2474,14 +3061,14 @@ def undo_last_action(payload: UndoActionRequest, request: Request):
     action = undo_manager.pop_undo(user_id)
     if not isinstance(action, dict):
         return JSONResponse(
-            status_code=404,
-            content=_error_envelope(
-                trace_id=trace_id,
-                code=VALIDATION_ERROR,
-                message="No undo action found for this user.",
-            ),
-            headers={_TRACE_ID_HEADER: trace_id},
-        )
+                status_code=404,
+                content=_error_envelope(
+                    trace_id=trace_id,
+                    code=NOTHING_TO_UNDO,
+                    message="No undo action found for this user.",
+                ),
+                headers={_TRACE_ID_HEADER: trace_id},
+            )
 
     action_type = str(action.get("action_type", "") or "").strip()
     previous_state = action.get("previous_state")
@@ -2567,7 +3154,7 @@ def start_trial_subscription(payload: TrialStartRequest, request: Request):
             status_code=409,
             content=_error_envelope(
                 trace_id=trace_id,
-                code=VALIDATION_ERROR,
+                code=TRIAL_ALREADY_USED,
                 message="Trial already activated.",
             ),
             headers={_TRACE_ID_HEADER: trace_id},
@@ -2649,6 +3236,94 @@ def upsert_mobile_settings(payload: UserSettingsRequest, request: Request) -> di
     _save_profile(profile)
     _event("info", "user_settings_saved", user_id=str(user.get("user_id", "")), key=key)
     return {"ok": True, "settings": normalized}
+
+
+def _mobile_auth_response(user: dict[str, Any], tokens: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "user": {
+            "user_id": str(user.get("user_id", "") or ""),
+            "email": str(user.get("email", "") or ""),
+            "name": str(user.get("name", "") or ""),
+            "client_name": str(tokens.get("client_name", "") or ""),
+        },
+        "access_token": str(tokens.get("access_token", "") or ""),
+        "token_type": str(tokens.get("token_type", "Bearer") or "Bearer"),
+        "expires_at": str(tokens.get("expires_at", "") or ""),
+        "expires_in": int(tokens.get("expires_in", 0) or 0),
+        "refresh_token": str(tokens.get("refresh_token", "") or ""),
+        "refresh_expires_at": str(tokens.get("refresh_expires_at", "") or ""),
+    }
+
+
+@app.post("/v1/mobile/auth/register")
+def mobile_auth_register(payload: MobileRegisterRequest, request: Request) -> dict[str, Any]:
+    email = (payload.email or "").strip().lower()
+    password = payload.password or ""
+    name = (payload.name or "").strip()
+    client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
+    if not email or "@" not in email:
+        raise HTTPException(status_code=422, detail="A valid email is required")
+    if len(password) < 8:
+        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    try:
+        user = store.create_user(email=email, password=password, name=name)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    tokens = store.issue_mobile_tokens(user_id=str(user.get("user_id", "") or ""), client_name=client_name)
+    _event("info", "mobile_register_success", user_id=str(user.get("user_id", "")), email=email, client_name=client_name)
+    return _mobile_auth_response(user, tokens)
+
+
+@app.post("/v1/mobile/auth/login")
+def mobile_auth_login(payload: MobileLoginRequest, request: Request) -> dict[str, Any]:
+    user = store.authenticate_user(payload.email, payload.password)
+    if not user:
+        _event("warning", "mobile_login_failed", email=(payload.email or "").strip().lower())
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
+    tokens = store.issue_mobile_tokens(user_id=str(user.get("user_id", "") or ""), client_name=client_name)
+    _event("info", "mobile_login_success", user_id=str(user.get("user_id", "")), email=user.get("email", ""), client_name=client_name)
+    return _mobile_auth_response(user, tokens)
+
+
+@app.post("/v1/mobile/auth/refresh")
+def mobile_auth_refresh(payload: MobileRefreshRequest, request: Request) -> dict[str, Any]:
+    refresh_token = str(payload.refresh_token or "").strip()
+    if not refresh_token:
+        raise HTTPException(status_code=422, detail="refresh_token is required")
+    tokens = store.refresh_mobile_access_token(refresh_token)
+    if not isinstance(tokens, dict):
+        raise HTTPException(status_code=401, detail="Refresh token is invalid or expired")
+    user = store.validate_mobile_access_token(str(tokens.get("access_token", "") or ""))
+    if not isinstance(user, dict):
+        raise HTTPException(status_code=401, detail="Unable to restore mobile session")
+    _event("info", "mobile_token_refreshed", user_id=str(user.get("user_id", "")), client_name=str(tokens.get("client_name", "") or ""))
+    return _mobile_auth_response(user, tokens)
+
+
+@app.post("/v1/mobile/auth/logout")
+def mobile_auth_logout(payload: MobileLogoutRequest, request: Request) -> dict[str, Any]:
+    access_token = _bearer_token(request)
+    refresh_token = str(payload.refresh_token or "").strip()
+    revoked = store.revoke_mobile_tokens(access_token=access_token, refresh_token=refresh_token)
+    return {"ok": True, "revoked": bool(revoked)}
+
+
+@app.get("/v1/mobile/auth/me")
+def mobile_auth_me(request: Request) -> dict[str, Any]:
+    user = _mobile_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {
+        "ok": True,
+        "user": {
+            "user_id": str(user.get("user_id", "") or ""),
+            "email": str(user.get("email", "") or ""),
+            "name": str(user.get("name", "") or ""),
+            "client_name": str(user.get("client_name", "") or ""),
+        },
+    }
 
 
 @app.get("/v1/mobile/routine")
@@ -3009,6 +3684,7 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
     section = _get_scoped_profile_section(profile, "web_timeline")
     scoped = section.get(key, []) if key else []
     items = _normalize_timeline_items(scoped if isinstance(scoped, list) else [])
+    profile_dirty = False
 
     if key:
         commands, changed = _progress_user_commands(profile, key)
@@ -3016,15 +3692,21 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
         items = _apply_command_status_to_timeline(items, command_map)
         if changed and commands:
             _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
+            profile_dirty = True
         if changed:
             cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
             cmd_section[key] = commands
             profile["web_device_commands"] = cmd_section
-            _save_profile(profile)
+            profile_dirty = True
 
     now = utcnow()
+    drift_row, drift_marked = _bedtime_drift_timeline_item(profile, now_utc=now)
     quiet_row = _quiet_hours_status_timeline_item(profile, user, now_utc=now)
     cooldown_rows = _automation_cooldown_timeline_items(now_utc=now)
+    if drift_row:
+        items = [drift_row] + items
+    if drift_marked:
+        profile_dirty = True
     if cooldown_rows:
         items = cooldown_rows + items
     if quiet_row:
@@ -3032,7 +3714,124 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
 
     if not items:
         items = _default_user_timeline()
-    return {"ok": True, "items": _normalize_timeline_items(items)[:20]}
+    normalized_items = _normalize_timeline_items(items)[:20]
+    if profile_dirty:
+        _save_profile(profile)
+    return {"ok": True, "items": normalized_items}
+
+
+@app.get("/v1/mobile/first-3-nights")
+def mobile_first_3_nights(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    profile = _safe_profile()
+    key = _user_profile_key(user)
+    if not key:
+        raise HTTPException(status_code=400, detail="Unable to identify user checklist key")
+
+    commands, changed = _progress_user_commands(profile, key)
+    profile_dirty = False
+    if changed:
+        cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
+        cmd_section[key] = commands
+        profile["web_device_commands"] = cmd_section
+        if commands:
+            _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
+        profile_dirty = True
+
+    checklist, checklist_changed = _sync_first_3_nights_state(profile, user, commands=commands)
+    if checklist_changed:
+        profile_dirty = True
+
+    if profile_dirty:
+        _save_profile(profile)
+    return {"ok": True, "checklist": checklist}
+
+
+@app.post("/v1/mobile/first-3-nights/complete")
+def mobile_first_3_nights_complete(payload: FirstThreeNightsStepRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    profile = _safe_profile()
+    key = _user_profile_key(user)
+    if not key:
+        raise HTTPException(status_code=400, detail="Unable to identify user checklist key")
+
+    checklist, changed = _sync_first_3_nights_state(
+        profile,
+        user,
+        mark_step_key=str(payload.step_key or "").strip(),
+    )
+    if changed:
+        _save_profile(profile)
+    _event(
+        "info",
+        "first_3_nights_step_completed",
+        user_id=str(user.get("user_id", "")),
+        step_key=str(payload.step_key or ""),
+        changed=changed,
+    )
+    return {"ok": True, "checklist": checklist}
+
+
+@app.post("/v1/mobile/nightly-summary/feedback")
+def mobile_nightly_summary_feedback(payload: NightlySummaryFeedbackRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    profile = _safe_profile()
+    key = _user_profile_key(user)
+    if not key:
+        raise HTTPException(status_code=400, detail="Unable to identify user feedback key")
+
+    feedback, changed = _record_nightly_summary_feedback(
+        profile,
+        key,
+        vote=str(payload.vote or "").strip(),
+        summary_generated_at_utc=str(payload.summary_generated_at_utc or "").strip(),
+    )
+    if changed:
+        _save_profile(profile)
+    _event(
+        "info",
+        "nightly_summary_feedback_recorded",
+        user_id=str(user.get("user_id", "")),
+        vote=str(payload.vote or ""),
+    )
+    return {"ok": True, "feedback": feedback}
+
+
+@app.get("/v1/mobile/beta/metrics")
+def mobile_beta_metrics(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    profile = _safe_profile()
+    key = _user_profile_key(user)
+    if not key:
+        raise HTTPException(status_code=400, detail="Unable to identify user metrics key")
+
+    commands, changed = _progress_user_commands(profile, key)
+    profile_dirty = False
+    if changed:
+        cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
+        cmd_section[key] = commands
+        profile["web_device_commands"] = cmd_section
+        if commands:
+            _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
+        profile_dirty = True
+
+    checklist, checklist_changed = _sync_first_3_nights_state(profile, user, commands=commands)
+    if checklist_changed:
+        profile_dirty = True
+
+    feedback = _nightly_summary_feedback_payload(_nightly_summary_feedback_for_user(profile, key))
+    metrics = _beta_metrics_payload(checklist=checklist, commands=commands, feedback=feedback)
+
+    if profile_dirty:
+        _save_profile(profile)
+    return {
+        "ok": True,
+        "metrics": metrics,
+        "checklist": checklist,
+        "nightly_summary_feedback": feedback,
+    }
 
 
 @app.post("/v1/mobile/user-actions")
@@ -3195,6 +3994,52 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user action key")
     request_trace_id = _request_trace_id(request)
+    wind_down_minutes_for_response: int | None = None
+
+    if action_key == "winddown":
+        sleep = profile.get("sleep", {}) if isinstance(profile.get("sleep", {}), dict) else {}
+        prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+        defaults = _normalize_user_settings(
+            {
+                "response_style": prefs.get("response_style", "balanced"),
+                "engagement_level": prefs.get("engagement_level", "high"),
+                "partner_mode_enabled": bool((sleep.get("partner_mode") or {}).get("enabled", False)),
+                "wind_down_minutes": int(sleep.get("wind_down_minutes", 45) or 45),
+            }
+        )
+        resolved = _profile_user_settings(profile, user, defaults)
+        wind_down_minutes_for_response = int(resolved.get("wind_down_minutes", 45) or 45)
+        wind_down_minutes_for_response = max(15, min(120, wind_down_minutes_for_response))
+        wind_down_started_at_utc = utcnow().replace(microsecond=0)
+        wind_down_target_end_utc = wind_down_started_at_utc + timedelta(
+            minutes=wind_down_minutes_for_response
+        )
+        bedtime_history = (
+            sleep.get("bedtime_history", [])
+            if isinstance(sleep.get("bedtime_history", []), list)
+            else []
+        )
+        bedtime_history.append(to_iso(wind_down_started_at_utc))
+        sleep["wind_down_enabled"] = True
+        sleep["wind_down_minutes"] = wind_down_minutes_for_response
+        sleep["wind_down_started_at_utc"] = to_iso(wind_down_started_at_utc)
+        sleep["wind_down_target_end_utc"] = to_iso(wind_down_target_end_utc)
+        sleep["bedtime_history"] = bedtime_history[-60:]
+        profile["sleep"] = sleep
+
+        controls_section = _get_scoped_profile_section(profile, "web_device_controls")
+        current_controls = _normalize_device_controls(controls_section.get(key, {}))
+        target_light_level = max(18, min(45, int(round(45 - (wind_down_minutes_for_response / 6)))))
+        controls_section[key] = _normalize_device_controls(
+            {
+                **current_controls,
+                "lights_on": True,
+                "audio_on": True,
+                "alarm_on": True,
+                "light_level": target_light_level,
+            }
+        )
+        profile["web_device_controls"] = controls_section
 
     if action_key == "quiet_hours_override":
         prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
@@ -3288,6 +4133,16 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
             "command_id": command_id,
         },
     )
+    if action_key == "winddown" and wind_down_minutes_for_response is not None:
+        rows.insert(
+            1,
+            {
+                "time": "Now",
+                "event": f"Wind-down routine armed ({wind_down_minutes_for_response} min target)",
+                "status": "active",
+                "command_id": "",
+            },
+        )
     section[key] = rows[:20]
     profile["web_timeline"] = section
     last_command_result = _store_last_command_result(
@@ -3312,7 +4167,11 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
         "command_id": command_id,
         "command": command,
         "last_command_result": last_command_result,
-        "message": str(entry.get("message", "Action completed.")),
+        "message": (
+            f"Wind-down autopilot is now active for {wind_down_minutes_for_response} minute(s)."
+            if action_key == "winddown" and wind_down_minutes_for_response is not None
+            else str(entry.get("message", "Action completed."))
+        ),
         "timeline": section[key],
     }
 
@@ -3695,9 +4554,7 @@ def admin_voice_circuit_breaker_reset(request: Request) -> dict[str, Any]:
 @app.post("/v1/ai/chat")
 def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
-    user = _cookie_user(request)
-    admin = _cookie_admin(request)
-    actor = user or admin
+    actor = _authenticated_actor(request)
     if not actor:
         _bump("chat_denied")
         _event("warning", "chat_denied_unauthenticated")
@@ -3715,9 +4572,7 @@ def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
 @app.post("/v1/command")
 def v1_command(payload: CommandRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
-    user = _cookie_user(request)
-    admin = _cookie_admin(request)
-    actor = user or admin
+    actor = _authenticated_actor(request)
     if not actor:
         raise HTTPException(status_code=401, detail="Login required")
 
