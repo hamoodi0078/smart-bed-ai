@@ -1,5 +1,6 @@
 requests>=2.31.0
 fastapi>=0.110.0
+qrcode[pil]>=7.4.2
 uvicorn>=0.29.0
 SpeechRecognition>=3.10.0
 tzdata>=2024.1
