@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
+import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 
 class DanaChatScreen extends StatefulWidget {
@@ -21,7 +22,7 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
     _messages.add(<String, String>{
       'role': 'dana',
       'text':
-          "As-salamu alaykum! I'm Dana, your sleep companion. 🌙 How can I help you tonight? You can ask me to adjust your lights, set an alarm, or just talk about your sleep.",
+          "As-salamu alaykum! I'm Dana, your sleep companion. ðŸŒ™ How can I help you tonight? You can ask me to adjust your lights, set an alarm, or just talk about your sleep.",
       'time': _formatTime(DateTime.now()),
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
@@ -52,15 +53,15 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
   }
 
   Future<void> _handleSend() async {
-    final String text = _inputController.text.trim();
-    if (text.isEmpty) {
+    final String userMessage = _inputController.text.trim();
+    if (userMessage.isEmpty) {
       return;
     }
 
     setState(() {
       _messages.add(<String, String>{
         'role': 'user',
-        'text': text,
+        'text': userMessage,
         'time': _formatTime(DateTime.now()),
       });
       _isTyping = true;
@@ -68,7 +69,7 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
     _inputController.clear();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
-    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    final String reply = await ApiService.sendMessage(userMessage);
     if (!mounted) {
       return;
     }
@@ -77,8 +78,7 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
       _isTyping = false;
       _messages.add(<String, String>{
         'role': 'dana',
-        'text':
-            "I received your message! In the full version, I connect to your bed's AI. For now, I'm in demo mode. 🛏️✨",
+        'text': reply,
         'time': _formatTime(DateTime.now()),
       });
     });
@@ -260,7 +260,7 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
                 ),
               ),
               child: const Text(
-                'Dana is thinking... 💭',
+                'Dana is thinking... ðŸ’­',
                 style: TextStyle(
                   color: Color(0xFFA7B4D3),
                   fontSize: 13,
@@ -341,3 +341,4 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
     );
   }
 }
+
