@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../subscription/subscription_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -477,28 +478,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class SubscriptionScreen extends StatelessWidget {
-  const SubscriptionScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A1628),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0A1628),
-        foregroundColor: AppColors.white,
-        title: const Text('Subscription'),
-      ),
-      body: const Center(
-        child: Text(
-          'Subscription details coming next.',
-          style: TextStyle(color: AppColors.softWhite),
         ),
       ),
     );
