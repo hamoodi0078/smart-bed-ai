@@ -187,6 +187,8 @@ class TestMobileFirst3NightsAndBetaMetrics(unittest.TestCase):
         metrics = metrics_response.json().get("metrics", {})
         self.assertEqual(int(metrics.get("nightly_feedback_total", 0)), 2)
         self.assertEqual(int(metrics.get("nightly_feedback_helpful_pct", 0)), 50)
+        self.assertIn("automation_feedback_total", metrics)
+        self.assertIn("automation_feedback_helpful_pct", metrics)
         self.assertIn("activation_progress_pct", metrics)
         snapshot = web_server._db_beta_progress_repository().get_beta_metrics_snapshot("u1")
         self.assertEqual(int(snapshot.get("nightly_feedback_total", 0)), 2)

@@ -27,6 +27,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _engagementLevel = 'high';
   double _windDownMinutes = 45;
   bool _partnerModeEnabled = false;
+  bool _bedtimeDriftAutomationEnabled = true;
+  double _quietHoursOverrideLimitMinutes = 120;
+  bool _weeklyInsightEnabled = true;
   bool _pushEnabled = true;
   bool _emailEnabled = false;
   bool _saving = false;
@@ -54,6 +57,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       engagementLevel: _engagementLevel,
       partnerModeEnabled: _partnerModeEnabled,
       windDownMinutes: _windDownMinutes.round(),
+      bedtimeDriftAutomationEnabled: _bedtimeDriftAutomationEnabled,
+      quietHoursOverrideLimitMinutes: _quietHoursOverrideLimitMinutes.round(),
+      weeklyInsightEnabled: _weeklyInsightEnabled,
     );
     final profile = UserProfilePrefs(
       displayName: _displayNameController.text.trim().isEmpty
@@ -120,6 +126,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _engagementLevel = bundle.settings.engagementLevel;
       _windDownMinutes = bundle.settings.windDownMinutes.toDouble();
       _partnerModeEnabled = bundle.settings.partnerModeEnabled;
+      _bedtimeDriftAutomationEnabled =
+          bundle.settings.bedtimeDriftAutomationEnabled;
+      _quietHoursOverrideLimitMinutes =
+          bundle.settings.quietHoursOverrideLimitMinutes.toDouble();
+      _weeklyInsightEnabled = bundle.settings.weeklyInsightEnabled;
       _pushEnabled = bundle.profile.pushEnabled;
       _emailEnabled = bundle.profile.emailEnabled;
       _dirty = false;
@@ -343,6 +354,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   });
                 },
               ),
+              const SizedBox(height: 6),
+              SwitchListTile.adaptive(
+                value: _bedtimeDriftAutomationEnabled,
+                title: const Text('Predictive bedtime drift automation'),
+                subtitle: const Text(
+                  'Show drift alerts in timeline and dashboard when bedtime starts sliding.',
+                ),
+                contentPadding: EdgeInsets.zero,
+                onChanged: (value) {
+                  setState(() {
+                    _bedtimeDriftAutomationEnabled = value;
+                    _dirty = true;
+                  });
+                },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Quiet-hours override cap: ${_quietHoursOverrideLimitMinutes.round()} min',
+                style: theme.textTheme.titleMedium,
+              ),
+              Slider.adaptive(
+                value: _quietHoursOverrideLimitMinutes,
+                min: 30,
+                max: 240,
+                divisions: 21,
+                label: '${_quietHoursOverrideLimitMinutes.round()} min',
+                onChanged: (value) {
+                  setState(() {
+                    _quietHoursOverrideLimitMinutes = value;
+                    _dirty = true;
+                  });
+                },
+              ),
+              SwitchListTile.adaptive(
+                value: _weeklyInsightEnabled,
+                title: const Text('Weekly insight coaching'),
+                subtitle: const Text(
+                  'Show weekly habit-loop coaching cards on the command center.',
+                ),
+                contentPadding: EdgeInsets.zero,
+                onChanged: (value) {
+                  setState(() {
+                    _weeklyInsightEnabled = value;
+                    _dirty = true;
+                  });
+                },
+              ),
             ],
           ),
         ),
@@ -398,5 +456,8 @@ String _signatureFor(SettingsBundle bundle) {
     bundle.settings.engagementLevel,
     bundle.settings.partnerModeEnabled,
     bundle.settings.windDownMinutes,
+    bundle.settings.bedtimeDriftAutomationEnabled,
+    bundle.settings.quietHoursOverrideLimitMinutes,
+    bundle.settings.weeklyInsightEnabled,
   ].join('|');
 }

@@ -197,6 +197,26 @@ class SmartBedApi {
     );
   }
 
+  Future<AutomationFeedbackLoop> submitCommandFeedback({
+    required String accessToken,
+    required String commandId,
+    required String vote,
+    String note = '',
+  }) async {
+    final payload = <String, Object>{'vote': vote};
+    if (note.trim().isNotEmpty) {
+      payload['note'] = note.trim();
+    }
+    final json = await _post(
+      '/v1/mobile/device-commands/$commandId/feedback',
+      data: payload,
+      accessToken: accessToken,
+    );
+    return AutomationFeedbackLoop.fromJson(
+      _asMap(json['feedback'], 'command feedback'),
+    );
+  }
+
   Future<BetaMetrics> getBetaMetrics(String accessToken) async {
     final json = await _get(
       '/v1/mobile/beta/metrics',

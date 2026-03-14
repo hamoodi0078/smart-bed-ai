@@ -24,6 +24,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String? _pendingAction;
   bool _trialStarting = false;
   bool _feedbackSubmitting = false;
+  bool _commandFeedbackSubmitting = false;
 
   @override
   void initState() {
@@ -146,6 +147,39 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       if (mounted) {
         setState(() {
           _feedbackSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _submitCommandFeedback({
+    required String commandId,
+    required String vote,
+  }) async {
+    setState(() {
+      _commandFeedbackSubmitting = true;
+    });
+    try {
+      await ref.read(smartBedRepositoryProvider).submitCommandFeedback(
+        commandId: commandId,
+        vote: vote,
+      );
+      if (!mounted) {
+        return;
+      }
+      _showMessage(
+        vote == 'helpful'
+            ? 'Command feedback saved. Nice signal for reliability.'
+            : 'Command feedback saved. We will tune this automation.',
+      );
+      ref.invalidate(dashboardBundleProvider);
+      ref.invalidate(betaMetricsProvider);
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _commandFeedbackSubmitting = false;
         });
       }
     }
@@ -438,7 +472,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const SizedBox(height: 18),
           _LastCommandCard(
             result: dashboard.dashboard.lastCommandResult,
+            feedback: dashboard.dashboard.automationFeedbackLoop,
             onRetry: (action) => _runAction(action),
+            feedbackSubmitting: _commandFeedbackSubmitting,
+            onVote: (commandId, vote) => _submitCommandFeedback(
+              commandId: commandId,
+              vote: vote,
+            ),
           ),
           const SizedBox(height: 18),
           if (dashboard.trialStatus.isFree)
@@ -846,6 +886,13 @@ class _BetaMetricsCard extends StatelessWidget {
                     ? StatusTone.info
                     : StatusTone.neutral,
               ),
+              StatusPill(
+                label:
+                    '${metrics.automationFeedbackHelpfulPct}% command feedback',
+                tone: metrics.automationFeedbackTotal > 0
+                    ? StatusTone.info
+                    : StatusTone.neutral,
+              ),
             ],
           ),
         ],
@@ -855,10 +902,19 @@ class _BetaMetricsCard extends StatelessWidget {
 }
 
 class _LastCommandCard extends StatelessWidget {
-  const _LastCommandCard({required this.result, required this.onRetry});
+  const _LastCommandCard({
+    required this.result,
+    required this.feedback,
+    required this.onRetry,
+    required this.feedbackSubmitting,
+    required this.onVote,
+  });
 
   final CommandResult? result;
+  final AutomationFeedbackLoop feedback;
   final ValueChanged<String> onRetry;
+  final bool feedbackSubmitting;
+  final void Function(String commandId, String vote) onVote;
 
   @override
   Widget build(BuildContext context) {
@@ -874,6 +930,8 @@ class _LastCommandCard extends StatelessWidget {
               'No mobile command has been fired yet. Start with wind-down or room optimization to seed the timeline.',
               style: theme.textTheme.bodyMedium,
             ),
+            const SizedBox(height: 10),
+            Text(feedback.statusLine, style: theme.textTheme.bodySmall),
           ],
         ),
       );
@@ -921,6 +979,43 @@ class _LastCommandCard extends StatelessWidget {
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('Retry action'),
             ),
+          ],
+          if (result!.commandId.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 14),
+            Text(
+              'Was this automation result helpful?',
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: <Widget>[
+                FilledButton.tonalIcon(
+                  onPressed: feedbackSubmitting
+                      ? null
+                      : () => onVote(result!.commandId, 'helpful'),
+                  icon: const Icon(Icons.thumb_up_alt_outlined),
+                  label: const Text('Helpful'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: feedbackSubmitting
+                      ? null
+                      : () => onVote(result!.commandId, 'not_helpful'),
+                  icon: const Icon(Icons.thumb_down_alt_outlined),
+                  label: const Text('Not helpful'),
+                ),
+                StatusPill(
+                  label:
+                      '${feedback.helpfulPct}% helpful (${feedback.totalVotes} vote(s))',
+                  tone: feedback.totalVotes > 0
+                      ? StatusTone.info
+                      : StatusTone.neutral,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(feedback.statusLine, style: theme.textTheme.bodySmall),
           ],
         ],
       ),

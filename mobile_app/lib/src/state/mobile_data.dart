@@ -105,6 +105,21 @@ class SmartBedRepository {
     );
   }
 
+  Future<AutomationFeedbackLoop> submitCommandFeedback({
+    required String commandId,
+    required String vote,
+    String note = '',
+  }) {
+    return _auth.performAuthorized(
+      (accessToken) => _api.submitCommandFeedback(
+        accessToken: accessToken,
+        commandId: commandId,
+        vote: vote,
+        note: note,
+      ),
+    );
+  }
+
   Future<BetaMetrics> loadBetaMetrics() {
     return _auth.performAuthorized(_api.getBetaMetrics);
   }

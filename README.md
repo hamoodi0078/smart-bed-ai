@@ -61,6 +61,11 @@ This validates: `signup/register -> dashboard -> quick action -> scene preview -
 - Auth: admin session required
 - Returns: scoped tester rows + blockers + `exit_gate_pass` so you can decide if the cohort is ready to move past the first 45-day window.
 
+### 9) Track Month 2 Kuwait cohort progress (admin API)
+- Enroll/update tester: `POST /v1/admin/mobile/beta-cohort/enroll`
+- Cohort report: `GET /v1/admin/mobile/beta-cohort?cohort_key=kuwait_beta&target_min=10&target_max=15`
+- Returns active tester counts, target-gap status, and tester-level rollout metrics.
+
 ## Flutter Mobile Shell
 
 The primary customer surface is now the Flutter app in [`mobile_app/`](/c:/Users/PC#####/Desktop/smart%20bed%20by%20me/mobile_app).
@@ -78,6 +83,8 @@ Notes:
 - Android emulator defaults to `http://10.0.2.2:8001`
 - iOS simulator defaults to `http://127.0.0.1:8001`
 - Use `--dart-define=SMART_BED_API_BASE_URL=https://your-host` for staging or physical-device testing
+- Mobile settings now include automation controls: `bedtime_drift_automation_enabled`, `quiet_hours_override_limit_minutes`, and `weekly_insight_enabled`
+- Mobile automation feedback loop is live: `POST /v1/mobile/device-commands/{command_id}/feedback` and dashboard field `automation_feedback_loop`
 
 ## CI Quality Gates
 

@@ -108,6 +108,22 @@ class MobileCommandRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
 
+class MobileCommandFeedback(Base):
+    __tablename__ = "mobile_command_feedback"
+    __table_args__ = (UniqueConstraint("user_id", "command_id", name="uq_mobile_command_feedback_user_command"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    command_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    vote: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    trace_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    voted_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
 class FirstThreeNightsProgress(Base):
     __tablename__ = "first_three_nights_progress"
 
@@ -157,6 +173,21 @@ class BetaMetricsSnapshot(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
 
+class BetaCohortMember(Base):
+    __tablename__ = "beta_cohort_members"
+    __table_args__ = (UniqueConstraint("cohort_key", "user_id", name="uq_beta_cohort_members_cohort_user"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    cohort_key: Mapped[str] = mapped_column(String(80), nullable=False, default="kuwait_beta", index=True)
+    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    country_code: Mapped[str] = mapped_column(String(8), nullable=False, default="KW")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    source: Mapped[str] = mapped_column(String(40), nullable=False, default="admin_manual")
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
 __all__ = [
     "Base",
     "User",
@@ -165,7 +196,9 @@ __all__ = [
     "Event",
     "SleepSession",
     "MobileCommandRecord",
+    "MobileCommandFeedback",
     "FirstThreeNightsProgress",
     "NightlySummaryFeedbackProgress",
     "BetaMetricsSnapshot",
+    "BetaCohortMember",
 ]

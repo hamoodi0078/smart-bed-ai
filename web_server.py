@@ -250,10 +250,23 @@ class UserSettingsRequest(BaseModel):
     engagement_level: str = "high"
     wind_down_minutes: int = 45
     partner_mode_enabled: bool = False
+    bedtime_drift_automation_enabled: bool = True
+    quiet_hours_override_limit_minutes: int = 120
+    weekly_insight_enabled: bool = True
 
 
 class AdminActionRequest(BaseModel):
     action: str
+
+
+class BetaCohortEnrollRequest(BaseModel):
+    user_id: str = ""
+    email: str = ""
+    cohort_key: str = "kuwait_beta"
+    country_code: str = "KW"
+    status: Literal["candidate", "invited", "active", "paused", "graduated", "inactive"] = "active"
+    source: str = "admin_manual"
+    notes: str = ""
 
 
 class UserRoutineRequest(BaseModel):
@@ -346,6 +359,11 @@ class FirstThreeNightsStepRequest(BaseModel):
 class NightlySummaryFeedbackRequest(BaseModel):
     vote: Literal["helpful", "not_helpful"]
     summary_generated_at_utc: str = ""
+
+
+class DeviceCommandFeedbackRequest(BaseModel):
+    vote: Literal["helpful", "not_helpful"]
+    note: str = ""
 
 
 def _safe_profile() -> dict[str, Any]:
@@ -567,6 +585,7 @@ def _purge_profile_user_data(profile: dict[str, Any], user: dict[str, Any]) -> i
         "web_device_controls",
         "web_timeline",
         "web_device_commands",
+        "web_command_feedback",
         "spotify_tokens",
     )
     for section_key in section_keys:
@@ -598,11 +617,28 @@ def _normalize_user_settings(payload: dict[str, Any] | None) -> dict[str, Any]:
         wind_down = 45
     wind_down = max(15, min(120, wind_down))
 
+    try:
+        quiet_override_limit = int(
+            data.get(
+                "quiet_hours_override_limit_minutes",
+                settings.quiet_hours_override_max_minutes or 120,
+            )
+            or (settings.quiet_hours_override_max_minutes or 120)
+        )
+    except Exception:
+        quiet_override_limit = int(settings.quiet_hours_override_max_minutes or 120)
+    quiet_override_limit = max(30, min(240, quiet_override_limit))
+
     return {
         "response_style": response_style,
         "engagement_level": engagement_level,
         "wind_down_minutes": wind_down,
         "partner_mode_enabled": bool(data.get("partner_mode_enabled", False)),
+        "bedtime_drift_automation_enabled": bool(
+            data.get("bedtime_drift_automation_enabled", True)
+        ),
+        "quiet_hours_override_limit_minutes": quiet_override_limit,
+        "weekly_insight_enabled": bool(data.get("weekly_insight_enabled", True)),
     }
 
 
@@ -623,6 +659,35 @@ def _profile_user_settings(profile: dict[str, Any], user: dict[str, Any], defaul
 
     merged = {**defaults, **(raw if isinstance(raw, dict) else {})}
     return _normalize_user_settings(merged)
+
+
+def _resolved_user_settings(profile: dict[str, Any], user: dict[str, Any]) -> dict[str, Any]:
+    prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+    sleep = profile.get("sleep", {}) if isinstance(profile.get("sleep", {}), dict) else {}
+    try:
+        quiet_override_limit = int(
+            prefs.get(
+                "quiet_hours_override_limit_minutes",
+                settings.quiet_hours_override_max_minutes or 120,
+            )
+            or (settings.quiet_hours_override_max_minutes or 120)
+        )
+    except Exception:
+        quiet_override_limit = int(settings.quiet_hours_override_max_minutes or 120)
+    defaults = _normalize_user_settings(
+        {
+            "response_style": prefs.get("response_style", "balanced"),
+            "engagement_level": prefs.get("engagement_level", "high"),
+            "partner_mode_enabled": bool((sleep.get("partner_mode") or {}).get("enabled", False)),
+            "wind_down_minutes": int(sleep.get("wind_down_minutes", 45) or 45),
+            "bedtime_drift_automation_enabled": bool(
+                prefs.get("bedtime_drift_automation_enabled", True)
+            ),
+            "quiet_hours_override_limit_minutes": quiet_override_limit,
+            "weekly_insight_enabled": bool(prefs.get("weekly_insight_enabled", True)),
+        }
+    )
+    return _profile_user_settings(profile, user, defaults)
 
 
 def _user_profile_key(user: dict[str, Any]) -> str:
@@ -1039,7 +1104,20 @@ def _quiet_window_end_local(now_local: datetime, quiet_window: str) -> datetime:
 def _compute_quiet_hours_override_until_utc(profile: dict[str, Any], user: dict[str, Any], now_utc: datetime | None = None) -> str:
     now = now_utc if isinstance(now_utc, datetime) else utcnow()
     now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
-    override_limit_minutes = max(30, min(240, int(settings.quiet_hours_override_max_minutes or 120)))
+    resolved_settings = _resolved_user_settings(profile, user)
+    override_limit_minutes = max(
+        30,
+        min(
+            240,
+            int(
+                resolved_settings.get(
+                    "quiet_hours_override_limit_minutes",
+                    settings.quiet_hours_override_max_minutes or 120,
+                )
+                or (settings.quiet_hours_override_max_minutes or 120)
+            ),
+        ),
+    )
     hard_limit_utc = now + timedelta(minutes=override_limit_minutes)
 
     quiet_window = _effective_quiet_window(profile)
@@ -1590,6 +1668,7 @@ def _weekly_insight_payload(
     user_id: str = "",
     now_utc: datetime | None = None,
     wind_down_minutes: int = 45,
+    weekly_insight_enabled: bool = True,
 ) -> dict[str, Any]:
     now = now_utc if isinstance(now_utc, datetime) else utcnow()
     now = ensure_utc(now)
@@ -1633,7 +1712,11 @@ def _weekly_insight_payload(
     )
     completion_rate_pct = int(round((completed_count / action_count) * 100.0)) if action_count > 0 else 0
 
-    if wind_down_completed <= 0:
+    if not weekly_insight_enabled:
+        trend = "paused"
+        headline = "Weekly insight paused"
+        summary = "Enable weekly insight in Settings to resume habit-loop coaching."
+    elif wind_down_completed <= 0:
         trend = "attention"
         headline = "No completed wind-down sessions this week"
         summary = (
@@ -1697,6 +1780,7 @@ def _nightly_summary_payload(
         "up": "Momentum is improving",
         "attention": "Drift risk detected",
         "steady": "Steady progress",
+        "paused": "Insights paused",
     }.get(trend, "Steady progress")
     return {
         "headline": "Tonight's sleep summary",
@@ -2016,11 +2100,197 @@ def _record_nightly_summary_feedback(
     return _nightly_summary_feedback_payload(state), True
 
 
+def _normalize_command_feedback_summary(row: dict[str, Any] | None) -> dict[str, Any]:
+    data = row if isinstance(row, dict) else {}
+    try:
+        helpful_count = int(data.get("helpful_count", 0) or 0)
+    except Exception:
+        helpful_count = 0
+    try:
+        not_helpful_count = int(data.get("not_helpful_count", 0) or 0)
+    except Exception:
+        not_helpful_count = 0
+    helpful_count = max(0, helpful_count)
+    not_helpful_count = max(0, not_helpful_count)
+    last_vote = str(data.get("last_vote", "") or "").strip().lower()
+    if last_vote not in {"helpful", "not_helpful"}:
+        last_vote = ""
+    return {
+        "helpful_count": helpful_count,
+        "not_helpful_count": not_helpful_count,
+        "last_vote": last_vote,
+        "last_vote_at_utc": str(data.get("last_vote_at_utc", "") or "").strip(),
+        "last_command_id": str(data.get("last_command_id", "") or "").strip(),
+        "last_command_action": str(data.get("last_command_action", "") or "").strip().lower(),
+    }
+
+
+def _command_feedback_payload(row: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_command_feedback_summary(row)
+    helpful_count = int(normalized.get("helpful_count", 0) or 0)
+    not_helpful_count = int(normalized.get("not_helpful_count", 0) or 0)
+    total_votes = helpful_count + not_helpful_count
+    helpful_pct = int(round((helpful_count / total_votes) * 100.0)) if total_votes > 0 else 0
+    if total_votes <= 0:
+        status_line = "No command feedback yet. Rate your latest automation to tune reliability."
+    elif helpful_pct >= 70:
+        status_line = "Automation feedback is strong. Keep repeating this routine."
+    elif helpful_pct >= 40:
+        status_line = "Automation feedback is mixed. Keep tuning timing and scene choice."
+    else:
+        status_line = "Automation feedback needs attention. Focus on reliability before adding features."
+    return {
+        "helpful_count": helpful_count,
+        "not_helpful_count": not_helpful_count,
+        "total_votes": total_votes,
+        "helpful_pct": helpful_pct,
+        "last_vote": str(normalized.get("last_vote", "") or ""),
+        "last_vote_at_utc": str(normalized.get("last_vote_at_utc", "") or ""),
+        "last_command_id": str(normalized.get("last_command_id", "") or ""),
+        "last_command_action": str(normalized.get("last_command_action", "") or ""),
+        "status_line": status_line,
+    }
+
+
+def _command_feedback_summary_from_profile(profile: dict[str, Any], key: str) -> dict[str, Any]:
+    section = _get_scoped_profile_section(profile, "web_command_feedback")
+    rows = section.get(key, {}) if key else {}
+    if not isinstance(rows, dict):
+        rows = {}
+    helpful_count = 0
+    not_helpful_count = 0
+    latest_vote = ""
+    latest_vote_at = ""
+    latest_command_id = ""
+    latest_command_action = ""
+    latest_ts = float("-inf")
+
+    for command_id, raw_row in rows.items():
+        row = raw_row if isinstance(raw_row, dict) else {}
+        vote = str(row.get("vote", "") or "").strip().lower()
+        if vote == "helpful":
+            helpful_count += 1
+        elif vote == "not_helpful":
+            not_helpful_count += 1
+        else:
+            continue
+        ts_raw = str(row.get("voted_at_utc", "") or "").strip()
+        ts = _parse_iso_timestamp(ts_raw)
+        if isinstance(ts, datetime):
+            ts_value = ensure_utc(ts).timestamp()
+        else:
+            ts_value = float("-inf")
+        if ts_value >= latest_ts:
+            latest_ts = ts_value
+            latest_vote = vote
+            latest_vote_at = ts_raw
+            latest_command_id = str(command_id or "").strip()
+            latest_command_action = str(row.get("action", "") or "").strip().lower()
+
+    return _normalize_command_feedback_summary(
+        {
+            "helpful_count": helpful_count,
+            "not_helpful_count": not_helpful_count,
+            "last_vote": latest_vote,
+            "last_vote_at_utc": latest_vote_at,
+            "last_command_id": latest_command_id,
+            "last_command_action": latest_command_action,
+        }
+    )
+
+
+def _command_feedback_for_user(profile: dict[str, Any], key: str) -> dict[str, Any]:
+    if not key:
+        return _normalize_command_feedback_summary({})
+    try:
+        row = _db_command_repository().command_feedback_summary_window(
+            key,
+            window_days=30,
+        )
+        return _normalize_command_feedback_summary(row if isinstance(row, dict) else {})
+    except Exception as exc:
+        emit_json_log(
+            logger,
+            level="warning",
+            event_type="command_feedback_db_unavailable",
+            trace_id="web_runtime",
+            metadata={"error_type": type(exc).__name__},
+        )
+    return _command_feedback_summary_from_profile(profile, key)
+
+
+def _record_command_feedback(
+    profile: dict[str, Any],
+    key: str,
+    *,
+    command_id: str,
+    command_action: str = "",
+    vote: str,
+    note: str = "",
+    trace_id: str = "",
+    now_utc: datetime | None = None,
+) -> tuple[dict[str, Any], bool]:
+    if not key:
+        return _command_feedback_payload(_normalize_command_feedback_summary({})), False
+
+    command_key = str(command_id or "").strip()
+    normalized_vote = str(vote or "").strip().lower()
+    if (not command_key) or (normalized_vote not in {"helpful", "not_helpful"}):
+        return _command_feedback_payload(_normalize_command_feedback_summary({})), False
+
+    now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+    normalized_action = str(command_action or "").strip().lower()
+    normalized_note = str(note or "").strip()
+    if len(normalized_note) > 240:
+        normalized_note = normalized_note[:240]
+    trace = str(trace_id or "").strip()
+
+    try:
+        state, changed = _db_command_repository().record_command_feedback(
+            key,
+            command_id=command_key,
+            vote=normalized_vote,
+            command_action=normalized_action,
+            note=normalized_note,
+            trace_id=trace,
+            now_utc=now,
+            window_days=30,
+        )
+        return _command_feedback_payload(_normalize_command_feedback_summary(state)), changed
+    except Exception as exc:
+        emit_json_log(
+            logger,
+            level="warning",
+            event_type="command_feedback_db_write_failed",
+            trace_id="web_runtime",
+            metadata={"error_type": type(exc).__name__},
+        )
+
+    section = _get_scoped_profile_section(profile, "web_command_feedback")
+    rows = section.get(key, {}) if isinstance(section.get(key, {}), dict) else {}
+    previous = rows.get(command_key, {}) if isinstance(rows.get(command_key, {}), dict) else {}
+    previous_vote = str(previous.get("vote", "") or "").strip().lower()
+    previous_note = str(previous.get("note", "") or "").strip()
+    changed = bool(previous_vote != normalized_vote or previous_note != normalized_note)
+    rows[command_key] = {
+        "vote": normalized_vote,
+        "note": normalized_note,
+        "action": normalized_action,
+        "trace_id": trace,
+        "voted_at_utc": to_iso(now),
+    }
+    section[key] = rows
+    profile["web_command_feedback"] = section
+    state = _command_feedback_summary_from_profile(profile, key)
+    return _command_feedback_payload(state), changed
+
+
 def _beta_metrics_payload(
     *,
     checklist: dict[str, Any],
     commands: list[dict[str, Any]],
     feedback: dict[str, Any],
+    command_feedback: dict[str, Any] | None = None,
     user_id: str = "",
     now_utc: datetime | None = None,
 ) -> dict[str, Any]:
@@ -2061,6 +2331,16 @@ def _beta_metrics_payload(
     checklist_progress = max(0, min(100, int(checklist.get("progress_pct", 0) or 0)))
     helpful_pct = max(0, min(100, int(feedback.get("helpful_pct", 0) or 0)))
     feedback_total = max(0, int(feedback.get("total_votes", 0) or 0))
+    normalized_command_feedback = _command_feedback_payload(
+        _normalize_command_feedback_summary(
+            command_feedback if isinstance(command_feedback, dict) else {}
+        )
+    )
+    command_feedback_total = max(0, int(normalized_command_feedback.get("total_votes", 0) or 0))
+    command_feedback_helpful_pct = max(
+        0,
+        min(100, int(normalized_command_feedback.get("helpful_pct", 0) or 0)),
+    )
 
     activation_progress_pct = int(
         round(
@@ -2068,7 +2348,8 @@ def _beta_metrics_payload(
                 100.0,
                 (checklist_progress * 0.7)
                 + min(20.0, float(completed_commands_7d) * 4.0)
-                + (10.0 if feedback_total > 0 else 0.0),
+                + (5.0 if feedback_total > 0 else 0.0)
+                + (5.0 if command_feedback_total > 0 else 0.0),
             )
         )
     )
@@ -2082,7 +2363,11 @@ def _beta_metrics_payload(
 
     if command_total_7d == 0:
         quality_gate_line = "Run tonight's flow to start collecting reliability signals."
-    elif command_completion_rate_pct >= 90 and (feedback_total == 0 or helpful_pct >= 70):
+    elif (
+        command_completion_rate_pct >= 90
+        and (feedback_total == 0 or helpful_pct >= 70)
+        and (command_feedback_total == 0 or command_feedback_helpful_pct >= 70)
+    ):
         quality_gate_line = "Scripted flow quality is healthy for beta progression."
     else:
         quality_gate_line = "Hold feature expansion and improve reliability before scaling beta."
@@ -2097,6 +2382,8 @@ def _beta_metrics_payload(
         "wind_down_sessions_7d": wind_down_sessions_7d,
         "nightly_feedback_total": feedback_total,
         "nightly_feedback_helpful_pct": helpful_pct,
+        "automation_feedback_total": command_feedback_total,
+        "automation_feedback_helpful_pct": command_feedback_helpful_pct,
         "cohort_status_line": cohort_status_line,
         "quality_gate_line": quality_gate_line,
         "generated_at_utc": to_iso(now),
@@ -2273,6 +2560,189 @@ def _beta_acceptance_cohort_report(
         "blockers": blockers,
         "generated_at_utc": to_iso(now),
         "testers": in_scope,
+    }
+
+
+def _normalize_cohort_key(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return "kuwait_beta"
+    compact = "_".join(part for part in raw.replace("-", "_").split("_") if part)
+    return compact or "kuwait_beta"
+
+
+def _beta_cohort_progress_report(
+    *,
+    cohort_key: str = "kuwait_beta",
+    target_min: int = 10,
+    target_max: int = 15,
+    max_rows: int = 50,
+    now_utc: datetime | None = None,
+) -> dict[str, Any]:
+    normalized_cohort = _normalize_cohort_key(cohort_key)
+    safe_target_min = max(1, min(int(target_min or 10), 250))
+    safe_target_max = max(safe_target_min, min(int(target_max or 15), 500))
+    safe_max_rows = max(1, min(int(max_rows or 50), 500))
+    scripted_target_pct = 90
+    now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+
+    try:
+        beta_repo = _db_beta_progress_repository()
+        user_repo = _db_user_repository()
+        cohort_members = beta_repo.list_cohort_members(
+            cohort_key=normalized_cohort,
+            limit=safe_max_rows,
+        )
+    except Exception as exc:
+        emit_json_log(
+            logger,
+            level="warning",
+            event_type="beta_cohort_progress_unavailable",
+            trace_id="web_runtime",
+            metadata={"error_type": type(exc).__name__},
+        )
+        return {
+            "cohort_key": normalized_cohort,
+            "target_min_active_testers": safe_target_min,
+            "target_max_active_testers": safe_target_max,
+            "enrolled_testers": 0,
+            "active_testers_7d": 0,
+            "active_rate_pct": 0,
+            "remaining_to_target_min": safe_target_min,
+            "over_target_by": 0,
+            "target_band_hit": False,
+            "first_3_nights_complete_testers": 0,
+            "scripted_flow_success_testers": 0,
+            "scripted_flow_success_pct": 0,
+            "status_line": "Cohort data unavailable. Restore DB connectivity first.",
+            "blockers": [
+                "Cohort data unavailable. Restore DB connectivity first.",
+            ],
+            "generated_at_utc": to_iso(now),
+            "testers": [],
+        }
+
+    testers: list[dict[str, Any]] = []
+    for member in cohort_members:
+        user_id = str(member.get("user_id", "") or "").strip()
+        if not user_id:
+            continue
+        user = user_repo.get_user_by_id(user_id)
+        email = str(getattr(user, "email", "") or "").strip().lower()
+        name = str(getattr(user, "full_name", "") or "").strip()
+        timezone_value = str(getattr(user, "timezone", "") or "").strip()
+
+        checklist_state = beta_repo.get_first_three_nights_state(user_id)
+        checklist = _first_3_nights_payload(
+            _normalize_first_3_nights_state(checklist_state if isinstance(checklist_state, dict) else {})
+        )
+        first_3_nights_complete = bool(checklist.get("is_complete", False))
+
+        metrics = beta_repo.get_beta_metrics_snapshot(user_id)
+        if not isinstance(metrics, dict):
+            metrics = {}
+        command_total_7d = max(0, int(metrics.get("command_total_7d", 0) or 0))
+        command_completion_rate_pct = max(
+            0,
+            min(100, int(metrics.get("command_completion_rate_pct", 0) or 0)),
+        )
+        wind_down_sessions_7d = max(0, int(metrics.get("wind_down_sessions_7d", 0) or 0))
+        activation_progress_pct = max(0, min(100, int(metrics.get("activation_progress_pct", 0) or 0)))
+        generated_at_utc = str(metrics.get("generated_at_utc", "") or "").strip()
+        nightly_feedback_total = max(0, int(metrics.get("nightly_feedback_total", 0) or 0))
+        automation_feedback_total = max(0, int(metrics.get("automation_feedback_total", 0) or 0))
+        active_7d = bool(
+            command_total_7d > 0
+            or wind_down_sessions_7d > 0
+            or nightly_feedback_total > 0
+            or automation_feedback_total > 0
+        )
+        scripted_flow_success = bool(
+            command_total_7d > 0
+            and wind_down_sessions_7d > 0
+            and command_completion_rate_pct >= scripted_target_pct
+        )
+
+        testers.append(
+            {
+                "user_id": user_id,
+                "email": email,
+                "name": name,
+                "timezone": timezone_value,
+                "country_code": str(member.get("country_code", "") or "").strip().upper() or "KW",
+                "status": str(member.get("status", "") or "").strip().lower() or "active",
+                "source": str(member.get("source", "") or "").strip().lower() or "admin_manual",
+                "notes": str(member.get("notes", "") or ""),
+                "cohort_enrolled_at_utc": str(member.get("created_at_utc", "") or ""),
+                "active_7d": active_7d,
+                "first_3_nights_complete": first_3_nights_complete,
+                "activation_progress_pct": activation_progress_pct,
+                "command_total_7d": command_total_7d,
+                "command_completion_rate_pct": command_completion_rate_pct,
+                "wind_down_sessions_7d": wind_down_sessions_7d,
+                "scripted_flow_success": scripted_flow_success,
+                "metrics_generated_at_utc": generated_at_utc,
+            }
+        )
+
+    def _sort_key(row: dict[str, Any]) -> tuple[int, int, int, int, float]:
+        generated_at = _parse_iso_timestamp(str(row.get("metrics_generated_at_utc", "") or ""))
+        generated_ts = ensure_utc(generated_at).timestamp() if isinstance(generated_at, datetime) else 0.0
+        return (
+            int(bool(row.get("active_7d", False))),
+            int(bool(row.get("first_3_nights_complete", False))),
+            int(row.get("activation_progress_pct", 0) or 0),
+            int(row.get("command_completion_rate_pct", 0) or 0),
+            generated_ts,
+        )
+
+    testers.sort(key=_sort_key, reverse=True)
+
+    enrolled_testers = len(testers)
+    active_testers_7d = sum(1 for row in testers if bool(row.get("active_7d", False)))
+    active_rate_pct = int(round((active_testers_7d / enrolled_testers) * 100.0)) if enrolled_testers > 0 else 0
+    first_3_nights_complete_testers = sum(1 for row in testers if bool(row.get("first_3_nights_complete", False)))
+    scripted_flow_success_testers = sum(1 for row in testers if bool(row.get("scripted_flow_success", False)))
+    scripted_flow_success_pct = int(round((scripted_flow_success_testers / enrolled_testers) * 100.0)) if enrolled_testers > 0 else 0
+
+    remaining_to_target_min = max(0, safe_target_min - active_testers_7d)
+    over_target_by = max(0, active_testers_7d - safe_target_max)
+    target_band_hit = bool(active_testers_7d >= safe_target_min and active_testers_7d <= safe_target_max)
+
+    blockers: list[str] = []
+    if active_testers_7d < safe_target_min:
+        blockers.append(
+            f"Need {remaining_to_target_min} more active tester(s) in the last 7 days to reach minimum target."
+        )
+    if scripted_flow_success_pct < scripted_target_pct:
+        blockers.append(
+            f"Scripted flow success is {scripted_flow_success_pct}% (target: {scripted_target_pct}%+)."
+        )
+
+    if target_band_hit:
+        status_line = "Kuwait beta cohort is within target band and ready for Month 2 polish cycles."
+    elif active_testers_7d < safe_target_min:
+        status_line = "Kuwait beta cohort needs more active testers before scaling."
+    else:
+        status_line = "Kuwait beta cohort is above target band. Stabilize reliability before expanding."
+
+    return {
+        "cohort_key": normalized_cohort,
+        "target_min_active_testers": safe_target_min,
+        "target_max_active_testers": safe_target_max,
+        "enrolled_testers": enrolled_testers,
+        "active_testers_7d": active_testers_7d,
+        "active_rate_pct": active_rate_pct,
+        "remaining_to_target_min": remaining_to_target_min,
+        "over_target_by": over_target_by,
+        "target_band_hit": target_band_hit,
+        "first_3_nights_complete_testers": first_3_nights_complete_testers,
+        "scripted_flow_success_testers": scripted_flow_success_testers,
+        "scripted_flow_success_pct": scripted_flow_success_pct,
+        "status_line": status_line,
+        "blockers": blockers,
+        "generated_at_utc": to_iso(now),
+        "testers": testers,
     }
 
 
@@ -3463,19 +3933,10 @@ def admin_observability(request: Request) -> dict[str, Any]:
 def mobile_dashboard(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
     key = _user_profile_key(user)
-    prefs = profile.get("preferences", {}) if isinstance(profile, dict) else {}
-    sleep = profile.get("sleep", {}) if isinstance(profile, dict) else {}
-
-    defaults = _normalize_user_settings(
-        {
-            "response_style": prefs.get("response_style", "balanced"),
-            "engagement_level": prefs.get("engagement_level", "high"),
-            "partner_mode_enabled": bool((sleep.get("partner_mode") or {}).get("enabled", False)),
-            "wind_down_minutes": int(sleep.get("wind_down_minutes", 45) or 45),
-        }
-    )
-    resolved = _profile_user_settings(profile, user, defaults)
+    resolved = _resolved_user_settings(profile, user)
     commands: list[dict[str, Any]] = []
     last_command_result = _last_command_result_from_profile(profile, key)
     profile_dirty = False
@@ -3497,6 +3958,7 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
             profile_dirty = True
     first_3_nights_checklist = _first_3_nights_payload(_normalize_first_3_nights_state({}))
     nightly_summary_feedback = _nightly_summary_feedback_payload(_normalize_nightly_summary_feedback({}))
+    command_feedback_loop = _command_feedback_payload(_normalize_command_feedback_summary({}))
     if key:
         first_3_nights_checklist, _ = _sync_first_3_nights_state(
             profile,
@@ -3506,14 +3968,20 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
         nightly_summary_feedback = _nightly_summary_feedback_payload(
             _nightly_summary_feedback_for_user(profile, key)
         )
+        command_feedback_loop = _command_feedback_payload(
+            _command_feedback_for_user(profile, key)
+        )
     if profile_dirty:
         _save_profile(profile)
     weekly_insight = _weekly_insight_payload(
         commands,
         user_id=key,
         wind_down_minutes=int(resolved.get("wind_down_minutes", 45) or 45),
+        weekly_insight_enabled=bool(resolved.get("weekly_insight_enabled", True)),
     )
-    bedtime_drift_alert = _SLEEP_ENGINE.bedtime_drift_alert(profile)
+    bedtime_drift_alert = ""
+    if bool(resolved.get("bedtime_drift_automation_enabled", True)):
+        bedtime_drift_alert = _SLEEP_ENGINE.bedtime_drift_alert(profile)
     if not str(bedtime_drift_alert).startswith("Predictive alert:"):
         bedtime_drift_alert = ""
     nightly_summary = _nightly_summary_payload(
@@ -3535,6 +4003,7 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
         "nightly_summary": nightly_summary,
         "first_3_nights_checklist": first_3_nights_checklist,
         "nightly_summary_feedback": nightly_summary_feedback,
+        "automation_feedback_loop": command_feedback_loop,
     }
 
 
@@ -3808,17 +4277,9 @@ def trial_subscription_status(user_id: str = "") -> dict[str, Any]:
 def mobile_settings(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
-    prefs = profile.get("preferences", {}) if isinstance(profile, dict) else {}
-    sleep = profile.get("sleep", {}) if isinstance(profile, dict) else {}
-    defaults = _normalize_user_settings(
-        {
-            "response_style": prefs.get("response_style", "balanced"),
-            "engagement_level": prefs.get("engagement_level", "high"),
-            "partner_mode_enabled": bool((sleep.get("partner_mode") or {}).get("enabled", False)),
-            "wind_down_minutes": int(sleep.get("wind_down_minutes", 45) or 45),
-        }
-    )
-    resolved = _profile_user_settings(profile, user, defaults)
+    if not isinstance(profile, dict):
+        profile = {}
+    resolved = _resolved_user_settings(profile, user)
     return {"ok": True, "settings": resolved}
 
 
@@ -4323,7 +4784,13 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
             profile_dirty = True
 
     now = utcnow()
-    drift_row, drift_marked = _bedtime_drift_timeline_item(profile, now_utc=now)
+    resolved_settings = _resolved_user_settings(profile, user)
+    drift_enabled = bool(resolved_settings.get("bedtime_drift_automation_enabled", True))
+    drift_row, drift_marked = (
+        _bedtime_drift_timeline_item(profile, now_utc=now)
+        if drift_enabled
+        else (None, False)
+    )
     quiet_row = _quiet_hours_status_timeline_item(profile, user, now_utc=now)
     cooldown_rows = _automation_cooldown_timeline_items(now_utc=now)
     if drift_row:
@@ -4420,6 +4887,85 @@ def mobile_nightly_summary_feedback(payload: NightlySummaryFeedbackRequest, requ
     return {"ok": True, "feedback": feedback}
 
 
+@app.post("/v1/mobile/device-commands/{command_id}/feedback")
+def mobile_device_command_feedback(
+    command_id: str,
+    payload: DeviceCommandFeedbackRequest,
+    request: Request,
+) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    key = _user_profile_key(user)
+    if not key:
+        raise HTTPException(status_code=400, detail="Unable to identify user feedback key")
+    command_key = str(command_id or "").strip()
+    if not command_key:
+        raise HTTPException(status_code=400, detail="Command id is required")
+
+    trace_id = _request_trace_id(request)
+    commands, changed = _progress_user_commands(
+        profile,
+        key,
+        user_id=str(user.get("user_id", "") or key),
+    )
+    profile_dirty = False
+    if changed:
+        cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
+        cmd_section[key] = commands
+        profile["web_device_commands"] = cmd_section
+        if commands:
+            _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
+        profile_dirty = True
+
+    target = next((row for row in commands if str(row.get("id", "") or "") == command_key), None)
+    if not isinstance(target, dict):
+        try:
+            db_rows = _db_command_repository().get_recent_commands(key, limit=400)
+        except Exception:
+            db_rows = []
+        target = next(
+            (
+                _normalize_command_item(row if isinstance(row, dict) else {})
+                for row in db_rows
+                if str((row if isinstance(row, dict) else {}).get("command_id", "") or "") == command_key
+            ),
+            None,
+        )
+    if not isinstance(target, dict):
+        raise HTTPException(status_code=404, detail="Command not found")
+
+    feedback, feedback_changed = _record_command_feedback(
+        profile,
+        key,
+        command_id=command_key,
+        command_action=str(target.get("action", "") or ""),
+        vote=str(payload.vote or ""),
+        note=str(payload.note or ""),
+        trace_id=trace_id,
+    )
+    if profile_dirty or feedback_changed:
+        _save_profile(profile)
+
+    _event(
+        "info",
+        "device_command_feedback_recorded",
+        trace_id=trace_id,
+        user_id=str(user.get("user_id", "")),
+        command_id=command_key,
+        command_action=str(target.get("action", "") or ""),
+        vote=str(payload.vote or ""),
+    )
+    return {
+        "ok": True,
+        "command_id": command_key,
+        "feedback": feedback,
+    }
+
+
 @app.get("/v1/mobile/beta/metrics")
 def mobile_beta_metrics(request: Request) -> dict[str, Any]:
     user = _require_user(request)
@@ -4445,10 +4991,12 @@ def mobile_beta_metrics(request: Request) -> dict[str, Any]:
     checklist, _ = _sync_first_3_nights_state(profile, user, commands=commands)
 
     feedback = _nightly_summary_feedback_payload(_nightly_summary_feedback_for_user(profile, key))
+    command_feedback = _command_feedback_payload(_command_feedback_for_user(profile, key))
     metrics = _beta_metrics_payload(
         checklist=checklist,
         commands=commands,
         feedback=feedback,
+        command_feedback=command_feedback,
         user_id=key,
     )
     try:
@@ -4469,6 +5017,7 @@ def mobile_beta_metrics(request: Request) -> dict[str, Any]:
         "metrics": metrics,
         "checklist": checklist,
         "nightly_summary_feedback": feedback,
+        "automation_feedback": command_feedback,
     }
 
 
@@ -4639,16 +5188,7 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
 
     if action_key == "winddown":
         sleep = profile.get("sleep", {}) if isinstance(profile.get("sleep", {}), dict) else {}
-        prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
-        defaults = _normalize_user_settings(
-            {
-                "response_style": prefs.get("response_style", "balanced"),
-                "engagement_level": prefs.get("engagement_level", "high"),
-                "partner_mode_enabled": bool((sleep.get("partner_mode") or {}).get("enabled", False)),
-                "wind_down_minutes": int(sleep.get("wind_down_minutes", 45) or 45),
-            }
-        )
-        resolved = _profile_user_settings(profile, user, defaults)
+        resolved = _resolved_user_settings(profile, user)
         wind_down_minutes_for_response = int(resolved.get("wind_down_minutes", 45) or 45)
         wind_down_minutes_for_response = max(15, min(120, wind_down_minutes_for_response))
         wind_down_started_at_utc = utcnow().replace(microsecond=0)
@@ -5164,6 +5704,69 @@ def admin_mobile_beta_acceptance(
         min_required=min_required,
     )
     return {"ok": True, "report": report}
+
+
+@app.get("/v1/admin/mobile/beta-cohort")
+def admin_mobile_beta_cohort(
+    request: Request,
+    cohort_key: str = "kuwait_beta",
+    target_min: int = 10,
+    target_max: int = 15,
+    max_rows: int = 50,
+) -> dict[str, Any]:
+    _require_admin(request)
+    report = _beta_cohort_progress_report(
+        cohort_key=cohort_key,
+        target_min=target_min,
+        target_max=target_max,
+        max_rows=max_rows,
+    )
+    return {"ok": True, "report": report}
+
+
+@app.post("/v1/admin/mobile/beta-cohort/enroll")
+def admin_mobile_beta_cohort_enroll(payload: BetaCohortEnrollRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    admin = _require_admin(request)
+
+    user_id = str(payload.user_id or "").strip()
+    email = str(payload.email or "").strip().lower()
+    user_repo = _db_user_repository()
+    user = user_repo.get_user_by_id(user_id) if user_id else None
+    if user is None and email:
+        user = user_repo.get_user_by_email(email)
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found for beta cohort enrollment")
+
+    resolved_user_id = str(getattr(user, "id", "") or "").strip()
+    if not resolved_user_id:
+        raise HTTPException(status_code=400, detail="Unable to resolve user id for cohort enrollment")
+
+    member = _db_beta_progress_repository().upsert_cohort_member(
+        user_id=resolved_user_id,
+        cohort_key=str(payload.cohort_key or "kuwait_beta"),
+        country_code=str(payload.country_code or "KW"),
+        status=str(payload.status or "active"),
+        source=str(payload.source or "admin_manual"),
+        notes=str(payload.notes or ""),
+    )
+    report = _beta_cohort_progress_report(
+        cohort_key=str(member.get("cohort_key", "kuwait_beta") or "kuwait_beta"),
+    )
+    _event(
+        "info",
+        "admin_beta_cohort_enrolled",
+        actor=str(admin.get("user_id", "") or ""),
+        user_id=resolved_user_id,
+        cohort_key=str(member.get("cohort_key", "") or ""),
+        status=str(member.get("status", "") or ""),
+    )
+    return {
+        "ok": True,
+        "member": member,
+        "report": report,
+    }
 
 
 @app.post("/v1/admin/actions")

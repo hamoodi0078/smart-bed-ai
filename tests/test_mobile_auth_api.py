@@ -72,7 +72,15 @@ class TestMobileAuthApi(unittest.TestCase):
 
         update = self.client.post(
             "/v1/mobile/settings",
-            json={"response_style": "calm", "engagement_level": "low", "wind_down_minutes": 20, "partner_mode_enabled": False},
+            json={
+                "response_style": "calm",
+                "engagement_level": "low",
+                "wind_down_minutes": 20,
+                "partner_mode_enabled": False,
+                "bedtime_drift_automation_enabled": False,
+                "quiet_hours_override_limit_minutes": 45,
+                "weekly_insight_enabled": False,
+            },
             headers=headers,
         )
         self.assertEqual(update.status_code, 200)
@@ -83,6 +91,9 @@ class TestMobileAuthApi(unittest.TestCase):
         settings = fetch.json().get("settings", {})
         self.assertEqual(settings.get("response_style"), "calm")
         self.assertEqual(int(settings.get("wind_down_minutes", 0)), 20)
+        self.assertFalse(bool(settings.get("bedtime_drift_automation_enabled", True)))
+        self.assertEqual(int(settings.get("quiet_hours_override_limit_minutes", 0)), 45)
+        self.assertFalse(bool(settings.get("weekly_insight_enabled", True)))
 
     def test_refresh_rotates_mobile_session_and_logout_revokes_access(self):
         register = self.client.post(

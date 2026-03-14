@@ -190,6 +190,7 @@ class DashboardSummary {
     required this.nightlySummary,
     required this.firstThreeNightsChecklist,
     required this.nightlySummaryFeedback,
+    required this.automationFeedbackLoop,
   });
 
   final String name;
@@ -204,6 +205,7 @@ class DashboardSummary {
   final NightlySummary nightlySummary;
   final FirstThreeNightsChecklist firstThreeNightsChecklist;
   final NightlySummaryFeedback nightlySummaryFeedback;
+  final AutomationFeedbackLoop automationFeedbackLoop;
 
   factory DashboardSummary.fromJson(Map<String, dynamic> json) {
     final rawCommand = _mapOf(json['last_command_result']);
@@ -225,6 +227,9 @@ class DashboardSummary {
       ),
       nightlySummaryFeedback: NightlySummaryFeedback.fromJson(
         _mapOf(json['nightly_summary_feedback']),
+      ),
+      automationFeedbackLoop: AutomationFeedbackLoop.fromJson(
+        _mapOf(json['automation_feedback_loop']),
       ),
     );
   }
@@ -409,6 +414,47 @@ class NightlySummaryFeedback {
   }
 }
 
+class AutomationFeedbackLoop {
+  const AutomationFeedbackLoop({
+    required this.helpfulCount,
+    required this.notHelpfulCount,
+    required this.totalVotes,
+    required this.helpfulPct,
+    required this.lastVote,
+    required this.lastVoteAtUtc,
+    required this.lastCommandId,
+    required this.lastCommandAction,
+    required this.statusLine,
+  });
+
+  final int helpfulCount;
+  final int notHelpfulCount;
+  final int totalVotes;
+  final int helpfulPct;
+  final String lastVote;
+  final String lastVoteAtUtc;
+  final String lastCommandId;
+  final String lastCommandAction;
+  final String statusLine;
+
+  factory AutomationFeedbackLoop.fromJson(Map<String, dynamic> json) {
+    return AutomationFeedbackLoop(
+      helpfulCount: _intOf(json['helpful_count'], 0),
+      notHelpfulCount: _intOf(json['not_helpful_count'], 0),
+      totalVotes: _intOf(json['total_votes'], 0),
+      helpfulPct: _intOf(json['helpful_pct'], 0),
+      lastVote: _stringOf(json['last_vote']),
+      lastVoteAtUtc: _stringOf(json['last_vote_at_utc']),
+      lastCommandId: _stringOf(json['last_command_id']),
+      lastCommandAction: _stringOf(json['last_command_action']),
+      statusLine: _stringOf(
+        json['status_line'],
+        'No command feedback yet. Rate your latest automation to tune reliability.',
+      ),
+    );
+  }
+}
+
 class BetaMetrics {
   const BetaMetrics({
     required this.windowDays,
@@ -420,6 +466,8 @@ class BetaMetrics {
     required this.windDownSessions7d,
     required this.nightlyFeedbackTotal,
     required this.nightlyFeedbackHelpfulPct,
+    required this.automationFeedbackTotal,
+    required this.automationFeedbackHelpfulPct,
     required this.cohortStatusLine,
     required this.qualityGateLine,
     required this.generatedAtUtc,
@@ -434,6 +482,8 @@ class BetaMetrics {
   final int windDownSessions7d;
   final int nightlyFeedbackTotal;
   final int nightlyFeedbackHelpfulPct;
+  final int automationFeedbackTotal;
+  final int automationFeedbackHelpfulPct;
   final String cohortStatusLine;
   final String qualityGateLine;
   final String generatedAtUtc;
@@ -450,6 +500,11 @@ class BetaMetrics {
       nightlyFeedbackTotal: _intOf(json['nightly_feedback_total'], 0),
       nightlyFeedbackHelpfulPct: _intOf(
         json['nightly_feedback_helpful_pct'],
+        0,
+      ),
+      automationFeedbackTotal: _intOf(json['automation_feedback_total'], 0),
+      automationFeedbackHelpfulPct: _intOf(
+        json['automation_feedback_helpful_pct'],
         0,
       ),
       cohortStatusLine: _stringOf(json['cohort_status_line']),
@@ -669,12 +724,18 @@ class UserSettings {
     required this.engagementLevel,
     required this.partnerModeEnabled,
     required this.windDownMinutes,
+    this.bedtimeDriftAutomationEnabled = true,
+    this.quietHoursOverrideLimitMinutes = 120,
+    this.weeklyInsightEnabled = true,
   });
 
   final String responseStyle;
   final String engagementLevel;
   final bool partnerModeEnabled;
   final int windDownMinutes;
+  final bool bedtimeDriftAutomationEnabled;
+  final int quietHoursOverrideLimitMinutes;
+  final bool weeklyInsightEnabled;
 
   factory UserSettings.fromJson(Map<String, dynamic> json) {
     return UserSettings(
@@ -682,6 +743,15 @@ class UserSettings {
       engagementLevel: _stringOf(json['engagement_level'], 'high'),
       partnerModeEnabled: _boolOf(json['partner_mode_enabled']),
       windDownMinutes: _intOf(json['wind_down_minutes'], 45),
+      bedtimeDriftAutomationEnabled: _boolOf(
+        json['bedtime_drift_automation_enabled'],
+        true,
+      ),
+      quietHoursOverrideLimitMinutes: _intOf(
+        json['quiet_hours_override_limit_minutes'],
+        120,
+      ),
+      weeklyInsightEnabled: _boolOf(json['weekly_insight_enabled'], true),
     );
   }
 
@@ -691,6 +761,9 @@ class UserSettings {
       'engagement_level': engagementLevel,
       'partner_mode_enabled': partnerModeEnabled,
       'wind_down_minutes': windDownMinutes,
+      'bedtime_drift_automation_enabled': bedtimeDriftAutomationEnabled,
+      'quiet_hours_override_limit_minutes': quietHoursOverrideLimitMinutes,
+      'weekly_insight_enabled': weeklyInsightEnabled,
     };
   }
 }

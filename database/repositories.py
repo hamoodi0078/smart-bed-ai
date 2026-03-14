@@ -10,9 +10,11 @@ from time_utils import ensure_utc, from_iso, to_iso, utcnow
 
 from .connection import DatabaseConnection
 from .models import (
+    BetaCohortMember,
     BetaMetricsSnapshot,
     Event,
     FirstThreeNightsProgress,
+    MobileCommandFeedback,
     MobileCommandRecord,
     NightlySummaryFeedbackProgress,
     SleepSession,
@@ -418,6 +420,163 @@ class MobileCommandRepository:
             "completion_rate_pct": int(completion_rate_pct),
         }
 
+    @staticmethod
+    def _command_feedback_summary_from_rows(rows: list[MobileCommandFeedback] | None) -> dict[str, Any]:
+        feedback_rows = rows if isinstance(rows, list) else []
+        helpful_count = 0
+        not_helpful_count = 0
+        last_vote = ""
+        last_vote_at_utc = ""
+        last_command_id = ""
+        last_command_action = ""
+        latest_ts = float("-inf")
+
+        for row in feedback_rows:
+            vote = str(getattr(row, "vote", "") or "").strip().lower()
+            if vote == "helpful":
+                helpful_count += 1
+            elif vote == "not_helpful":
+                not_helpful_count += 1
+            else:
+                continue
+
+            ts_candidate = getattr(row, "voted_at_utc", None) or getattr(row, "updated_at", None)
+            if isinstance(ts_candidate, datetime):
+                ts_value = ensure_utc(ts_candidate).timestamp()
+            else:
+                ts_value = float("-inf")
+            if ts_value >= latest_ts:
+                latest_ts = ts_value
+                last_vote = vote
+                last_vote_at_utc = _to_iso_optional(ts_candidate if isinstance(ts_candidate, datetime) else None)
+                last_command_id = str(getattr(row, "command_id", "") or "").strip()
+                last_command_action = str(getattr(row, "action", "") or "").strip().lower()
+
+        total_votes = helpful_count + not_helpful_count
+        helpful_pct = int(round((helpful_count / total_votes) * 100.0)) if total_votes > 0 else 0
+        return {
+            "helpful_count": int(helpful_count),
+            "not_helpful_count": int(not_helpful_count),
+            "total_votes": int(total_votes),
+            "helpful_pct": int(helpful_pct),
+            "last_vote": last_vote,
+            "last_vote_at_utc": last_vote_at_utc,
+            "last_command_id": last_command_id,
+            "last_command_action": last_command_action,
+        }
+
+    def command_feedback_summary_window(
+        self,
+        user_id: str,
+        *,
+        now_utc: datetime | None = None,
+        window_days: int = 30,
+    ) -> dict[str, Any]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return self._command_feedback_summary_from_rows([])
+
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        days = max(1, min(int(window_days or 30), 90))
+        since = now - timedelta(days=days)
+        with self.db.get_session() as session:
+            order_col = func.coalesce(
+                MobileCommandFeedback.voted_at_utc,
+                MobileCommandFeedback.updated_at,
+                MobileCommandFeedback.created_at,
+            )
+            statement = (
+                select(MobileCommandFeedback)
+                .where(MobileCommandFeedback.user_id == user_key, order_col >= since)
+                .order_by(order_col.desc())
+                .limit(2000)
+            )
+            rows = list(session.execute(statement).scalars().all())
+            return self._command_feedback_summary_from_rows(rows)
+
+    def record_command_feedback(
+        self,
+        user_id: str,
+        *,
+        command_id: str,
+        vote: str,
+        command_action: str = "",
+        note: str = "",
+        trace_id: str = "",
+        now_utc: datetime | None = None,
+        window_days: int = 30,
+    ) -> tuple[dict[str, Any], bool]:
+        user_key = _clean_user_id(user_id)
+        command_key = str(command_id or "").strip()
+        normalized_vote = str(vote or "").strip().lower()
+        if (not user_key) or (not command_key) or (normalized_vote not in {"helpful", "not_helpful"}):
+            return self.command_feedback_summary_window(user_id, now_utc=now_utc, window_days=window_days), False
+
+        normalized_action = str(command_action or "").strip().lower()
+        normalized_note = str(note or "").strip()
+        if len(normalized_note) > 240:
+            normalized_note = normalized_note[:240]
+        normalized_trace = str(trace_id or "").strip() or None
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        changed = False
+
+        with self.db.get_session() as session:
+            command_statement = (
+                select(MobileCommandRecord)
+                .where(MobileCommandRecord.user_id == user_key, MobileCommandRecord.command_id == command_key)
+                .limit(1)
+            )
+            command_row = session.execute(command_statement).scalar_one_or_none()
+            if command_row is not None:
+                normalized_action = str(getattr(command_row, "action", "") or "").strip().lower() or normalized_action
+
+            statement = (
+                select(MobileCommandFeedback)
+                .where(MobileCommandFeedback.user_id == user_key, MobileCommandFeedback.command_id == command_key)
+                .limit(1)
+            )
+            row = session.execute(statement).scalar_one_or_none()
+            if row is None:
+                row = MobileCommandFeedback(
+                    user_id=user_key,
+                    command_id=command_key,
+                    action=normalized_action,
+                    vote=normalized_vote,
+                    note=normalized_note,
+                    trace_id=normalized_trace,
+                    voted_at_utc=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
+                changed = True
+            else:
+                previous_vote = str(row.vote or "").strip().lower()
+                previous_note = str(row.note or "").strip()
+                previous_action = str(row.action or "").strip().lower()
+                if (
+                    previous_vote != normalized_vote
+                    or previous_note != normalized_note
+                    or previous_action != normalized_action
+                ):
+                    changed = True
+                row.vote = normalized_vote
+                row.note = normalized_note
+                row.action = normalized_action
+                row.trace_id = normalized_trace
+                row.voted_at_utc = now
+                row.updated_at = now
+                session.add(row)
+
+            session.flush()
+
+        summary = self.command_feedback_summary_window(
+            user_key,
+            now_utc=now,
+            window_days=window_days,
+        )
+        return summary, changed
+
 
 class BetaProgressRepository:
     def __init__(self, db: DatabaseConnection | None = None):
@@ -473,6 +632,29 @@ class BetaProgressRepository:
             return int(value)
         except Exception:
             return int(default)
+
+    @staticmethod
+    def _normalize_cohort_key(value: str | None) -> str:
+        raw = str(value or "").strip().lower()
+        if not raw:
+            return "kuwait_beta"
+        compact = "_".join(part for part in raw.replace("-", "_").split("_") if part)
+        return compact or "kuwait_beta"
+
+    @staticmethod
+    def _cohort_member_payload_from_row(row: BetaCohortMember | None) -> dict[str, Any]:
+        if row is None:
+            return {}
+        return {
+            "cohort_key": str(row.cohort_key or "").strip().lower() or "kuwait_beta",
+            "user_id": str(row.user_id or "").strip(),
+            "country_code": str(row.country_code or "").strip().upper() or "KW",
+            "status": str(row.status or "").strip().lower() or "active",
+            "source": str(row.source or "").strip().lower() or "admin_manual",
+            "notes": str(row.notes or ""),
+            "created_at_utc": _to_iso_optional(row.created_at),
+            "updated_at_utc": _to_iso_optional(row.updated_at),
+        }
 
     @staticmethod
     def _metrics_payload_from_row(row: BetaMetricsSnapshot | None) -> dict[str, Any]:
@@ -671,3 +853,100 @@ class BetaProgressRepository:
             statement = select(BetaMetricsSnapshot).where(BetaMetricsSnapshot.user_id == user_key).limit(1)
             row = session.execute(statement).scalar_one_or_none()
             return self._metrics_payload_from_row(row)
+
+    def upsert_cohort_member(
+        self,
+        *,
+        user_id: str,
+        cohort_key: str = "kuwait_beta",
+        country_code: str = "KW",
+        status: str = "active",
+        source: str = "admin_manual",
+        notes: str = "",
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return {}
+
+        normalized_cohort = self._normalize_cohort_key(cohort_key)
+        normalized_country = str(country_code or "").strip().upper() or "KW"
+        normalized_status = str(status or "").strip().lower() or "active"
+        if normalized_status not in {"candidate", "invited", "active", "paused", "graduated", "inactive"}:
+            normalized_status = "active"
+        normalized_source = str(source or "").strip().lower() or "admin_manual"
+        normalized_notes = str(notes or "").strip()
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+
+        with self.db.get_session() as session:
+            statement = (
+                select(BetaCohortMember)
+                .where(
+                    BetaCohortMember.user_id == user_key,
+                    BetaCohortMember.cohort_key == normalized_cohort,
+                )
+                .limit(1)
+            )
+            row = session.execute(statement).scalar_one_or_none()
+            if row is None:
+                row = BetaCohortMember(
+                    user_id=user_key,
+                    cohort_key=normalized_cohort,
+                    country_code=normalized_country,
+                    status=normalized_status,
+                    source=normalized_source,
+                    notes=normalized_notes,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
+                session.flush()
+            else:
+                row.country_code = normalized_country
+                row.status = normalized_status
+                row.source = normalized_source
+                row.notes = normalized_notes
+                row.updated_at = now
+                session.add(row)
+                session.flush()
+            session.refresh(row)
+            return self._cohort_member_payload_from_row(row)
+
+    def get_cohort_member(
+        self,
+        user_id: str,
+        cohort_key: str = "kuwait_beta",
+    ) -> dict[str, Any]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return {}
+        normalized_cohort = self._normalize_cohort_key(cohort_key)
+        with self.db.get_session() as session:
+            statement = (
+                select(BetaCohortMember)
+                .where(
+                    BetaCohortMember.user_id == user_key,
+                    BetaCohortMember.cohort_key == normalized_cohort,
+                )
+                .limit(1)
+            )
+            row = session.execute(statement).scalar_one_or_none()
+            return self._cohort_member_payload_from_row(row)
+
+    def list_cohort_members(
+        self,
+        *,
+        cohort_key: str = "kuwait_beta",
+        status: str = "",
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        normalized_cohort = self._normalize_cohort_key(cohort_key)
+        normalized_status = str(status or "").strip().lower()
+        safe_limit = max(1, min(int(limit or 100), 1000))
+        with self.db.get_session() as session:
+            statement = select(BetaCohortMember).where(BetaCohortMember.cohort_key == normalized_cohort)
+            if normalized_status:
+                statement = statement.where(BetaCohortMember.status == normalized_status)
+            statement = statement.order_by(BetaCohortMember.updated_at.desc()).limit(safe_limit)
+            rows = list(session.execute(statement).scalars().all())
+            return [self._cohort_member_payload_from_row(row) for row in rows]

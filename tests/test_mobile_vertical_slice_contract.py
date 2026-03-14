@@ -102,6 +102,7 @@ class TestMobileVerticalSliceContract(unittest.TestCase):
         self.assertIn("name", dashboard_body)
         self.assertIn("weekly_insight", dashboard_body)
         self.assertIn("nightly_summary", dashboard_body)
+        self.assertIn("automation_feedback_loop", dashboard_body)
 
         quick_action = self.client.post(
             "/v1/mobile/device-commands",
