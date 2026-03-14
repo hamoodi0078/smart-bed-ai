@@ -1,9 +1,23 @@
-import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/material.dart';
 
-import 'src/app.dart';
+import 'screens/home/home_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: SmartBedApp()));
+  runApp(const DanahAbuHalifaApp());
+}
+
+class DanahAbuHalifaApp extends StatelessWidget {
+  const DanahAbuHalifaApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Danah Abu Halifa',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.darkTheme,
+      home: const HomeScreen(),
+    );
+  }
 }
