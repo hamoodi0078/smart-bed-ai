@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 
 class SubscriptionScreen extends StatefulWidget {
@@ -11,6 +12,27 @@ class SubscriptionScreen extends StatefulWidget {
 
 class _SubscriptionScreenState extends State<SubscriptionScreen> {
   String _selectedPlan = 'premium';
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPlan();
+  }
+
+  Future<void> _loadPlan() async {
+    final data = await ApiService.getPlan();
+    if (mounted && data['error'] != true) {
+      setState(() {
+        _selectedPlan = (data['plan'] ?? 'free').toString();
+        _isLoading = false;
+      });
+    } else {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   String get _selectedPlanLabel {
     switch (_selectedPlan) {
@@ -67,110 +89,116 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A1628),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTopBar(),
-              const SizedBox(height: 16),
-              _buildHeroSection(),
-              const SizedBox(height: 16),
-              _buildPlanCard(
-                planKey: 'free',
-                badgeText: 'FREE',
-                badgeColor: const Color(0xFF7B849D),
-                price: 'KD 0',
-                priceColor: AppColors.white,
-                features: const [
-                  'Basic bed control',
-                  'Limited Dana chat (5 messages/day)',
-                  'Standard scenes',
-                ],
-                checkColor: const Color(0xFFB0B7CA),
-              ),
-              const SizedBox(height: 10),
-              _buildPlanCard(
-                planKey: 'premium',
-                badgeText: 'PREMIUM',
-                badgeColor: AppColors.accent,
-                price: 'KD 4.99',
-                priceColor: AppColors.accent,
-                features: const [
-                  'Full Dana AI with memory',
-                  'Unlimited chat',
-                  'All smart scenes',
-                  'Islamic Mode full access',
-                  'Partner Mode',
-                  'Sleep insights & recovery score',
-                ],
-                checkColor: AppColors.accent,
-                showPopularTag: true,
-              ),
-              const SizedBox(height: 10),
-              _buildPlanCard(
-                planKey: 'pro',
-                badgeText: 'PRO',
-                badgeColor: AppColors.gold,
-                price: 'KD 9.99',
-                priceColor: AppColors.gold,
-                features: const [
-                  'Everything in Premium',
-                  '3D Bed Visualizer',
-                  'Sound Engine & Sleep Stories',
-                  'Dream Journal + AI',
-                  'Priority support',
-                  'Early access to new features',
-                ],
-                checkColor: AppColors.gold,
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _onContinue,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _ctaColor,
-                    foregroundColor: _ctaTextColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+        child: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFF00D4FF),
+                ),
+              )
+            : SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildTopBar(),
+                    const SizedBox(height: 16),
+                    _buildHeroSection(),
+                    const SizedBox(height: 16),
+                    _buildPlanCard(
+                      planKey: 'free',
+                      badgeText: 'FREE',
+                      badgeColor: const Color(0xFF7B849D),
+                      price: 'KD 0',
+                      priceColor: AppColors.white,
+                      features: const [
+                        'Basic bed control',
+                        'Limited Dana chat (5 messages/day)',
+                        'Standard scenes',
+                      ],
+                      checkColor: const Color(0xFFB0B7CA),
                     ),
-                  ),
-                  child: Text(
-                    _ctaLabel,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                    const SizedBox(height: 10),
+                    _buildPlanCard(
+                      planKey: 'premium',
+                      badgeText: 'PREMIUM',
+                      badgeColor: AppColors.accent,
+                      price: 'KD 4.99',
+                      priceColor: AppColors.accent,
+                      features: const [
+                        'Full Dana AI with memory',
+                        'Unlimited chat',
+                        'All smart scenes',
+                        'Islamic Mode full access',
+                        'Partner Mode',
+                        'Sleep insights & recovery score',
+                      ],
+                      checkColor: AppColors.accent,
+                      showPopularTag: true,
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                    _buildPlanCard(
+                      planKey: 'pro',
+                      badgeText: 'PRO',
+                      badgeColor: AppColors.gold,
+                      price: 'KD 9.99',
+                      priceColor: AppColors.gold,
+                      features: const [
+                        'Everything in Premium',
+                        '3D Bed Visualizer',
+                        'Sound Engine & Sleep Stories',
+                        'Dream Journal + AI',
+                        'Priority support',
+                        'Early access to new features',
+                      ],
+                      checkColor: AppColors.gold,
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: _onContinue,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _ctaColor,
+                          foregroundColor: _ctaTextColor,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(
+                          _ctaLabel,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Center(
+                      child: Text(
+                        'Cancel anytime. No hidden fees. Payments via PayPal.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF8A94AF),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Center(
+                      child: Text(
+                        'Built for Kuwait \u{1F1F0}\u{1F1FC} - More regions coming soon',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF7E88A2),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              const Center(
-                child: Text(
-                  'Cancel anytime. No hidden fees. Payments via PayPal.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF8A94AF),
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Center(
-                child: Text(
-                  'Built for Kuwait \u{1F1F0}\u{1F1FC} - More regions coming soon',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF7E88A2),
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

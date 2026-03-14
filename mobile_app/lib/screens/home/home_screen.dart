@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -11,28 +12,67 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  bool _isLoading = true;
+  Map<String, dynamic> _bedStatus = <String, dynamic>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStatus();
+  }
+
+  Future<void> _loadStatus() async {
+    final data = await ApiService.getBedStatus();
+    if (mounted && data['error'] != true) {
+      setState(() {
+        _bedStatus = data;
+        _isLoading = false;
+      });
+    } else {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTopBar(),
-              const SizedBox(height: 20),
-              _buildDanaGreetingCard(),
-              const SizedBox(height: 16),
-              _buildQuickStatsRow(),
-              const SizedBox(height: 20),
-              _buildWindDownButton(context),
-              const SizedBox(height: 20),
-              _buildIslamicSection(),
-            ],
-          ),
+        child: Column(
+          children: [
+            if (_isLoading)
+              const LinearProgressIndicator(
+                minHeight: 2,
+                color: Color(0xFF00D4FF),
+                backgroundColor: Colors.transparent,
+              ),
+            Expanded(
+              child: RefreshIndicator(
+                color: const Color(0xFF00D4FF),
+                onRefresh: _loadStatus,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTopBar(),
+                      const SizedBox(height: 20),
+                      _buildDanaGreetingCard(),
+                      const SizedBox(height: 16),
+                      _buildQuickStatsRow(),
+                      const SizedBox(height: 20),
+                      _buildWindDownButton(context),
+                      const SizedBox(height: 20),
+                      _buildIslamicSection(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -126,13 +166,35 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildQuickStatsRow() {
+    final String lastNight = (_bedStatus['last_night_hours'] ?? '7.2h').toString();
+    final String sleepScore = (_bedStatus['sleep_score'] ?? '82').toString();
+    final String streak = (_bedStatus['streak_days'] ?? '5??').toString();
+
     return Row(
-      children: const [
-        Expanded(child: _StatCard(label: 'Last Night', value: '7.2h', accentColor: AppColors.accent)),
-        SizedBox(width: 10),
-        Expanded(child: _StatCard(label: 'Sleep Score', value: '82', accentColor: AppColors.purple)),
-        SizedBox(width: 10),
-        Expanded(child: _StatCard(label: 'Streak', value: '5??', accentColor: AppColors.orange)),
+      children: [
+        Expanded(
+          child: _StatCard(
+            label: 'Last Night',
+            value: lastNight,
+            accentColor: AppColors.accent,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _StatCard(
+            label: 'Sleep Score',
+            value: sleepScore,
+            accentColor: AppColors.purple,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _StatCard(
+            label: 'Streak',
+            value: streak,
+            accentColor: AppColors.orange,
+          ),
+        ),
       ],
     );
   }
@@ -161,6 +223,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildIslamicSection() {
+    final String nextPrayer = (_bedStatus['next_prayer'] ?? 'Isha').toString();
+    final String prayerCountdown =
+        (_bedStatus['next_prayer_eta'] ?? 'in 45 minutes').toString();
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -176,10 +242,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             '?? Next Prayer',
             style: TextStyle(
               color: AppColors.softWhite,
@@ -189,16 +255,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           SizedBox(height: 8),
           Text(
-            'Isha',
+            nextPrayer,
             style: TextStyle(
               color: AppColors.white,
               fontSize: 22,
               fontWeight: FontWeight.w700,
             ),
           ),
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           Text(
-            'in 45 minutes',
+            prayerCountdown,
             style: TextStyle(
               color: AppColors.accent,
               fontSize: 14,
