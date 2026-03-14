@@ -124,6 +124,23 @@ class MobileCommandFeedback(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
 
+class MobileAuthSession(Base):
+    __tablename__ = "mobile_auth_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    client_name: Mapped[str] = mapped_column(String(80), nullable=False, default="flutter_app")
+    access_token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    refresh_token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    issued_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    access_expires_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    refresh_expires_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    revoked_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
 class FirstThreeNightsProgress(Base):
     __tablename__ = "first_three_nights_progress"
 
@@ -197,6 +214,7 @@ __all__ = [
     "SleepSession",
     "MobileCommandRecord",
     "MobileCommandFeedback",
+    "MobileAuthSession",
     "FirstThreeNightsProgress",
     "NightlySummaryFeedbackProgress",
     "BetaMetricsSnapshot",

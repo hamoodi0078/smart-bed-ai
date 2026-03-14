@@ -243,6 +243,8 @@ class WeeklyInsight {
     required this.automationActions,
     required this.quietOverrides,
     required this.completionRatePct,
+    required this.feedbackTotalVotes,
+    required this.feedbackHelpfulPct,
     required this.trend,
     required this.headline,
     required this.summary,
@@ -254,6 +256,8 @@ class WeeklyInsight {
   final int automationActions;
   final int quietOverrides;
   final int completionRatePct;
+  final int feedbackTotalVotes;
+  final int feedbackHelpfulPct;
   final String trend;
   final String headline;
   final String summary;
@@ -268,6 +272,8 @@ class WeeklyInsight {
       automationActions: _intOf(json['automation_actions'], 0),
       quietOverrides: _intOf(json['quiet_overrides'], 0),
       completionRatePct: _intOf(json['completion_rate_pct'], 0),
+      feedbackTotalVotes: _intOf(json['feedback_total_votes'], 0),
+      feedbackHelpfulPct: _intOf(json['feedback_helpful_pct'], 0),
       trend: _stringOf(json['trend'], 'steady'),
       headline: _stringOf(
         json['headline'],
@@ -601,12 +607,14 @@ class SceneItem {
     required this.label,
     required this.summary,
     required this.previewSeconds,
+    this.premium = false,
   });
 
   final String sceneKey;
   final String label;
   final String summary;
   final double previewSeconds;
+  final bool premium;
 
   factory SceneItem.fromJson(Map<String, dynamic> json) {
     return SceneItem(
@@ -614,6 +622,7 @@ class SceneItem {
       label: _stringOf(json['label'], 'Scene'),
       summary: _stringOf(json['summary']),
       previewSeconds: _doubleOf(json['preview_seconds'], 3),
+      premium: _boolOf(json['premium']),
     );
   }
 }
@@ -672,12 +681,14 @@ class SceneSaveResult {
     required this.sceneLabel,
     required this.message,
     required this.traceId,
+    this.premium = false,
   });
 
   final String sceneKey;
   final String sceneLabel;
   final String message;
   final String traceId;
+  final bool premium;
 
   factory SceneSaveResult.fromJson(Map<String, dynamic> json) {
     return SceneSaveResult(
@@ -685,6 +696,46 @@ class SceneSaveResult {
       sceneLabel: _stringOf(json['scene_label'], 'Scene'),
       message: _stringOf(json['message'], 'Scene saved for tonight.'),
       traceId: _stringOf(json['trace_id']),
+      premium: _boolOf(json['premium']),
+    );
+  }
+}
+
+class UndoStatus {
+  const UndoStatus({
+    required this.canUndo,
+    required this.actionType,
+    required this.secondsRemaining,
+  });
+
+  final bool canUndo;
+  final String actionType;
+  final int? secondsRemaining;
+
+  factory UndoStatus.fromJson(Map<String, dynamic> json) {
+    return UndoStatus(
+      canUndo: _boolOf(json['can_undo']),
+      actionType: _stringOf(json['action_type']),
+      secondsRemaining: json['seconds_remaining'] == null
+          ? null
+          : _intOf(json['seconds_remaining']),
+    );
+  }
+}
+
+class UndoResult {
+  const UndoResult({
+    required this.undone,
+    required this.message,
+  });
+
+  final String undone;
+  final String message;
+
+  factory UndoResult.fromJson(Map<String, dynamic> json) {
+    return UndoResult(
+      undone: _stringOf(json['undone']),
+      message: _stringOf(json['message'], 'Action undone successfully.'),
     );
   }
 }
@@ -695,12 +746,14 @@ class TimelineItem {
     required this.event,
     required this.status,
     required this.commandId,
+    this.priority = 0,
   });
 
   final String time;
   final String event;
   final String status;
   final String commandId;
+  final int priority;
 
   bool get isQuietHoursSignal {
     return status == 'quiet' ||
@@ -714,6 +767,7 @@ class TimelineItem {
       event: _stringOf(json['event'], 'Bed update'),
       status: _stringOf(json['status'], 'info'),
       commandId: _stringOf(json['command_id']),
+      priority: _intOf(json['priority'], 0),
     );
   }
 }

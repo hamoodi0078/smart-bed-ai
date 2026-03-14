@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date as date_type
 from datetime import datetime, timedelta
+from secrets import token_urlsafe
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -16,6 +17,7 @@ from .models import (
     FirstThreeNightsProgress,
     MobileCommandFeedback,
     MobileCommandRecord,
+    MobileAuthSession,
     NightlySummaryFeedbackProgress,
     SleepSession,
     User,
@@ -212,6 +214,53 @@ class EventRepository:
             statement = delete(Event).where(Event.timestamp < cutoff)
             result = session.execute(statement)
             return int(result.rowcount or 0)
+
+    def replace_mobile_timeline_events(
+        self,
+        user_id: str,
+        items: list[dict[str, Any]] | None,
+        *,
+        trace_id: str = "",
+        now_utc: datetime | None = None,
+    ) -> int:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return 0
+
+        rows = items if isinstance(items, list) else []
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        normalized_trace = str(trace_id or "").strip() or None
+
+        with self.db.get_session() as session:
+            clear_statement = delete(Event).where(
+                Event.user_id == user_key,
+                Event.event_type == "mobile_timeline_item",
+            )
+            session.execute(clear_statement)
+
+            count = 0
+            for idx, raw in enumerate(rows):
+                if not isinstance(raw, dict):
+                    continue
+                payload = {
+                    "time": str(raw.get("time", "Now") or "Now"),
+                    "event": str(raw.get("event", "Timeline event") or "Timeline event"),
+                    "status": str(raw.get("status", "active") or "active"),
+                    "command_id": str(raw.get("command_id", "") or ""),
+                    "priority": int(raw.get("priority", 0) or 0),
+                    "captured_at_utc": _to_iso_optional(now - timedelta(milliseconds=idx)),
+                }
+                row = Event(
+                    user_id=user_key,
+                    event_type="mobile_timeline_item",
+                    metadata_json=payload,
+                    trace_id=normalized_trace,
+                    timestamp=now - timedelta(milliseconds=idx),
+                )
+                session.add(row)
+                count += 1
+            session.flush()
+            return int(count)
 
 
 class SleepSessionRepository:
@@ -576,6 +625,239 @@ class MobileCommandRepository:
             window_days=window_days,
         )
         return summary, changed
+
+    def replace_user_commands(
+        self,
+        user_id: str,
+        commands: list[dict[str, Any]] | None,
+        *,
+        now_utc: datetime | None = None,
+    ) -> int:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return 0
+
+        rows = commands if isinstance(commands, list) else []
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+
+        with self.db.get_session() as session:
+            session.execute(
+                delete(MobileCommandRecord).where(MobileCommandRecord.user_id == user_key)
+            )
+            session.execute(
+                delete(MobileCommandFeedback).where(MobileCommandFeedback.user_id == user_key)
+            )
+
+            count = 0
+            for raw in rows:
+                if not isinstance(raw, dict):
+                    continue
+                command_id = str(raw.get("id", "") or raw.get("command_id", "")).strip()
+                if not command_id:
+                    continue
+
+                action = str(raw.get("action", "") or "").strip().lower()
+                status = str(raw.get("status", "queued") or "queued").strip().lower() or "queued"
+                event_summary = str(raw.get("event", "") or "").strip()
+                message = str(raw.get("message", "") or "").strip()
+                trace_id = str(raw.get("trace_id", "") or "").strip() or None
+                created_at = _parse_optional_iso_datetime(str(raw.get("created_at", "") or "")) or now
+                updated_at = _parse_optional_iso_datetime(str(raw.get("updated_at", "") or "")) or now
+                completed_at = _parse_optional_iso_datetime(str(raw.get("completed_at", "") or ""))
+                if completed_at is None and status == "completed":
+                    completed_at = updated_at
+
+                row = MobileCommandRecord(
+                    user_id=user_key,
+                    command_id=command_id,
+                    action=action,
+                    status=status,
+                    event_summary=event_summary,
+                    message=message,
+                    trace_id=trace_id,
+                    command_created_at_utc=created_at,
+                    command_updated_at_utc=updated_at,
+                    command_completed_at_utc=completed_at,
+                    created_at=created_at,
+                    updated_at=updated_at,
+                )
+                session.add(row)
+                count += 1
+            session.flush()
+            return int(count)
+
+
+class MobileAuthRepository:
+    def __init__(self, db: DatabaseConnection | None = None):
+        self.db = db or DatabaseConnection()
+        self.db.create_tables()
+
+    @staticmethod
+    def _tokens_payload_from_row(row: MobileAuthSession | None) -> dict[str, Any]:
+        if row is None:
+            return {}
+        issued_at = ensure_utc(row.issued_at_utc)
+        access_exp = ensure_utc(row.access_expires_at_utc)
+        refresh_exp = ensure_utc(row.refresh_expires_at_utc)
+        expires_in = max(0, int((access_exp - issued_at).total_seconds()))
+        return {
+            "access_token": str(row.access_token or ""),
+            "token_type": "Bearer",
+            "expires_at": _to_iso_optional(access_exp),
+            "expires_in": expires_in,
+            "refresh_token": str(row.refresh_token or ""),
+            "refresh_expires_at": _to_iso_optional(refresh_exp),
+            "client_name": str(row.client_name or ""),
+        }
+
+    @staticmethod
+    def _session_payload_from_row(row: MobileAuthSession | None) -> dict[str, Any]:
+        if row is None:
+            return {}
+        return {
+            "user_id": str(row.user_id or ""),
+            "client_name": str(row.client_name or ""),
+            "session_id": str(row.id or ""),
+        }
+
+    def issue_tokens(
+        self,
+        user_id: str,
+        *,
+        client_name: str = "",
+        access_minutes: int = 60,
+        refresh_days: int = 30,
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return {}
+
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        access_window_minutes = max(1, int(access_minutes or 60))
+        refresh_window_days = max(1, int(refresh_days or 30))
+        access_exp = now + timedelta(minutes=access_window_minutes)
+        refresh_exp = now + timedelta(days=refresh_window_days)
+        label = str(client_name or "").strip() or "flutter_app"
+
+        with self.db.get_session() as session:
+            row = MobileAuthSession(
+                user_id=user_key,
+                client_name=label,
+                access_token=token_urlsafe(32),
+                refresh_token=token_urlsafe(48),
+                issued_at_utc=now,
+                access_expires_at_utc=access_exp,
+                refresh_expires_at_utc=refresh_exp,
+                revoked=False,
+                revoked_at_utc=None,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(row)
+            session.flush()
+            session.refresh(row)
+            return self._tokens_payload_from_row(row)
+
+    def validate_access_token(self, access_token: str, *, now_utc: datetime | None = None) -> dict[str, Any]:
+        token = str(access_token or "").strip()
+        if not token:
+            return {}
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        with self.db.get_session() as session:
+            statement = select(MobileAuthSession).where(
+                MobileAuthSession.access_token == token,
+                MobileAuthSession.revoked.is_(False),
+            ).limit(1)
+            row = session.execute(statement).scalar_one_or_none()
+            if row is None:
+                return {}
+            if ensure_utc(row.access_expires_at_utc) < now:
+                return {}
+            return self._session_payload_from_row(row)
+
+    def refresh_tokens(
+        self,
+        refresh_token: str,
+        *,
+        access_minutes: int = 60,
+        refresh_days: int = 30,
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        token = str(refresh_token or "").strip()
+        if not token:
+            return {}
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        with self.db.get_session() as session:
+            statement = select(MobileAuthSession).where(
+                MobileAuthSession.refresh_token == token,
+                MobileAuthSession.revoked.is_(False),
+            ).limit(1)
+            row = session.execute(statement).scalar_one_or_none()
+            if row is None:
+                return {}
+            if ensure_utc(row.refresh_expires_at_utc) < now:
+                return {}
+
+            user_id = str(row.user_id or "")
+            client_name = str(row.client_name or "")
+            row.revoked = True
+            row.revoked_at_utc = now
+            row.updated_at = now
+            session.add(row)
+            session.flush()
+
+        return self.issue_tokens(
+            user_id,
+            client_name=client_name,
+            access_minutes=access_minutes,
+            refresh_days=refresh_days,
+            now_utc=now,
+        )
+
+    def revoke_tokens(
+        self,
+        *,
+        access_token: str = "",
+        refresh_token: str = "",
+        now_utc: datetime | None = None,
+    ) -> bool:
+        access_key = str(access_token or "").strip()
+        refresh_key = str(refresh_token or "").strip()
+        if not access_key and not refresh_key:
+            return False
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        revoked_any = False
+
+        with self.db.get_session() as session:
+            if access_key:
+                statement = select(MobileAuthSession).where(
+                    MobileAuthSession.access_token == access_key,
+                    MobileAuthSession.revoked.is_(False),
+                )
+                for row in session.execute(statement).scalars().all():
+                    row.revoked = True
+                    row.revoked_at_utc = now
+                    row.updated_at = now
+                    session.add(row)
+                    revoked_any = True
+
+            if refresh_key:
+                statement = select(MobileAuthSession).where(
+                    MobileAuthSession.refresh_token == refresh_key,
+                    MobileAuthSession.revoked.is_(False),
+                )
+                for row in session.execute(statement).scalars().all():
+                    row.revoked = True
+                    row.revoked_at_utc = now
+                    row.updated_at = now
+                    session.add(row)
+                    revoked_any = True
+
+            if revoked_any:
+                session.flush()
+
+        return revoked_any
 
 
 class BetaProgressRepository:

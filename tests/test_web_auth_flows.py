@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,21 +22,54 @@ class TestWebAuthFlows(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self._tmp.name) / "subscription_db.json"
         self.profile_path = Path(self._tmp.name) / "user_profile.json"
+        self.sqlite_path = Path(self._tmp.name) / "web_auth.sqlite3"
+        self.database_url = f"sqlite:///{self.sqlite_path.as_posix()}"
         self.store = SubscriptionStore(db_path=self.db_path)
 
         # Keep auth tests independent from optional bcrypt installation state.
         self.store.hash_password = lambda password: _legacy_sha256(password)
         self.store.check_password = lambda password, stored_hash: stored_hash == _legacy_sha256(password)
 
+        self._patch_env = patch.dict(
+            os.environ,
+            {"DATABASE_URL": self.database_url},
+            clear=False,
+        )
         self._patch_store = patch.object(web_server, "store", self.store)
         self._patch_profile = patch.object(web_server, "PROFILE_PATH", self.profile_path)
+        self._patch_env.start()
         self._patch_store.start()
         self._patch_profile.start()
+        web_server._DB_CONNECTION = None
+        web_server._DB_CONNECTION_URL = ""
+        web_server._DB_USER_REPOSITORY = None
+        web_server._SUBSCRIPTION_GATE = None
+        web_server._DB_BETA_PROGRESS_REPOSITORY = None
+        web_server._DB_EVENT_REPOSITORY = None
+        web_server._DB_SLEEP_SESSION_REPOSITORY = None
+        web_server._DB_COMMAND_REPOSITORY = None
+        web_server._DB_MOBILE_AUTH_REPOSITORY = None
         self.client = TestClient(web_server.app)
 
     def tearDown(self):
+        connection = getattr(web_server, "_DB_CONNECTION", None)
+        if connection is not None:
+            try:
+                connection.engine.dispose()
+            except Exception:
+                pass
+        web_server._DB_CONNECTION = None
+        web_server._DB_CONNECTION_URL = ""
+        web_server._DB_USER_REPOSITORY = None
+        web_server._SUBSCRIPTION_GATE = None
+        web_server._DB_BETA_PROGRESS_REPOSITORY = None
+        web_server._DB_EVENT_REPOSITORY = None
+        web_server._DB_SLEEP_SESSION_REPOSITORY = None
+        web_server._DB_COMMAND_REPOSITORY = None
+        web_server._DB_MOBILE_AUTH_REPOSITORY = None
         self._patch_profile.stop()
         self._patch_store.stop()
+        self._patch_env.stop()
         self._tmp.cleanup()
 
     def _register(self, email: str = "user@example.com", password: str = "secret123", name: str = "User"):

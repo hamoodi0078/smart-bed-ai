@@ -84,6 +84,7 @@ _DB_BETA_PROGRESS_REPOSITORY: Any | None = None
 _DB_EVENT_REPOSITORY: Any | None = None
 _DB_SLEEP_SESSION_REPOSITORY: Any | None = None
 _DB_COMMAND_REPOSITORY: Any | None = None
+_DB_MOBILE_AUTH_REPOSITORY: Any | None = None
 _SLEEP_ENGINE = SleepIntelligenceEngine()
 
 _SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
@@ -900,6 +901,7 @@ def _scene_catalog() -> dict[str, dict[str, Any]]:
             "summary": "Soft cyan breathing lights with gentle audio.",
             "brightness": 0.25,
             "audio_profile": "soft_pad",
+            "premium": False,
         },
         "focus_momentum": {
             "key": "focus_momentum",
@@ -907,6 +909,7 @@ def _scene_catalog() -> dict[str, dict[str, Any]]:
             "summary": "Steady pulse scene for focused evenings.",
             "brightness": 0.45,
             "audio_profile": "focus_loop",
+            "premium": True,
         },
         "discipline_night": {
             "key": "discipline_night",
@@ -914,6 +917,7 @@ def _scene_catalog() -> dict[str, dict[str, Any]]:
             "summary": "Blue wave pattern with low-distraction audio.",
             "brightness": 0.35,
             "audio_profile": "night_drive",
+            "premium": True,
         },
         "balanced_default": {
             "key": "balanced_default",
@@ -921,6 +925,7 @@ def _scene_catalog() -> dict[str, dict[str, Any]]:
             "summary": "Neutral white scene for everyday comfort.",
             "brightness": 0.40,
             "audio_profile": "ambient_neutral",
+            "premium": False,
         },
     }
 
@@ -934,6 +939,7 @@ def _scene_gallery_items() -> list[dict[str, Any]]:
                 "label": str(row.get("label", "Scene") or "Scene"),
                 "summary": str(row.get("summary", "") or ""),
                 "preview_seconds": SCENE_PREVIEW_SECONDS,
+                "premium": bool(row.get("premium", False)),
             }
         )
     return items
@@ -1195,18 +1201,65 @@ def _automation_cooldown_timeline_items(now_utc: datetime | None = None) -> list
     return rows[:8]
 
 
+def _timeline_priority_score(row: dict[str, Any] | None) -> int:
+    data = row if isinstance(row, dict) else {}
+    status = str(data.get("status", "active") or "active").strip().lower()
+    event = str(data.get("event", "") or "").strip().lower()
+    command_id = str(data.get("command_id", "") or "").strip()
+
+    base = {
+        "failed": 95,
+        "danger": 95,
+        "error": 95,
+        "override": 88,
+        "review": 84,
+        "queued": 82,
+        "running": 76,
+        "active": 74,
+        "quiet": 70,
+        "completed": 62,
+        "ready": 60,
+        "available": 42,
+        "info": 42,
+    }.get(status, 50)
+
+    if "predictive alert" in event:
+        base += 20
+    if "quiet hours" in event:
+        base += 16
+    if "wind-down" in event:
+        base += 12
+    if ("failed" in event) or ("error" in event):
+        base += 24
+    if command_id:
+        base += 4
+
+    return max(0, min(100, int(base)))
+
+
 def _normalize_timeline_items(items: list[Any] | None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     source = items if isinstance(items, list) else []
     for row in source:
         if not isinstance(row, dict):
             continue
+        raw_priority = row.get("priority", None)
+        try:
+            parsed_priority = int(raw_priority) if raw_priority is not None else None
+        except Exception:
+            parsed_priority = None
+        priority = (
+            max(0, min(100, parsed_priority))
+            if isinstance(parsed_priority, int)
+            else _timeline_priority_score(row)
+        )
         out.append(
             {
                 "time": str(row.get("time", "Anytime") or "Anytime"),
                 "event": str(row.get("event", "Timeline event") or "Timeline event"),
                 "status": str(row.get("status", "active") or "active"),
                 "command_id": str(row.get("command_id", "") or ""),
+                "priority": int(priority),
             }
         )
     return out[:20]
@@ -1242,6 +1295,23 @@ def _merge_timeline_items(
             if len(merged) >= max(1, int(limit or 20)):
                 return merged
     return merged
+
+
+def _prioritize_timeline_items(
+    items: list[dict[str, Any]] | None,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    normalized = _normalize_timeline_items(items)
+    ranked = sorted(
+        enumerate(normalized),
+        key=lambda pair: (
+            -max(0, int((pair[1] or {}).get("priority", 0) or 0)),
+            pair[0],
+        ),
+    )
+    safe_limit = max(1, int(limit or 20))
+    return [row for _, row in ranked][:safe_limit]
 
 
 def _persist_mobile_timeline_item(user_id: str, item: dict[str, Any], trace_id: str = "") -> None:
@@ -1319,6 +1389,7 @@ def _mobile_timeline_items_from_db(user_id: str, limit: int = 20) -> list[dict[s
                 "event": str(metadata.get("event", "Timeline event") or "Timeline event"),
                 "status": str(metadata.get("status", "active") or "active"),
                 "command_id": str(metadata.get("command_id", "") or ""),
+                "priority": metadata.get("priority", 0),
             }
         )
         if len(out) >= safe_limit:
@@ -1357,6 +1428,58 @@ def _mobile_timeline_items_db_first(
         if refreshed_db_items:
             return _merge_timeline_items(refreshed_db_items, normalized_profile, limit=safe_limit)
     return normalized_profile
+
+
+def _restore_mobile_db_snapshots_from_profile(
+    *,
+    user_id: str,
+    profile_key: str,
+    profile_state: dict[str, Any],
+    trace_id: str = "",
+) -> None:
+    user_key = str(user_id or "").strip()
+    scoped_key = str(profile_key or "").strip()
+    if (not user_key) or (not scoped_key):
+        return
+
+    try:
+        command_section = _get_scoped_profile_section(profile_state, "web_device_commands")
+        command_rows = (
+            command_section.get(scoped_key, [])
+            if isinstance(command_section.get(scoped_key, []), list)
+            else []
+        )
+        normalized_commands = [
+            _normalize_command_item(row) for row in command_rows if isinstance(row, dict)
+        ]
+        _db_command_repository().replace_user_commands(
+            user_key,
+            normalized_commands,
+            now_utc=utcnow(),
+        )
+
+        timeline_section = _get_scoped_profile_section(profile_state, "web_timeline")
+        timeline_rows = (
+            timeline_section.get(scoped_key, [])
+            if isinstance(timeline_section.get(scoped_key, []), list)
+            else []
+        )
+        normalized_timeline = _normalize_timeline_items(timeline_rows)[:20]
+        _db_event_repository().replace_mobile_timeline_events(
+            user_key,
+            normalized_timeline,
+            trace_id=trace_id,
+            now_utc=utcnow(),
+        )
+    except Exception as exc:
+        emit_json_log(
+            logger,
+            level="warning",
+            event_type="mobile_undo_db_restore_failed",
+            trace_id=str(trace_id or "web_runtime"),
+            user_id=user_key,
+            metadata={"error_type": type(exc).__name__},
+        )
 
 
 def _user_action_catalog() -> dict[str, dict[str, str]]:
@@ -1669,6 +1792,8 @@ def _weekly_insight_payload(
     now_utc: datetime | None = None,
     wind_down_minutes: int = 45,
     weekly_insight_enabled: bool = True,
+    nightly_feedback: dict[str, Any] | None = None,
+    command_feedback: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = now_utc if isinstance(now_utc, datetime) else utcnow()
     now = ensure_utc(now)
@@ -1711,17 +1836,55 @@ def _weekly_insight_payload(
         if str(row.get("action", "") or "").strip().lower() == "quiet_hours_override"
     )
     completion_rate_pct = int(round((completed_count / action_count) * 100.0)) if action_count > 0 else 0
+    nightly_feedback_row = nightly_feedback if isinstance(nightly_feedback, dict) else {}
+    command_feedback_row = command_feedback if isinstance(command_feedback, dict) else {}
+    nightly_votes = max(0, int(nightly_feedback_row.get("total_votes", 0) or 0))
+    nightly_helpful_pct = max(0, min(100, int(nightly_feedback_row.get("helpful_pct", 0) or 0)))
+    command_votes = max(0, int(command_feedback_row.get("total_votes", 0) or 0))
+    command_helpful_pct = max(0, min(100, int(command_feedback_row.get("helpful_pct", 0) or 0)))
+    feedback_total_votes = nightly_votes + command_votes
+    feedback_helpful_pct = (
+        int(
+            round(
+                (
+                    (nightly_helpful_pct * nightly_votes)
+                    + (command_helpful_pct * command_votes)
+                )
+                / feedback_total_votes
+            )
+        )
+        if feedback_total_votes > 0
+        else 0
+    )
 
     if not weekly_insight_enabled:
         trend = "paused"
         headline = "Weekly insight paused"
         summary = "Enable weekly insight in Settings to resume habit-loop coaching."
+    elif feedback_total_votes >= 3 and feedback_helpful_pct < 50:
+        trend = "attention"
+        headline = "Feedback trend shows friction this week"
+        summary = (
+            f"Only {feedback_helpful_pct}% helpful feedback across {feedback_total_votes} vote(s). "
+            "Run one clean wind-down tonight, avoid override noise, and review the timeline tomorrow."
+        )
     elif wind_down_completed <= 0:
         trend = "attention"
         headline = "No completed wind-down sessions this week"
         summary = (
             f"Start wind-down tonight and aim for {int(wind_down_minutes)} minutes "
             "to begin your consistency streak."
+        )
+    elif (
+        completion_rate_pct >= 80
+        and feedback_total_votes >= 3
+        and feedback_helpful_pct >= 75
+    ):
+        trend = "up"
+        headline = "Feedback trend confirms your nightly loop is working"
+        summary = (
+            f"{feedback_helpful_pct}% helpful feedback across {feedback_total_votes} vote(s). "
+            "Keep the same bedtime window and repeat tonight's winning routine."
         )
     elif completion_rate_pct >= 80:
         trend = "up"
@@ -1730,10 +1893,16 @@ def _weekly_insight_payload(
     else:
         trend = "steady"
         headline = f"{wind_down_completed} wind-down session(s) completed this week"
-        summary = (
-            "Consistency is building. Repeat your wind-down at a similar time tonight "
-            "to improve recovery."
-        )
+        if feedback_total_votes >= 2 and feedback_helpful_pct < 70:
+            summary = (
+                f"Consistency is building, but feedback is mixed ({feedback_helpful_pct}% helpful). "
+                "Keep wind-down timing stable and simplify any noisy automation."
+            )
+        else:
+            summary = (
+                "Consistency is building. Repeat your wind-down at a similar time tonight "
+                "to improve recovery."
+            )
 
     return {
         "window_days": 7,
@@ -1742,6 +1911,8 @@ def _weekly_insight_payload(
         "automation_actions": action_count,
         "quiet_overrides": quiet_overrides,
         "completion_rate_pct": completion_rate_pct,
+        "feedback_total_votes": feedback_total_votes,
+        "feedback_helpful_pct": feedback_helpful_pct,
         "trend": trend,
         "headline": headline,
         "summary": summary,
@@ -3311,9 +3482,26 @@ def _cookie_user(request: Request) -> dict[str, Any] | None:
     if not token:
         return None
     user = store.validate_user_token(token)
-    if isinstance(user, dict):
-        _ensure_db_user_shadow(user)
-    return user if isinstance(user, dict) else None
+    if not isinstance(user, dict):
+        return None
+
+    user_id = str(user.get("user_id", "") or "").strip()
+    email = str(user.get("email", "") or "").strip().lower()
+    db_user = _db_user_repository().get_user_by_id(user_id) if user_id else None
+    if db_user is None and email:
+        db_user = _db_user_repository().get_user_by_email(email)
+
+    if db_user is not None:
+        payload = {
+            "user_id": str(getattr(db_user, "id", "") or ""),
+            "email": str(getattr(db_user, "email", "") or ""),
+            "name": str(getattr(db_user, "full_name", "") or ""),
+        }
+        _ensure_legacy_store_user_shadow(payload, password_hash=str(getattr(db_user, "password_hash", "") or ""))
+        return payload
+
+    _ensure_db_user_shadow(user)
+    return user
 
 
 def _bearer_token(request: Request) -> str:
@@ -3330,6 +3518,9 @@ def _mobile_user(request: Request) -> dict[str, Any] | None:
     token = _bearer_token(request)
     if not token:
         return None
+    payload = _mobile_user_from_access_token(token)
+    if isinstance(payload, dict):
+        return payload
     user = store.validate_mobile_access_token(token)
     if isinstance(user, dict):
         _ensure_db_user_shadow(user)
@@ -3379,6 +3570,7 @@ def _database_connection():
     global _DB_EVENT_REPOSITORY
     global _DB_SLEEP_SESSION_REPOSITORY
     global _DB_COMMAND_REPOSITORY
+    global _DB_MOBILE_AUTH_REPOSITORY
 
     env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
     if (_DB_CONNECTION is None) or (_DB_CONNECTION_URL != env_url):
@@ -3394,6 +3586,7 @@ def _database_connection():
         _DB_EVENT_REPOSITORY = None
         _DB_SLEEP_SESSION_REPOSITORY = None
         _DB_COMMAND_REPOSITORY = None
+        _DB_MOBILE_AUTH_REPOSITORY = None
     return _DB_CONNECTION
 
 
@@ -3442,6 +3635,56 @@ def _db_command_repository():
     return _DB_COMMAND_REPOSITORY
 
 
+def _db_mobile_auth_repository():
+    global _DB_MOBILE_AUTH_REPOSITORY
+    if _DB_MOBILE_AUTH_REPOSITORY is None:
+        from database import MobileAuthRepository
+
+        _DB_MOBILE_AUTH_REPOSITORY = MobileAuthRepository(db=_database_connection())
+    return _DB_MOBILE_AUTH_REPOSITORY
+
+
+def _mobile_user_from_access_token(access_token: str) -> dict[str, Any] | None:
+    token = str(access_token or "").strip()
+    if not token:
+        return None
+
+    try:
+        session_payload = _db_mobile_auth_repository().validate_access_token(token)
+    except Exception:
+        session_payload = {}
+    if not isinstance(session_payload, dict) or not session_payload:
+        return None
+
+    user_id = str(session_payload.get("user_id", "") or "").strip()
+    if not user_id:
+        return None
+
+    db_user = _db_user_repository().get_user_by_id(user_id)
+    if db_user is None:
+        # Keep bearer sessions usable even when legacy JSON users and DB shadow
+        # users are temporarily out of sync in local/dev tests.
+        legacy_user = store.get_user(user_id)
+        if isinstance(legacy_user, dict):
+            _ensure_db_user_shadow(legacy_user)
+            return {
+                "user_id": user_id,
+                "email": str(legacy_user.get("email", "") or ""),
+                "name": str(legacy_user.get("name", "") or ""),
+                "client_name": str(session_payload.get("client_name", "") or ""),
+                "auth_type": "mobile_bearer",
+            }
+        return None
+
+    return {
+        "user_id": user_id,
+        "email": str(getattr(db_user, "email", "") or ""),
+        "name": str(getattr(db_user, "full_name", "") or ""),
+        "client_name": str(session_payload.get("client_name", "") or ""),
+        "auth_type": "mobile_bearer",
+    }
+
+
 def _ensure_db_user_shadow(user: dict[str, Any] | None) -> None:
     row = user if isinstance(user, dict) else {}
     user_id = str(row.get("user_id", "") or "").strip()
@@ -3450,6 +3693,7 @@ def _ensure_db_user_shadow(user: dict[str, Any] | None) -> None:
         local = re.sub(r"[^a-z0-9._-]+", "_", user_id.lower()).strip("._-") or "shadow_user"
         email = f"{local}@shadow.local"
     full_name = str(row.get("name", "") or "").strip() or None
+    password_hash = str(row.get("password_hash", "") or "").strip() or "mobile_shadow_managed"
     if not user_id or not email:
         return
 
@@ -3461,7 +3705,7 @@ def _ensure_db_user_shadow(user: dict[str, Any] | None) -> None:
             if by_email is None:
                 repo.create_user(
                     email=email,
-                    password_hash="mobile_shadow_managed",
+                    password_hash=password_hash,
                     full_name=full_name,
                     user_id=user_id,
                 )
@@ -3473,6 +3717,9 @@ def _ensure_db_user_shadow(user: dict[str, Any] | None) -> None:
         existing_name = str(getattr(existing, "full_name", "") or "").strip()
         if full_name and full_name != existing_name:
             updates["full_name"] = full_name
+        existing_password_hash = str(getattr(existing, "password_hash", "") or "").strip()
+        if password_hash and (existing_password_hash in {"", "mobile_shadow_managed"}) and (password_hash != existing_password_hash):
+            updates["password_hash"] = password_hash
         existing_email = str(getattr(existing, "email", "") or "").strip().lower()
         if existing_email != email:
             clash = repo.get_user_by_email(email)
@@ -3777,13 +4024,12 @@ def auth_register(payload: RegisterRequest, response: Response, request: Request
         # Public registration creates a normal app user only.
         # Admin roles (especially "owner") are not granted here and must come
         # from a separate secure provisioning/setup step.
-        user = store.create_user(email=email, password=password, name=name)
+        user = _register_mobile_user_db_first(email=email, password=password, name=name)
     except ValueError as exc:
         _bump("auth_register_failure")
         _event("warning", "register_failed", email=email, reason=str(exc))
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    _ensure_db_user_shadow(user)
     session = store.issue_user_token(user_id=user.get("user_id", ""))
     _set_session_cookie(response, "sb_user_token", session["access_token"], 7 * 24 * 3600, request)
     _bump("auth_register_success")
@@ -3798,13 +4044,13 @@ def auth_register(payload: RegisterRequest, response: Response, request: Request
 @app.post("/v1/auth/login")
 def auth_login(payload: LoginRequest, response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
-    user = store.authenticate_user(payload.email, payload.password)
+    email = str(payload.email or "").strip().lower()
+    user = _login_mobile_user_db_first(email=email, password=payload.password or "")
     if not user:
         _bump("auth_user_login_failure")
-        _event("warning", "user_login_failed", email=(payload.email or "").strip().lower())
+        _event("warning", "user_login_failed", email=email)
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    _ensure_db_user_shadow(user)
     session = store.issue_user_token(user_id=user.get("user_id", ""))
     _set_session_cookie(response, "sb_user_token", session["access_token"], 7 * 24 * 3600, request)
     _bump("auth_user_login_success")
@@ -3819,10 +4065,11 @@ def auth_login(payload: LoginRequest, response: Response, request: Request) -> d
 @app.post("/v1/admin/auth/login")
 def admin_auth_login(payload: LoginRequest, response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
-    user = store.authenticate_user(payload.email, payload.password)
+    email = str(payload.email or "").strip().lower()
+    user = _login_mobile_user_db_first(email=email, password=payload.password or "")
     if not user:
         _bump("auth_admin_login_failure")
-        _event("warning", "admin_login_failed", email=(payload.email or "").strip().lower(), reason="invalid_credentials")
+        _event("warning", "admin_login_failed", email=email, reason="invalid_credentials")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Admin bootstrap flow:
@@ -3978,6 +4225,8 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
         user_id=key,
         wind_down_minutes=int(resolved.get("wind_down_minutes", 45) or 45),
         weekly_insight_enabled=bool(resolved.get("weekly_insight_enabled", True)),
+        nightly_feedback=nightly_summary_feedback,
+        command_feedback=command_feedback_loop,
     )
     bedtime_drift_alert = ""
     if bool(resolved.get("bedtime_drift_automation_enabled", True)):
@@ -4163,6 +4412,12 @@ def undo_last_action(payload: UndoActionRequest, request: Request):
             )
     elif action_type == "device_command" and isinstance(previous_state, dict):
         _save_profile(previous_state)
+        _restore_mobile_db_snapshots_from_profile(
+            user_id=user_id,
+            profile_key=user_id,
+            profile_state=previous_state,
+            trace_id=trace_id,
+        )
 
     return {
         "ok": True,
@@ -4192,6 +4447,93 @@ def undo_action_status(user_id: str = "") -> dict[str, Any]:
         "can_undo": can_undo,
         "action_type": action_type if can_undo else None,
         "seconds_remaining": seconds_remaining if can_undo else None,
+    }
+
+
+@app.get("/v1/mobile/actions/undo/status")
+def mobile_undo_action_status(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    key = _user_profile_key(user)
+    if not key:
+        raise HTTPException(status_code=400, detail="Unable to identify user key")
+
+    action = undo_manager.get_undoable_action(key)
+    if not isinstance(action, dict):
+        return {
+            "ok": True,
+            "can_undo": False,
+            "action_type": None,
+            "seconds_remaining": None,
+        }
+
+    action_type = str(action.get("action_type", "") or "").strip() or None
+    seconds_remaining = _undo_seconds_remaining(action)
+    can_undo = action_type is not None and seconds_remaining is not None
+    return {
+        "ok": True,
+        "can_undo": can_undo,
+        "action_type": action_type if can_undo else None,
+        "seconds_remaining": seconds_remaining if can_undo else None,
+    }
+
+
+@app.post("/v1/mobile/actions/undo")
+def mobile_undo_last_action(request: Request):
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    key = _user_profile_key(user)
+    trace_id = _request_trace_id(request)
+    if not key:
+        return JSONResponse(
+            status_code=400,
+            content=_error_envelope(
+                trace_id=trace_id,
+                code=VALIDATION_ERROR,
+                message="Unable to identify user key.",
+            ),
+            headers={_TRACE_ID_HEADER: trace_id},
+        )
+
+    action = undo_manager.pop_undo(key)
+    if not isinstance(action, dict):
+        return JSONResponse(
+            status_code=404,
+            content=_error_envelope(
+                trace_id=trace_id,
+                code=NOTHING_TO_UNDO,
+                message="No undo action found for this user.",
+            ),
+            headers={_TRACE_ID_HEADER: trace_id},
+        )
+
+    action_type = str(action.get("action_type", "") or "").strip()
+    previous_state = action.get("previous_state")
+    if action_type == "scene_compose":
+        restored = _restore_scene_store_snapshot(previous_state)
+        if not restored:
+            return JSONResponse(
+                status_code=500,
+                content=_error_envelope(
+                    trace_id=trace_id,
+                    code=INTERNAL_ERROR,
+                    message="Unable to restore previous scene state.",
+                ),
+                headers={_TRACE_ID_HEADER: trace_id},
+            )
+    elif action_type == "device_command" and isinstance(previous_state, dict):
+        _save_profile(previous_state)
+        _restore_mobile_db_snapshots_from_profile(
+            user_id=str(user.get("user_id", "") or key),
+            profile_key=key,
+            profile_state=previous_state,
+            trace_id=trace_id,
+        )
+
+    return {
+        "ok": True,
+        "undone": action_type,
+        "restored_state": previous_state,
+        "message": "Action undone successfully.",
     }
 
 
@@ -4325,6 +4667,162 @@ def _mobile_auth_response(user: dict[str, Any], tokens: dict[str, Any]) -> dict[
     }
 
 
+def _db_user_to_mobile_user_payload(db_user: Any, *, client_name: str = "") -> dict[str, Any]:
+    return {
+        "user_id": str(getattr(db_user, "id", "") or ""),
+        "email": str(getattr(db_user, "email", "") or ""),
+        "name": str(getattr(db_user, "full_name", "") or ""),
+        "client_name": str(client_name or ""),
+    }
+
+
+def _legacy_user_by_email(email: str) -> dict[str, Any] | None:
+    email_key = str(email or "").strip().lower()
+    if not email_key:
+        return None
+    users = store.db.get("users", [])
+    if not isinstance(users, list):
+        return None
+    for row in users:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("email", "") or "").strip().lower() == email_key:
+            return row
+    return None
+
+
+def _ensure_legacy_store_user_shadow(user: dict[str, Any], *, password_hash: str = "") -> None:
+    user_id = str(user.get("user_id", "") or "").strip()
+    email = str(user.get("email", "") or "").strip().lower()
+    if not user_id or not email:
+        return
+
+    name = str(user.get("name", "") or "").strip()
+    hash_value = str(password_hash or "").strip() or "mobile_shadow_managed"
+    now_iso = _now_utc_iso()
+    changed = False
+
+    users = store.db.get("users", [])
+    if not isinstance(users, list):
+        users = []
+        store.db["users"] = users
+        changed = True
+
+    match: dict[str, Any] | None = None
+    for row in users:
+        if not isinstance(row, dict):
+            continue
+        row_user_id = str(row.get("user_id", "") or "").strip()
+        row_email = str(row.get("email", "") or "").strip().lower()
+        if row_user_id == user_id or row_email == email:
+            match = row
+            break
+
+    if match is None:
+        users.append(
+            {
+                "user_id": user_id,
+                "email": email,
+                "name": name,
+                "password_hash": hash_value,
+                "created_at": now_iso,
+            }
+        )
+        changed = True
+    else:
+        if str(match.get("user_id", "") or "").strip() != user_id:
+            match["user_id"] = user_id
+            changed = True
+        if str(match.get("email", "") or "").strip().lower() != email:
+            match["email"] = email
+            changed = True
+        if str(match.get("name", "") or "").strip() != name:
+            match["name"] = name
+            changed = True
+        if str(match.get("password_hash", "") or "").strip() != hash_value:
+            match["password_hash"] = hash_value
+            changed = True
+        if not str(match.get("created_at", "") or "").strip():
+            match["created_at"] = now_iso
+            changed = True
+
+    subscriptions = store.db.get("subscriptions", [])
+    if not isinstance(subscriptions, list):
+        subscriptions = []
+        store.db["subscriptions"] = subscriptions
+        changed = True
+    has_subscription = any(str(row.get("user_id", "") or "").strip() == user_id for row in subscriptions if isinstance(row, dict))
+    if not has_subscription:
+        subscriptions.append(
+            {
+                "user_id": user_id,
+                "tier": "free",
+                "interval": "monthly",
+                "status": "active",
+                "payment_provider": "none",
+                "price_kwd": 0.0,
+                "next_renewal_at": "",
+                "grace_end_at": "",
+                "updated_at": now_iso,
+            }
+        )
+        changed = True
+
+    if changed:
+        store.save()
+
+
+def _register_mobile_user_db_first(email: str, password: str, name: str) -> dict[str, Any]:
+    repo = _db_user_repository()
+    if repo.get_user_by_email(email) is not None:
+        raise ValueError("Email already registered")
+
+    # If a legacy user already owns this email, treat it as existing account.
+    if isinstance(_legacy_user_by_email(email), dict):
+        raise ValueError("Email already registered")
+
+    password_hash = store.hash_password(password)
+    created = repo.create_user(
+        email=email,
+        password_hash=password_hash,
+        full_name=name or None,
+    )
+    payload = _db_user_to_mobile_user_payload(created)
+    _ensure_legacy_store_user_shadow(payload, password_hash=password_hash)
+    return payload
+
+
+def _login_mobile_user_db_first(email: str, password: str) -> dict[str, Any] | None:
+    repo = _db_user_repository()
+    db_user = repo.get_user_by_email(email)
+    if db_user is not None:
+        stored_hash = str(getattr(db_user, "password_hash", "") or "")
+        if not store.check_password(password, stored_hash):
+            return None
+        payload = _db_user_to_mobile_user_payload(db_user)
+        _ensure_legacy_store_user_shadow(payload, password_hash=stored_hash)
+        return payload
+
+    # Migration fallback: allow login for legacy-only users, then mirror to DB.
+    legacy_user = store.authenticate_user(email, password)
+    if not isinstance(legacy_user, dict):
+        return None
+
+    _ensure_db_user_shadow(legacy_user)
+    synced = repo.get_user_by_id(str(legacy_user.get("user_id", "") or "").strip()) or repo.get_user_by_email(email)
+    if synced is not None:
+        payload = _db_user_to_mobile_user_payload(synced)
+    else:
+        payload = {
+            "user_id": str(legacy_user.get("user_id", "") or ""),
+            "email": str(legacy_user.get("email", "") or ""),
+            "name": str(legacy_user.get("name", "") or ""),
+            "client_name": "",
+        }
+    _ensure_legacy_store_user_shadow(payload, password_hash=str(legacy_user.get("password_hash", "") or ""))
+    return payload
+
+
 @app.post("/v1/mobile/auth/register")
 def mobile_auth_register(payload: MobileRegisterRequest, request: Request) -> dict[str, Any]:
     email = (payload.email or "").strip().lower()
@@ -4336,24 +4834,29 @@ def mobile_auth_register(payload: MobileRegisterRequest, request: Request) -> di
     if len(password) < 8:
         raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
     try:
-        user = store.create_user(email=email, password=password, name=name)
+        user = _register_mobile_user_db_first(email=email, password=password, name=name)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    _ensure_db_user_shadow(user)
-    tokens = store.issue_mobile_tokens(user_id=str(user.get("user_id", "") or ""), client_name=client_name)
+    tokens = _db_mobile_auth_repository().issue_tokens(
+        user_id=str(user.get("user_id", "") or ""),
+        client_name=client_name,
+    )
     _event("info", "mobile_register_success", user_id=str(user.get("user_id", "")), email=email, client_name=client_name)
     return _mobile_auth_response(user, tokens)
 
 
 @app.post("/v1/mobile/auth/login")
 def mobile_auth_login(payload: MobileLoginRequest, request: Request) -> dict[str, Any]:
-    user = store.authenticate_user(payload.email, payload.password)
+    email = str(payload.email or "").strip().lower()
+    user = _login_mobile_user_db_first(email=email, password=payload.password or "")
     if not user:
-        _event("warning", "mobile_login_failed", email=(payload.email or "").strip().lower())
+        _event("warning", "mobile_login_failed", email=email)
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    _ensure_db_user_shadow(user)
     client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
-    tokens = store.issue_mobile_tokens(user_id=str(user.get("user_id", "") or ""), client_name=client_name)
+    tokens = _db_mobile_auth_repository().issue_tokens(
+        user_id=str(user.get("user_id", "") or ""),
+        client_name=client_name,
+    )
     _event("info", "mobile_login_success", user_id=str(user.get("user_id", "")), email=user.get("email", ""), client_name=client_name)
     return _mobile_auth_response(user, tokens)
 
@@ -4363,10 +4866,16 @@ def mobile_auth_refresh(payload: MobileRefreshRequest, request: Request) -> dict
     refresh_token = str(payload.refresh_token or "").strip()
     if not refresh_token:
         raise HTTPException(status_code=422, detail="refresh_token is required")
-    tokens = store.refresh_mobile_access_token(refresh_token)
-    if not isinstance(tokens, dict):
+    tokens = _db_mobile_auth_repository().refresh_tokens(refresh_token)
+    if not isinstance(tokens, dict) or not tokens:
+        # Compatibility path for older sessions issued before DB-backed mobile auth.
+        tokens = store.refresh_mobile_access_token(refresh_token)
+    if not isinstance(tokens, dict) or not tokens:
         raise HTTPException(status_code=401, detail="Refresh token is invalid or expired")
-    user = store.validate_mobile_access_token(str(tokens.get("access_token", "") or ""))
+
+    user = _mobile_user_from_access_token(str(tokens.get("access_token", "") or ""))
+    if not isinstance(user, dict):
+        user = store.validate_mobile_access_token(str(tokens.get("access_token", "") or ""))
     if not isinstance(user, dict):
         raise HTTPException(status_code=401, detail="Unable to restore mobile session")
     _ensure_db_user_shadow(user)
@@ -4378,8 +4887,9 @@ def mobile_auth_refresh(payload: MobileRefreshRequest, request: Request) -> dict
 def mobile_auth_logout(payload: MobileLogoutRequest, request: Request) -> dict[str, Any]:
     access_token = _bearer_token(request)
     refresh_token = str(payload.refresh_token or "").strip()
-    revoked = store.revoke_mobile_tokens(access_token=access_token, refresh_token=refresh_token)
-    return {"ok": True, "revoked": bool(revoked)}
+    revoked_db = _db_mobile_auth_repository().revoke_tokens(access_token=access_token, refresh_token=refresh_token)
+    revoked_legacy = store.revoke_mobile_tokens(access_token=access_token, refresh_token=refresh_token)
+    return {"ok": True, "revoked": bool(revoked_db or revoked_legacy)}
 
 
 @app.get("/v1/mobile/auth/me")
@@ -4804,7 +5314,7 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
 
     if not items:
         items = _default_user_timeline()
-    normalized_items = _normalize_timeline_items(items)[:20]
+    normalized_items = _prioritize_timeline_items(items, limit=20)
     if profile_dirty:
         _save_profile(profile)
     return {"ok": True, "items": normalized_items}
@@ -5114,6 +5624,25 @@ def mobile_scene_save_tonight(payload: SceneSelectionRequest, request: Request) 
     scene_key = str(scene_entry.get("key", "") or "")
     scene_label = str(scene_entry.get("label", "Scene") or "Scene")
     trace_id = _request_trace_id(request)
+    scene_is_premium = bool(scene_entry.get("premium", False))
+
+    if scene_is_premium:
+        gate_user_id = str(user.get("user_id", "") or "").strip()
+        access = _subscription_gate().check_scene_access(
+            user_id=gate_user_id,
+            scene_name=scene_label,
+            scene_is_premium=True,
+        )
+        if not bool(access.get("allowed", False)):
+            return JSONResponse(
+                status_code=403,
+                content=_error_envelope(
+                    trace_id=trace_id,
+                    code=UNAUTHORIZED,
+                    message="Upgrade to premium to save this scene tonight.",
+                ),
+                headers={_TRACE_ID_HEADER: trace_id},
+            )
 
     controls_section = _get_scoped_profile_section(profile, "web_device_controls")
     current_controls = _normalize_device_controls(controls_section.get(key, {}))
@@ -5158,6 +5687,7 @@ def mobile_scene_save_tonight(payload: SceneSelectionRequest, request: Request) 
         "ok": True,
         "scene_key": scene_key,
         "scene_label": scene_label,
+        "premium": scene_is_premium,
         "saved_for_tonight": True,
         "message": "Scene saved for tonight.",
         "premium_quota_exempt": True,

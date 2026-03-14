@@ -66,6 +66,16 @@ This validates: `signup/register -> dashboard -> quick action -> scene preview -
 - Cohort report: `GET /v1/admin/mobile/beta-cohort?cohort_key=kuwait_beta&target_min=10&target_max=15`
 - Returns active tester counts, target-gap status, and tester-level rollout metrics.
 
+### 10) Run one Day-45 gate command (recommended)
+From repo root:
+```powershell
+.\.venv311\Scripts\python.exe .\scripts\day45_gate.py --base-url http://127.0.0.1:8001
+```
+Useful options:
+- `--skip-smoke` if backend is not running yet
+- `--skip-flutter` for backend-only checks
+- `--flutter-cmd "C:\src\flutter\flutter\bin\flutter.bat"` if `flutter` is not on PATH
+
 ## Flutter Mobile Shell
 
 The primary customer surface is now the Flutter app in [`mobile_app/`](/c:/Users/PC#####/Desktop/smart%20bed%20by%20me/mobile_app).

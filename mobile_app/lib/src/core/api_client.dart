@@ -271,6 +271,23 @@ class SmartBedApi {
     return DeviceCommandReceipt.fromJson(json);
   }
 
+  Future<UndoStatus> getUndoStatus(String accessToken) async {
+    final json = await _get(
+      '/v1/mobile/actions/undo/status',
+      accessToken: accessToken,
+    );
+    return UndoStatus.fromJson(json);
+  }
+
+  Future<UndoResult> undoLastAction(String accessToken) async {
+    final json = await _post(
+      '/v1/mobile/actions/undo',
+      data: const <String, Object>{},
+      accessToken: accessToken,
+    );
+    return UndoResult.fromJson(json);
+  }
+
   Future<TrialStatus> getTrialStatus({
     required String userId,
     String? accessToken,
@@ -376,6 +393,14 @@ class SmartBedApi {
       return const ApiException(
         message:
             'The Smart Bed API timed out. Check the local backend and try again.',
+      );
+    }
+    if (error.type == DioExceptionType.connectionError ||
+        (error.type == DioExceptionType.unknown &&
+            (error.message ?? '').contains('XMLHttpRequest onError callback'))) {
+      return ApiException(
+        message:
+            'Unable to reach Smart Bed API at ${_dio.options.baseUrl}. Start the backend server and try again.',
       );
     }
     return ApiException(

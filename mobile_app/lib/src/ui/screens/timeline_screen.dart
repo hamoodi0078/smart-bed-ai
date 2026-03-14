@@ -17,15 +17,18 @@ class TimelineScreen extends ConsumerStatefulWidget {
 }
 
 class _TimelineScreenState extends ConsumerState<TimelineScreen> {
+  static const int _pollBackoffWindowTicks = 2;
+
   Timer? _pollTimer;
   bool _timelineReviewMarked = false;
+  int _pollBackoffTicks = 0;
 
   @override
   void initState() {
     super.initState();
     Future<void>.microtask(_markTimelineReviewStep);
     _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      ref.invalidate(timelineFeedProvider);
+      _pollTimeline();
     });
   }
 
@@ -36,8 +39,27 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
   }
 
   Future<void> _refresh() async {
+    _pollBackoffTicks = 0;
     ref.invalidate(timelineFeedProvider);
-    await ref.read(timelineFeedProvider.future);
+    try {
+      await ref.read(timelineFeedProvider.future);
+    } catch (_) {}
+  }
+
+  void _pollTimeline() {
+    if (!mounted) {
+      return;
+    }
+    if (_pollBackoffTicks > 0) {
+      _pollBackoffTicks -= 1;
+      return;
+    }
+    final current = ref.read(timelineFeedProvider);
+    if (current.hasError && current.valueOrNull == null) {
+      _pollBackoffTicks = _pollBackoffWindowTicks;
+      return;
+    }
+    ref.invalidate(timelineFeedProvider);
   }
 
   Future<void> _markTimelineReviewStep() async {
@@ -100,6 +122,12 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
     final windDownCount = items
         .where((item) => item.event.toLowerCase().contains('wind-down'))
         .length;
+    final sortedItems = [...items]
+      ..sort((a, b) => b.priority.compareTo(a.priority));
+    final priorityNow = sortedItems
+        .where((item) => item.priority >= 75)
+        .take(2)
+        .toList(growable: false);
 
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -168,8 +196,49 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
               ],
             ),
           ),
+          if (priorityNow.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 18),
+            PanelCard(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: <Color>[
+                  SmartBedPalette.surfaceDark,
+                  SmartBedPalette.surfaceLight,
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text('Priority now', style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  ...priorityNow.map((item) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          StatusPill(
+                            label: 'P${item.priority}',
+                            tone: _timelineTone(item.status),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              item.event,
+                              style: theme.textTheme.bodyLarge,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
-          ...items.map((item) {
+          ...sortedItems.map((item) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: PanelCard(
@@ -211,6 +280,11 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
                                 StatusPill(
                                   label: item.commandId,
                                   tone: StatusTone.info,
+                                ),
+                              if (item.priority > 0)
+                                StatusPill(
+                                  label: 'P${item.priority}',
+                                  tone: StatusTone.neutral,
                                 ),
                             ],
                           ),

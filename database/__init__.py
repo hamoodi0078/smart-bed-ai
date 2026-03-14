@@ -6,6 +6,7 @@ from .models import (
     BetaMetricsSnapshot,
     Event,
     FirstThreeNightsProgress,
+    MobileAuthSession,
     MobileCommandFeedback,
     MobileCommandRecord,
     NightlySummaryFeedbackProgress,
@@ -16,6 +17,7 @@ from .models import (
 from .repositories import (
     BetaProgressRepository,
     EventRepository,
+    MobileAuthRepository,
     MobileCommandRepository,
     SleepSessionRepository,
     UserRepository,
@@ -30,6 +32,7 @@ __all__ = [
     "SleepSession",
     "MobileCommandRecord",
     "MobileCommandFeedback",
+    "MobileAuthSession",
     "FirstThreeNightsProgress",
     "NightlySummaryFeedbackProgress",
     "BetaMetricsSnapshot",
@@ -38,6 +41,7 @@ __all__ = [
     "UserRepository",
     "BetaProgressRepository",
     "EventRepository",
+    "MobileAuthRepository",
     "MobileCommandRepository",
     "SleepSessionRepository",
 ]

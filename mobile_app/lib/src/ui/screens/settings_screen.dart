@@ -44,7 +44,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _refresh() async {
     ref.invalidate(settingsBundleProvider);
-    await ref.read(settingsBundleProvider.future);
+    try {
+      await ref.read(settingsBundleProvider.future);
+    } catch (_) {}
   }
 
   Future<void> _save() async {

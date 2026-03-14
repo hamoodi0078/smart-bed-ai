@@ -35,6 +35,10 @@ final betaMetricsProvider = FutureProvider<BetaMetrics>((ref) async {
   return ref.read(smartBedRepositoryProvider).loadBetaMetrics();
 });
 
+final undoStatusProvider = FutureProvider<UndoStatus>((ref) async {
+  return ref.read(smartBedRepositoryProvider).loadUndoStatus();
+});
+
 final settingsBundleProvider = FutureProvider<SettingsBundle>((ref) async {
   return ref.read(smartBedRepositoryProvider).loadSettingsBundle();
 });
@@ -122,6 +126,14 @@ class SmartBedRepository {
 
   Future<BetaMetrics> loadBetaMetrics() {
     return _auth.performAuthorized(_api.getBetaMetrics);
+  }
+
+  Future<UndoStatus> loadUndoStatus() {
+    return _auth.performAuthorized(_api.getUndoStatus);
+  }
+
+  Future<UndoResult> undoLastAction() {
+    return _auth.performAuthorized(_api.undoLastAction);
   }
 
   Future<SettingsBundle> loadSettingsBundle() async {

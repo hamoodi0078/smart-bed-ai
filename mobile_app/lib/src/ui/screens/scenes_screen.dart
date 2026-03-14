@@ -22,8 +22,14 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> {
     ref.invalidate(sceneGalleryProvider);
     ref.invalidate(dashboardBundleProvider);
     await Future.wait<void>(<Future<void>>[
-      ref.read(sceneGalleryProvider.future).then((_) {}),
-      ref.read(dashboardBundleProvider.future).then((_) {}),
+      ref
+          .read(sceneGalleryProvider.future)
+          .then((_) {})
+          .catchError((_) => null),
+      ref
+          .read(dashboardBundleProvider.future)
+          .then((_) {})
+          .catchError((_) => null),
     ]);
   }
 
@@ -182,6 +188,7 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> {
           ...scenes.items.map((item) {
             final previewBusy = _busyKey == 'preview:${item.sceneKey}';
             final saveBusy = _busyKey == 'save:${item.sceneKey}';
+            final lockedPremium = item.premium && (dashboard?.trialStatus.isFree ?? true);
             return Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: PanelCard(
@@ -201,10 +208,24 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> {
                               '${item.previewSeconds.toStringAsFixed(0)} sec',
                           tone: StatusTone.neutral,
                         ),
+                        if (item.premium) ...<Widget>[
+                          const SizedBox(width: 8),
+                          const StatusPill(
+                            label: 'PREMIUM',
+                            tone: StatusTone.warning,
+                          ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 8),
                     Text(item.summary, style: theme.textTheme.bodyLarge),
+                    if (lockedPremium) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Start the 7-day trial from Command Center to save this premium scene tonight.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     Row(
                       children: <Widget>[
@@ -228,7 +249,17 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: FilledButton.icon(
-                            onPressed: saveBusy ? null : () => _saveScene(item),
+                            onPressed: saveBusy
+                                ? null
+                                : () {
+                                    if (lockedPremium) {
+                                      _showMessage(
+                                        'Activate your 7-day trial first to save premium scenes.',
+                                      );
+                                      return;
+                                    }
+                                    _saveScene(item);
+                                  },
                             icon: saveBusy
                                 ? const SizedBox(
                                     width: 16,
@@ -237,7 +268,11 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> {
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Icon(Icons.bedtime_rounded),
+                                : Icon(
+                                    lockedPremium
+                                        ? Icons.workspace_premium_outlined
+                                        : Icons.bedtime_rounded,
+                                  ),
                             label: const Text('Save Tonight'),
                           ),
                         ),

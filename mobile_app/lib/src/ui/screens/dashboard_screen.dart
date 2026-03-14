@@ -19,21 +19,28 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  static const int _statePollBackoffWindowTicks = 6;
+  static const int _timelinePollBackoffWindowTicks = 2;
+
   Timer? _stateTimer;
   Timer? _timelineTimer;
   String? _pendingAction;
   bool _trialStarting = false;
   bool _feedbackSubmitting = false;
   bool _commandFeedbackSubmitting = false;
+  bool _undoRunning = false;
+  int _statePollBackoffTicks = 0;
+  int _timelinePollBackoffTicks = 0;
+  String? _pollWarningMessage;
 
   @override
   void initState() {
     super.initState();
     _stateTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      ref.invalidate(bedStateProvider);
+      _pollBedState();
     });
     _timelineTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      ref.invalidate(timelineFeedProvider);
+      _pollTimeline();
     });
   }
 
@@ -45,18 +52,82 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Future<void> _refreshAll() async {
+    _statePollBackoffTicks = 0;
+    _timelinePollBackoffTicks = 0;
     ref.invalidate(bedStateProvider);
     ref.invalidate(dashboardBundleProvider);
     ref.invalidate(timelineFeedProvider);
     ref.invalidate(firstThreeNightsChecklistProvider);
     ref.invalidate(betaMetricsProvider);
+    ref.invalidate(undoStatusProvider);
     await Future.wait<void>(<Future<void>>[
-      ref.read(bedStateProvider.future).then((_) {}),
-      ref.read(dashboardBundleProvider.future).then((_) {}),
-      ref.read(timelineFeedProvider.future).then((_) {}),
-      ref.read(firstThreeNightsChecklistProvider.future).then((_) {}),
-      ref.read(betaMetricsProvider.future).then((_) {}),
+      _readProviderQuietly(bedStateProvider.future),
+      _readProviderQuietly(dashboardBundleProvider.future),
+      _readProviderQuietly(timelineFeedProvider.future),
+      _readProviderQuietly(firstThreeNightsChecklistProvider.future),
+      _readProviderQuietly(betaMetricsProvider.future),
+      _readProviderQuietly(undoStatusProvider.future),
     ]);
+  }
+
+  void _pollBedState() {
+    if (!mounted) {
+      return;
+    }
+    if (_statePollBackoffTicks > 0) {
+      _statePollBackoffTicks -= 1;
+      return;
+    }
+    final current = ref.read(bedStateProvider);
+    if (current.hasError && current.valueOrNull == null) {
+      _statePollBackoffTicks = _statePollBackoffWindowTicks;
+      return;
+    }
+    ref.invalidate(bedStateProvider);
+    _readProviderQuietly(bedStateProvider.future, setPollWarning: true);
+  }
+
+  void _pollTimeline() {
+    if (!mounted) {
+      return;
+    }
+    if (_timelinePollBackoffTicks > 0) {
+      _timelinePollBackoffTicks -= 1;
+      return;
+    }
+    final current = ref.read(timelineFeedProvider);
+    if (current.hasError && current.valueOrNull == null) {
+      _timelinePollBackoffTicks = _timelinePollBackoffWindowTicks;
+      return;
+    }
+    ref.invalidate(timelineFeedProvider);
+    _readProviderQuietly(timelineFeedProvider.future, setPollWarning: true);
+  }
+
+  Future<void> _readProviderQuietly(
+    Refreshable<Future<dynamic>> providerFuture, {
+    bool setPollWarning = false,
+  }) async {
+    try {
+      await ref.read(providerFuture);
+      if (setPollWarning && mounted && _pollWarningMessage != null) {
+        setState(() {
+          _pollWarningMessage = null;
+        });
+      }
+    } catch (error) {
+      if (!mounted || !setPollWarning) {
+        return;
+      }
+      final fallback =
+          'Live updates paused. Start backend on port 8001 and pull to refresh.';
+      final message = error is ApiException ? error.message : fallback;
+      if (_pollWarningMessage != message) {
+        setState(() {
+          _pollWarningMessage = message;
+        });
+      }
+    }
   }
 
   Future<void> _runAction(String action) async {
@@ -79,6 +150,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ref.invalidate(bedStateProvider);
       ref.invalidate(firstThreeNightsChecklistProvider);
       ref.invalidate(betaMetricsProvider);
+      ref.invalidate(undoStatusProvider);
     } on ApiException catch (error) {
       _showMessage(error.message);
     } finally {
@@ -106,6 +178,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       );
       ref.invalidate(dashboardBundleProvider);
       ref.invalidate(betaMetricsProvider);
+      ref.invalidate(undoStatusProvider);
     } on ApiException catch (error) {
       _showMessage(error.message);
     } finally {
@@ -141,6 +214,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       );
       ref.invalidate(dashboardBundleProvider);
       ref.invalidate(betaMetricsProvider);
+      ref.invalidate(undoStatusProvider);
     } on ApiException catch (error) {
       _showMessage(error.message);
     } finally {
@@ -174,12 +248,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       );
       ref.invalidate(dashboardBundleProvider);
       ref.invalidate(betaMetricsProvider);
+      ref.invalidate(undoStatusProvider);
     } on ApiException catch (error) {
       _showMessage(error.message);
     } finally {
       if (mounted) {
         setState(() {
           _commandFeedbackSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _undoLastAction() async {
+    setState(() {
+      _undoRunning = true;
+    });
+    try {
+      final result = await ref.read(smartBedRepositoryProvider).undoLastAction();
+      if (!mounted) {
+        return;
+      }
+      _showMessage(result.message);
+      ref.invalidate(bedStateProvider);
+      ref.invalidate(dashboardBundleProvider);
+      ref.invalidate(timelineFeedProvider);
+      ref.invalidate(firstThreeNightsChecklistProvider);
+      ref.invalidate(betaMetricsProvider);
+      ref.invalidate(undoStatusProvider);
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _undoRunning = false;
         });
       }
     }
@@ -203,12 +305,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final timelineAsync = ref.watch(timelineFeedProvider);
     final checklistAsync = ref.watch(firstThreeNightsChecklistProvider);
     final betaMetricsAsync = ref.watch(betaMetricsProvider);
+    final undoStatusAsync = ref.watch(undoStatusProvider);
 
     final dashboard = dashboardAsync.valueOrNull;
     final bedState = bedStateAsync.valueOrNull;
     final timeline = timelineAsync.valueOrNull ?? const <TimelineItem>[];
     final checklist = checklistAsync.valueOrNull;
     final betaMetrics = betaMetricsAsync.valueOrNull;
+    final undoStatus = undoStatusAsync.valueOrNull;
 
     final error = dashboardAsync.error ?? bedStateAsync.error;
     if ((dashboard == null || bedState == null) && error != null) {
@@ -237,6 +341,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
         children: <Widget>[
+          if (_pollWarningMessage != null) ...<Widget>[
+            PanelCard(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Icon(Icons.wifi_off_rounded),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _pollWarningMessage!,
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           PanelCard(
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
@@ -481,6 +603,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           ),
           const SizedBox(height: 18),
+          if (undoStatus != null)
+            _UndoCard(
+              status: undoStatus,
+              running: _undoRunning,
+              onUndo: _undoLastAction,
+            )
+          else if (undoStatusAsync.isLoading)
+            const PanelCard(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          const SizedBox(height: 18),
           if (dashboard.trialStatus.isFree)
             PanelCard(
               gradient: const LinearGradient(
@@ -658,6 +796,18 @@ class _WeeklyInsightCard extends StatelessWidget {
                     : (insight.completionRatePct >= 40
                           ? StatusTone.info
                           : StatusTone.warning),
+              ),
+              StatusPill(
+                label: insight.feedbackTotalVotes > 0
+                    ? '${insight.feedbackHelpfulPct}% feedback'
+                    : 'No feedback yet',
+                tone: insight.feedbackTotalVotes == 0
+                    ? StatusTone.neutral
+                    : (insight.feedbackHelpfulPct >= 75
+                          ? StatusTone.success
+                          : (insight.feedbackHelpfulPct >= 50
+                                ? StatusTone.info
+                                : StatusTone.warning)),
               ),
               StatusPill(
                 label: '${insight.quietOverrides} override(s)',
@@ -1017,6 +1167,66 @@ class _LastCommandCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(feedback.statusLine, style: theme.textTheme.bodySmall),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _UndoCard extends StatelessWidget {
+  const _UndoCard({
+    required this.status,
+    required this.running,
+    required this.onUndo,
+  });
+
+  final UndoStatus status;
+  final bool running;
+  final Future<void> Function() onUndo;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final canUndo = status.canUndo;
+    final seconds = status.secondsRemaining;
+    final actionLabel = status.actionType.trim().isEmpty
+        ? 'last action'
+        : status.actionType.replaceAll('_', ' ');
+
+    return PanelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text('Undo window', style: theme.textTheme.titleLarge),
+              ),
+              StatusPill(
+                label: canUndo ? 'AVAILABLE' : 'EMPTY',
+                tone: canUndo ? StatusTone.info : StatusTone.neutral,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            canUndo
+                ? 'You can undo $actionLabel${seconds != null ? ' for ${seconds}s' : ''}.'
+                : 'No recent reversible action.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            onPressed: (!canUndo || running) ? null : onUndo,
+            icon: running
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.undo_rounded),
+            label: const Text('Undo Last Action'),
+          ),
         ],
       ),
     );

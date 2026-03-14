@@ -68,6 +68,7 @@ void main() {
             (ref) async => _checklist,
           ),
           betaMetricsProvider.overrideWith((ref) async => _betaMetrics),
+          undoStatusProvider.overrideWith((ref) async => _undoStatus),
         ],
         child: const MaterialApp(home: Scaffold(body: DashboardScreen())),
       ),
@@ -84,6 +85,8 @@ void main() {
     expect(find.text('Was this nightly summary helpful?'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Beta metrics'), 300);
     expect(find.text('Beta metrics'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Undo Last Action'), 300);
+    expect(find.text('Undo Last Action'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Start 7-day trial'), 300);
     expect(find.text('Start 7-day trial'), findsOneWidget);
 
@@ -319,6 +322,12 @@ const _betaMetrics = BetaMetrics(
   generatedAtUtc: '2026-03-14T00:00:00Z',
 );
 
+const _undoStatus = UndoStatus(
+  canUndo: true,
+  actionType: 'device_command',
+  secondsRemaining: 8,
+);
+
 const _bedState = BedStateSnapshot(
   schemaVersion: '2.0',
   capabilities: <String>['lighting', 'wind_down'],
@@ -401,6 +410,8 @@ const _dashboardBundle = DashboardBundle(
       automationActions: 4,
       quietOverrides: 1,
       completionRatePct: 75,
+      feedbackTotalVotes: 3,
+      feedbackHelpfulPct: 67,
       trend: 'attention',
       headline: '2 wind-down session(s) completed this week',
       summary: 'Consistency is building.',
