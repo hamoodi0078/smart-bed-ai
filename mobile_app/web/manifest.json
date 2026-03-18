@@ -1,11 +1,11 @@
 {
-    "name": "mobile_app",
-    "short_name": "mobile_app",
+    "name": "Danah Smart Bed",
+    "short_name": "Danah",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0A1628",
+    "theme_color": "#00D4FF",
+    "description": "Danah Smart Bed, built by Dana Abuhalifa.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -1,93 +1,132 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 class SmartBedPalette {
   SmartBedPalette._();
 
-  static const Color background = Color(0xFF050816);
-  static const Color surfaceDark = Color(0xFF0B1020);
-  static const Color surfaceLight = Color(0xFF111827);
-  static const Color accent = Color(0xFF4F46E5);
-  static const Color secondaryAccent = Color(0xFF22D3EE);
-  static const Color connected = Color(0xFF22C55E);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color danger = Color(0xFFEF4444);
-  static const Color bodyText = Color(0xFF9CA3AF);
+  static const Color background = Color(0xFF0A1628);
+  static const Color surfaceDark = Color(0xFF13213A);
+  static const Color surfaceLight = Color(0xFF1A2740);
+  static const Color accent = Color(0xFF00D4FF);
+  static const Color secondaryAccent = Color(0xFF7B68EE);
+  static const Color warmAccent = Color(0xFFFF6B35);
+  static const Color gold = Color(0xFFFFD700);
+  static const Color connected = Color(0xFF39D98A);
+  static const Color warning = Color(0xFFF5A524);
+  static const Color danger = Color(0xFFFF6B6B);
+  static const Color bodyText = Color(0xFF9FB0CC);
+  static const Color lightBackground = Color(0xFFF4F7FC);
+  static const Color lightSurface = Color(0xFFFFFFFF);
+  static const Color lightSurfaceAlt = Color(0xFFE9F0FB);
+  static const Color lightText = Color(0xFF11203A);
+  static const Color lightMuted = Color(0xFF62738E);
+
+  static Color scaffold(Brightness brightness) =>
+      brightness == Brightness.dark ? background : lightBackground;
+
+  static Color surface(Brightness brightness) =>
+      brightness == Brightness.dark ? surfaceDark : lightSurface;
+
+  static Color surfaceAlt(Brightness brightness) =>
+      brightness == Brightness.dark ? surfaceLight : lightSurfaceAlt;
+
+  static Color body(Brightness brightness) =>
+      brightness == Brightness.dark ? bodyText : lightMuted;
+
+  static Color headline(Brightness brightness) =>
+      brightness == Brightness.dark ? Colors.white : lightText;
 }
 
-ThemeData buildSmartBedTheme() {
-  const fontFallback = <String>[
-    'Inter',
-    '.SF Pro Text',
-    '.SF Pro Display',
-    'Roboto',
-    'Helvetica Neue',
-    'Arial',
-  ];
-
-  final base = ThemeData.dark(useMaterial3: true);
-  final scheme = const ColorScheme.dark(
+ThemeData buildSmartBedTheme({Brightness brightness = Brightness.dark}) {
+  final isDark = brightness == Brightness.dark;
+  final scheme = ColorScheme.fromSeed(
+    seedColor: SmartBedPalette.accent,
+    brightness: brightness,
     primary: SmartBedPalette.accent,
     secondary: SmartBedPalette.secondaryAccent,
-    surface: SmartBedPalette.surfaceDark,
-    onPrimary: Colors.white,
-    onSecondary: Colors.black,
-    onSurface: Colors.white,
+    tertiary: SmartBedPalette.warmAccent,
+    surface: SmartBedPalette.surface(brightness),
+  ).copyWith(
+    onPrimary: isDark ? SmartBedPalette.background : Colors.white,
+    onSecondary: Colors.white,
+    onSurface: SmartBedPalette.headline(brightness),
+    surfaceContainerHighest: SmartBedPalette.surfaceAlt(brightness),
+    outline: SmartBedPalette.accent.withValues(alpha: isDark ? 0.18 : 0.12),
+  );
+
+  final base = ThemeData(
+    useMaterial3: true,
+    brightness: brightness,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: SmartBedPalette.scaffold(brightness),
+    canvasColor: SmartBedPalette.scaffold(brightness),
+    fontFamilyFallback: const <String>[
+      'Poppins',
+      'Segoe UI',
+      'Roboto',
+      'Helvetica Neue',
+      'Arial',
+      'Noto Color Emoji',
+    ],
   );
 
   TextStyle? headline(TextStyle? style) => style?.copyWith(
-    color: Colors.white,
+    color: SmartBedPalette.headline(brightness),
     fontWeight: FontWeight.w700,
-    letterSpacing: 0.2,
-    fontFamilyFallback: fontFallback,
+    letterSpacing: 0.1,
   );
 
   TextStyle? body(TextStyle? style) => style?.copyWith(
-    color: SmartBedPalette.bodyText,
-    height: 1.42,
-    fontFamilyFallback: fontFallback,
+    color: SmartBedPalette.body(brightness),
+    height: 1.45,
   );
 
   return base.copyWith(
-    colorScheme: scheme,
-    scaffoldBackgroundColor: SmartBedPalette.background,
-    canvasColor: SmartBedPalette.background,
+    appBarTheme: AppBarTheme(
+      backgroundColor: Colors.transparent,
+      foregroundColor: SmartBedPalette.headline(brightness),
+      elevation: 0,
+    ),
     cardTheme: CardThemeData(
-      color: SmartBedPalette.surfaceDark,
+      color: SmartBedPalette.surface(brightness),
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
     ),
+    dividerColor: SmartBedPalette.accent.withValues(alpha: isDark ? 0.16 : 0.10),
     chipTheme: ChipThemeData(
-      backgroundColor: SmartBedPalette.surfaceLight,
+      backgroundColor: SmartBedPalette.surfaceAlt(brightness),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       side: BorderSide(
-        color: SmartBedPalette.secondaryAccent.withValues(alpha: 0.22),
+        color: SmartBedPalette.accent.withValues(alpha: isDark ? 0.20 : 0.12),
       ),
-      labelStyle: const TextStyle(
-        color: Colors.white,
+      labelStyle: TextStyle(
+        color: SmartBedPalette.headline(brightness),
         fontWeight: FontWeight.w600,
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: 74,
-      backgroundColor: SmartBedPalette.surfaceDark.withValues(alpha: 0.92),
-      indicatorColor: SmartBedPalette.secondaryAccent.withValues(alpha: 0.2),
+      backgroundColor: SmartBedPalette.surface(brightness).withValues(
+        alpha: isDark ? 0.94 : 0.98,
+      ),
+      indicatorColor: SmartBedPalette.accent.withValues(alpha: isDark ? 0.18 : 0.14),
       labelTextStyle: WidgetStateProperty.resolveWith<TextStyle?>(
         (states) => TextStyle(
           color: states.contains(WidgetState.selected)
-              ? Colors.white
-              : SmartBedPalette.bodyText.withValues(alpha: 0.82),
+              ? SmartBedPalette.headline(brightness)
+              : SmartBedPalette.body(brightness),
           fontWeight: states.contains(WidgetState.selected)
               ? FontWeight.w700
               : FontWeight.w500,
-          fontFamilyFallback: fontFallback,
         ),
       ),
-    ),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent,
-      foregroundColor: Colors.white,
-      elevation: 0,
+      iconTheme: WidgetStateProperty.resolveWith<IconThemeData?>(
+        (states) => IconThemeData(
+          color: states.contains(WidgetState.selected)
+              ? SmartBedPalette.accent
+              : SmartBedPalette.body(brightness),
+        ),
+      ),
     ),
     textTheme: base.textTheme.copyWith(
       displayLarge: headline(base.textTheme.displayLarge),
@@ -99,7 +138,6 @@ ThemeData buildSmartBedTheme() {
       ),
       headlineMedium: headline(base.textTheme.headlineMedium)?.copyWith(
         fontWeight: FontWeight.w800,
-        letterSpacing: -0.2,
       ),
       titleLarge: headline(base.textTheme.titleLarge),
       titleMedium: headline(base.textTheme.titleMedium),
@@ -108,115 +146,115 @@ ThemeData buildSmartBedTheme() {
       bodyMedium: body(base.textTheme.bodyMedium),
       bodySmall: body(base.textTheme.bodySmall),
       labelLarge: base.textTheme.labelLarge?.copyWith(
-        color: Colors.white,
+        color: SmartBedPalette.headline(brightness),
         fontWeight: FontWeight.w600,
-        fontFamilyFallback: fontFallback,
       ),
       labelMedium: base.textTheme.labelMedium?.copyWith(
-        fontFamilyFallback: fontFallback,
+        color: SmartBedPalette.body(brightness),
       ),
       labelSmall: base.textTheme.labelSmall?.copyWith(
-        fontFamilyFallback: fontFallback,
+        color: SmartBedPalette.body(brightness),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: SmartBedPalette.surfaceDark.withValues(alpha: 0.82),
-      labelStyle: const TextStyle(color: SmartBedPalette.bodyText),
-      hintStyle: TextStyle(color: SmartBedPalette.bodyText.withValues(alpha: 0.8)),
+      fillColor: SmartBedPalette.surfaceAlt(brightness).withValues(
+        alpha: isDark ? 0.82 : 0.95,
+      ),
+      labelStyle: TextStyle(color: SmartBedPalette.body(brightness)),
+      hintStyle: TextStyle(
+        color: SmartBedPalette.body(brightness).withValues(alpha: 0.84),
+      ),
+      prefixIconColor: SmartBedPalette.accent,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         borderSide: BorderSide(
-          color: SmartBedPalette.secondaryAccent.withValues(alpha: 0.2),
+          color: SmartBedPalette.accent.withValues(alpha: isDark ? 0.18 : 0.10),
         ),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         borderSide: BorderSide(
-          color: SmartBedPalette.secondaryAccent.withValues(alpha: 0.2),
+          color: SmartBedPalette.accent.withValues(alpha: isDark ? 0.18 : 0.10),
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         borderSide: BorderSide(
-          color: SmartBedPalette.secondaryAccent.withValues(alpha: 0.55),
+          color: SmartBedPalette.accent.withValues(alpha: isDark ? 0.65 : 0.35),
+          width: 1.4,
         ),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         borderSide: const BorderSide(color: SmartBedPalette.danger),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         borderSide: const BorderSide(color: SmartBedPalette.danger),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: SmartBedPalette.accent,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      ),
-    ),
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: SmartBedPalette.accent,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        foregroundColor: isDark ? SmartBedPalette.background : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.white,
+        foregroundColor: SmartBedPalette.headline(brightness),
         side: BorderSide(
-          color: SmartBedPalette.secondaryAccent.withValues(alpha: 0.4),
+          color: SmartBedPalette.accent.withValues(alpha: isDark ? 0.32 : 0.18),
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
     ),
     segmentedButtonTheme: SegmentedButtonThemeData(
       style: ButtonStyle(
         backgroundColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return SmartBedPalette.accent.withValues(alpha: 0.2);
+            return SmartBedPalette.accent.withValues(alpha: isDark ? 0.18 : 0.14);
           }
-          return SmartBedPalette.surfaceDark.withValues(alpha: 0.65);
+          return SmartBedPalette.surfaceAlt(brightness);
         }),
+        foregroundColor: WidgetStatePropertyAll(
+          SmartBedPalette.headline(brightness),
+        ),
         side: WidgetStatePropertyAll(
           BorderSide(
-            color: SmartBedPalette.secondaryAccent.withValues(alpha: 0.3),
+            color: SmartBedPalette.accent.withValues(alpha: isDark ? 0.24 : 0.12),
           ),
         ),
-        foregroundColor: const WidgetStatePropertyAll(Colors.white),
       ),
     ),
     progressIndicatorTheme: const ProgressIndicatorThemeData(
-      color: SmartBedPalette.secondaryAccent,
+      color: SmartBedPalette.accent,
     ),
     sliderTheme: base.sliderTheme.copyWith(
-      activeTrackColor: SmartBedPalette.secondaryAccent,
-      thumbColor: SmartBedPalette.accent,
-      inactiveTrackColor: SmartBedPalette.surfaceLight,
+      activeTrackColor: SmartBedPalette.accent,
+      inactiveTrackColor: SmartBedPalette.surfaceAlt(brightness),
+      thumbColor: SmartBedPalette.secondaryAccent,
     ),
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return SmartBedPalette.secondaryAccent;
+          return SmartBedPalette.accent;
         }
-        return SmartBedPalette.bodyText;
+        return SmartBedPalette.body(brightness);
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return SmartBedPalette.secondaryAccent.withValues(alpha: 0.4);
+          return SmartBedPalette.accent.withValues(alpha: 0.36);
         }
-        return SmartBedPalette.surfaceLight;
+        return SmartBedPalette.surfaceAlt(brightness);
       }),
     ),
-    iconTheme: const IconThemeData(color: SmartBedPalette.secondaryAccent),
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: SmartBedPalette.surfaceLight,
-      contentTextStyle: const TextStyle(color: Colors.white),
+      backgroundColor: SmartBedPalette.surfaceAlt(brightness),
+      contentTextStyle: TextStyle(color: SmartBedPalette.headline(brightness)),
     ),
   );
 }
+

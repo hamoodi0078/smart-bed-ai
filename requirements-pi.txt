@@ -1,0 +1,6 @@
+-r requirements.txt
+pygame>=2.6.0
+PyAudio>=0.2.14
+gpiozero>=2.0.1
+rpi-ws281x>=5.0.0
+

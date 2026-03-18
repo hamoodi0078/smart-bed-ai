@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../theme.dart';
@@ -13,55 +13,67 @@ class HomeShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      body: AppBackdrop(child: SafeArea(bottom: false, child: navigationShell)),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: SmartBedPalette.secondaryAccent.withValues(alpha: 0.28),
-            ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: SmartBedPalette.accent.withValues(alpha: 0.25),
-                blurRadius: 26,
-                spreadRadius: -12,
+      body: AppBackdrop(
+        child: SafeArea(bottom: false, child: navigationShell),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1080),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: SmartBedPalette.accent.withValues(alpha: 0.18),
+                ),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: SmartBedPalette.accent.withValues(alpha: 0.18),
+                    blurRadius: 28,
+                    spreadRadius: -14,
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: NavigationBar(
-              selectedIndex: navigationShell.currentIndex,
-              onDestinationSelected: (index) {
-                navigationShell.goBranch(
-                  index,
-                  initialLocation: index == navigationShell.currentIndex,
-                );
-              },
-              destinations: const <NavigationDestination>[
-                NavigationDestination(
-                  icon: Icon(Icons.space_dashboard_outlined),
-                  selectedIcon: Icon(Icons.space_dashboard_rounded),
-                  label: 'Center',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: NavigationBar(
+                  selectedIndex: navigationShell.currentIndex,
+                  onDestinationSelected: (index) {
+                    navigationShell.goBranch(
+                      index,
+                      initialLocation: index == navigationShell.currentIndex,
+                    );
+                  },
+                  destinations: const <NavigationDestination>[
+                    NavigationDestination(
+                      icon: Icon(Icons.home_outlined),
+                      selectedIcon: Icon(Icons.home_rounded),
+                      label: 'Home',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.auto_awesome_outlined),
+                      selectedIcon: Icon(Icons.auto_awesome_rounded),
+                      label: 'Dana',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.mosque_outlined),
+                      selectedIcon: Icon(Icons.mosque_rounded),
+                      label: 'Islamic',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.bar_chart_outlined),
+                      selectedIcon: Icon(Icons.bar_chart_rounded),
+                      label: 'Report',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.settings_outlined),
+                      selectedIcon: Icon(Icons.settings_rounded),
+                      label: 'Settings',
+                    ),
+                  ],
                 ),
-                NavigationDestination(
-                  icon: Icon(Icons.auto_awesome_outlined),
-                  selectedIcon: Icon(Icons.auto_awesome_rounded),
-                  label: 'Scenes',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.timeline_outlined),
-                  selectedIcon: Icon(Icons.timeline_rounded),
-                  label: 'Timeline',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.tune_outlined),
-                  selectedIcon: Icon(Icons.tune_rounded),
-                  label: 'Settings',
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -69,3 +81,4 @@ class HomeShell extends StatelessWidget {
     );
   }
 }
+

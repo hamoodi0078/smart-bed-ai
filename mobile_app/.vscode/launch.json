@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter Windows (Smart Bed)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "windows",
+      "toolArgs": [
+        "--dart-define=SMART_BED_API_BASE_URL=http://127.0.0.1:8001"
+      ]
+    }
+  ]
+}

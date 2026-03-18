@@ -49,6 +49,29 @@ python -m uvicorn web_server:app --host 127.0.0.1 --port 8001 --reload
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
+## Raspberry Pi 5 Runtime
+
+The backend can run on Raspberry Pi OS 64-bit while the Flutter app stays on your phone.
+
+Quick path:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-pi.txt
+python main.py
+python -m uvicorn web_server:app --host 0.0.0.0 --port 8001
+```
+
+Pi-specific notes:
+- Set `WAKE_WORD_MODE=voice`
+- Set `APP_BASE_URL` and `APP_BACKEND_BASE_URL` to `http://<pi-ip>:8001`
+- Enable real LED output with `LED_HARDWARE_ENABLED=1`
+- Configure GPIO sensor pins with `SENSOR_PRESSURE_PIN` / `SENSOR_MOTION_PIN`
+- Point the phone app at the Pi with `--dart-define=SMART_BED_API_BASE_URL=http://<pi-ip>:8001`
+
+Full setup steps are in [`docs/raspberry-pi-setup.md`](/c:/Users/PC#####/Desktop/smart%20bed%20by%20me/docs/raspberry-pi-setup.md).
+
 ### 7) Run mobile smoke flow (manual E2E helper)
 With backend running on `127.0.0.1:8001`, execute:
 ```powershell
@@ -87,6 +110,15 @@ flutter pub get
 flutter analyze
 flutter test
 flutter run --dart-define=SMART_BED_API_BASE_URL=http://10.0.2.2:8001
+```
+
+### VS Code Run and Debug (Windows desktop)
+- Open `mobile_app` as your workspace for the cleanest Flutter debug flow.
+- Use launch profile `Flutter Windows (Smart Bed)` from `mobile_app/.vscode/launch.json`.
+- If you keep the repo root open, use `Flutter Windows (Smart Bed / mobile_app)` from `.vscode/launch.json`.
+- Start backend first from repo root:
+```powershell
+.\scripts\start_backend.ps1
 ```
 
 Notes:
@@ -160,3 +192,8 @@ Unified state snapshot for website/mobile clients to render the AI and device ru
 4. Memory persistence
 
 This is the baseline release check before onboarding new pilot customers.
+
+## Raspberry Pi 5 (Backend-Only Transfer)
+
+For runtime-only Pi deployment (without Flutter mobile source on Pi), use:
+- `docs/raspberry-pi-backend-only-transfer.md`

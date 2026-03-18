@@ -116,6 +116,7 @@ class TestMobileMonetizationUndoApi(unittest.TestCase):
         start_trial = self.client.post(
             "/v1/subscriptions/trial/start",
             json={"user_id": user_id},
+            headers=headers,
         )
         self.assertEqual(start_trial.status_code, 200)
 

@@ -20,7 +20,7 @@ def _is_writable_dir(path: Path) -> bool:
         return False
 
 
-def run_device_health_checks(settings, spotify, local_music, tts_player=None) -> List[HealthCheckResult]:
+def run_device_health_checks(settings, spotify, local_music, tts_player=None, led=None, sensor_monitor=None) -> List[HealthCheckResult]:
     results: List[HealthCheckResult] = []
 
     results.append(
@@ -54,6 +54,31 @@ def run_device_health_checks(settings, spotify, local_music, tts_player=None) ->
                 "TTS_OUTPUT",
                 ready,
                 "TTS playback ready" if ready else "TTS playback unavailable on this device",
+            )
+        )
+
+    if bool(getattr(settings, "led_hw_enabled", False)) and led is not None:
+        ready = bool(getattr(led, "hardware_ready", lambda: False)())
+        detail = getattr(led, "hardware_status", lambda: "LED hardware status unavailable.")()
+        results.append(
+            HealthCheckResult(
+                "LED_HARDWARE",
+                ready,
+                detail,
+            )
+        )
+
+    if (
+        bool(getattr(settings, "sensor_pressure_enabled", False))
+        or bool(getattr(settings, "sensor_motion_enabled", False))
+    ) and sensor_monitor is not None:
+        ready = bool(getattr(sensor_monitor, "is_available", lambda: False)())
+        detail = getattr(sensor_monitor, "status_line", lambda: "Sensor monitor status unavailable.")()
+        results.append(
+            HealthCheckResult(
+                "SENSOR_INPUTS",
+                ready,
+                detail,
             )
         )
 

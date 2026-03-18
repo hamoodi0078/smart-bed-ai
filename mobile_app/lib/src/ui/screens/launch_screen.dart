@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +8,7 @@ import '../../state/auth_controller.dart';
 import '../theme.dart';
 import '../widgets/app_backdrop.dart';
 import '../widgets/panel_card.dart';
+import '../widgets/status_pill.dart';
 
 class LaunchScreen extends ConsumerStatefulWidget {
   const LaunchScreen({super.key});
@@ -18,9 +19,9 @@ class LaunchScreen extends ConsumerStatefulWidget {
 
 class _LaunchScreenState extends ConsumerState<LaunchScreen> {
   static const _stepLabels = <String>[
-    'Warming up your calm command center...',
-    'Syncing scenes and sleep context...',
-    'Preparing your first action loop...',
+    'Restoring your Danah session...',
+    'Syncing profile, theme, and location...',
+    'Preparing Dana and tonight\'s routines...',
   ];
 
   Timer? _pulseTimer;
@@ -33,7 +34,6 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
   @override
   void initState() {
     super.initState();
-
     _pulseTimer = Timer.periodic(const Duration(milliseconds: 320), (_) {
       if (!mounted) {
         return;
@@ -42,8 +42,7 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
         _pulseIndex = (_pulseIndex + 1) % 3;
       });
     });
-
-    _stepTimer = Timer.periodic(const Duration(milliseconds: 950), (_) {
+    _stepTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
       if (!mounted) {
         return;
       }
@@ -51,8 +50,7 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
         _stepIndex = (_stepIndex + 1) % _stepLabels.length;
       });
     });
-
-    Future<void>.delayed(const Duration(milliseconds: 1800), () {
+    Future<void>.delayed(const Duration(milliseconds: 1600), () {
       if (!mounted) {
         return;
       }
@@ -73,8 +71,7 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
       return;
     }
     _didNavigate = true;
-    final destination = state.session == null ? '/auth' : '/dashboard';
-    context.go(destination);
+    context.go(state.session == null ? '/auth' : '/dashboard');
   }
 
   @override
@@ -83,41 +80,47 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
       _attemptNavigate(next);
     });
 
+    final theme = Theme.of(context);
     return Scaffold(
       body: AppBackdrop(
         child: SafeArea(
           child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 460),
+                constraints: const BoxConstraints(maxWidth: 520),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
-                    Icon(
-                      Icons.bedtime_rounded,
-                      size: 64,
-                      color: SmartBedPalette.secondaryAccent,
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Smart Bed',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Danah Abuhalifa',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.white.withValues(alpha: 0.86),
+                    Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: SmartBedPalette.accent.withValues(alpha: 0.12),
+                        border: Border.all(
+                          color: SmartBedPalette.accent.withValues(alpha: 0.26),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 42,
+                        color: SmartBedPalette.accent,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 22),
+                    Text('Danah Smart Bed', style: theme.textTheme.headlineMedium),
+                    const SizedBox(height: 8),
                     Text(
-                      'Smart Living, Smart Sleep',
-                      style: Theme.of(context).textTheme.bodyLarge,
-                      textAlign: TextAlign.center,
+                      'Built by Dana Abuhalifa',
+                      style: theme.textTheme.titleMedium,
                     ),
-                    const SizedBox(height: 26),
+                    const SizedBox(height: 10),
+                    const StatusPill(
+                      label: 'Dana is getting ready',
+                      tone: StatusTone.info,
+                    ),
+                    const SizedBox(height: 22),
                     PanelCard(
                       child: Column(
                         children: <Widget>[
@@ -127,40 +130,25 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
                               final active = index == _pulseIndex;
                               return AnimatedContainer(
                                 duration: const Duration(milliseconds: 180),
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                ),
-                                width: active ? 11 : 8,
-                                height: active ? 11 : 8,
+                                margin: const EdgeInsets.symmetric(horizontal: 5),
+                                width: active ? 12 : 8,
+                                height: active ? 12 : 8,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   color: active
-                                      ? SmartBedPalette.secondaryAccent
-                                      : SmartBedPalette.bodyText.withValues(
-                                          alpha: 0.45,
-                                        ),
-                                  boxShadow: active
-                                      ? <BoxShadow>[
-                                          BoxShadow(
-                                            color: SmartBedPalette
-                                                .secondaryAccent
-                                                .withValues(alpha: 0.35),
-                                            blurRadius: 12,
-                                            spreadRadius: -1,
-                                          ),
-                                        ]
-                                      : const <BoxShadow>[],
+                                      ? SmartBedPalette.accent
+                                      : SmartBedPalette.body(theme.brightness).withValues(alpha: 0.45),
                                 ),
                               );
                             }),
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 240),
+                            duration: const Duration(milliseconds: 220),
                             child: Text(
                               _stepLabels[_stepIndex],
                               key: ValueKey<int>(_stepIndex),
-                              style: Theme.of(context).textTheme.bodyMedium,
+                              style: theme.textTheme.bodyLarge,
                               textAlign: TextAlign.center,
                             ),
                           ),
@@ -177,3 +165,4 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
     );
   }
 }
+

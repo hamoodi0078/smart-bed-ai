@@ -9,12 +9,24 @@ import requests
 
 class PrayerTimesService:
     PRAYER_ORDER = ("Fajr", "Dhuhr", "Asr", "Maghrib", "Isha")
-    API_URL = "http://api.aladhan.com/v1/timingsByCity"
+    CITY_API_URL = "http://api.aladhan.com/v1/timingsByCity"
+    COORDS_API_URL = "http://api.aladhan.com/v1/timings"
 
-    def __init__(self, city: str = "Kuwait City", country: str = "Kuwait", method: int = 8):
+    def __init__(
+        self,
+        city: str = "Kuwait City",
+        country: str = "Kuwait",
+        method: int = 8,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        date: str = "",
+    ):
         self.city = city
         self.country = country
         self.method = method
+        self.latitude = latitude
+        self.longitude = longitude
+        self.date = str(date or "").strip()
         self.timeout_seconds = int(os.getenv("ISLAMIC_MODE_PRAYER_TIMEOUT", "12"))
         self.cache_path = os.getenv("ISLAMIC_MODE_PRAYER_CACHE", "").strip()
 
@@ -54,34 +66,58 @@ class PrayerTimesService:
             return {}
         return cached if isinstance(cached, dict) else {}
 
-    def get_today_prayers(self) -> dict:
-        params = {
-            "city": self.city,
-            "country": self.country,
-            "method": self.method,
-        }
+    def _request_payload(self) -> dict:
+        params = {"method": self.method}
+        if self.date:
+            params["date"] = self.date
+
+        if self.latitude is not None and self.longitude is not None:
+            params["latitude"] = self.latitude
+            params["longitude"] = self.longitude
+            url = self.COORDS_API_URL
+        else:
+            params["city"] = self.city
+            params["country"] = self.country
+            url = self.CITY_API_URL
+
         payload: dict = {}
         try:
-            response = requests.get(self.API_URL, params=params, timeout=self.timeout_seconds)
+            response = requests.get(url, params=params, timeout=self.timeout_seconds)
             response.raise_for_status()
             payload = response.json()
             if isinstance(payload, dict):
                 self._write_cache(payload)
         except Exception:
             payload = self._read_cache()
+        return payload if isinstance(payload, dict) else {}
 
-        timings = (
-            payload.get("data", {}).get("timings", {})
-            if isinstance(payload, dict)
-            else {}
-        )
-        if not isinstance(timings, dict):
-            timings = {}
-
-        return {
+    def get_today_prayer_bundle(self) -> dict:
+        payload = self._request_payload()
+        data = payload.get("data", {}) if isinstance(payload, dict) else {}
+        timings = data.get("timings", {}) if isinstance(data, dict) else {}
+        meta = data.get("meta", {}) if isinstance(data, dict) else {}
+        resolved_prayers = {
             prayer: self._normalize_time(timings.get(prayer, ""))
             for prayer in self.PRAYER_ORDER
         }
+        location = {
+            "city": str(self.city or "").strip(),
+            "country": str(self.country or "").strip(),
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "timezone": str(meta.get("timezone", "") or "").strip(),
+            "method": str(
+                ((meta.get("method") or {}) if isinstance(meta, dict) else {}).get("name", "")
+                or self.method
+            ).strip(),
+            "mode": "coordinates"
+            if self.latitude is not None and self.longitude is not None
+            else "city",
+        }
+        return {"prayers": resolved_prayers, "location": location, "raw": payload}
+
+    def get_today_prayers(self) -> dict:
+        return self.get_today_prayer_bundle().get("prayers", {})
 
     @staticmethod
     def _minutes_until(target_time: str, now: datetime.datetime) -> int | None:

@@ -31,9 +31,15 @@ def generate_qr(request: GenerateQRRequest | None = None) -> dict:
     bed_location = request.bed_location if request else "Kuwait"
     device_id = generate_device_id()
     qr_output = Path(__file__).resolve().parent / f"{device_id}.png"
-    qr_image_path = generate_qr_code(device_id, str(qr_output))
-    register_device(device_id, bed_location=bed_location)
-    return {"device_id": device_id, "qr_image_path": qr_image_path}
+    record = register_device(device_id, bed_location=bed_location)
+    claim_token = str(record.get("claim_token", "") or "")
+    qr_image_path = generate_qr_code(device_id, str(qr_output), claim_token=claim_token)
+    return {
+        "device_id": device_id,
+        "qr_image_path": qr_image_path,
+        "claim_token": claim_token,
+        "pairing_generation": int(record.get("pairing_generation", 1) or 1),
+    }
 
 
 @router.post("/pair")

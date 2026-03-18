@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models.dart';
@@ -142,18 +143,19 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> {
                 Text('Scene gallery', style: theme.textTheme.headlineMedium),
                 const SizedBox(height: 8),
                 Text(
-                  'Preview first, save second. This keeps the wow factor tight and maps directly to the roadmap’s first customer slice.',
+                  'Preview a scene first, then save it for tonight. Dana keeps the lighting and wind-down transition aligned with your current plan.',
                   style: theme.textTheme.bodyLarge,
                 ),
                 const SizedBox(height: 16),
-                Row(
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
                   children: <Widget>[
                     StatusPill(
                       label:
                           '${scenes.previewDurationSeconds.toStringAsFixed(0)}s preview',
                       tone: StatusTone.info,
                     ),
-                    const SizedBox(width: 10),
                     if (dashboard != null)
                       StatusPill(
                         label: dashboard.trialStatus.subscriptionStatus
@@ -162,6 +164,11 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> {
                             ? StatusTone.success
                             : StatusTone.warning,
                       ),
+                    FilledButton.tonalIcon(
+                      onPressed: () => context.go('/bed-viewer'),
+                      icon: const Icon(Icons.view_in_ar_rounded),
+                      label: const Text('Open 3D viewer'),
+                    ),
                   ],
                 ),
               ],
@@ -176,7 +183,7 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Premium scenes expand after you activate the 7-day trial from the command center.',
+                      'Premium scenes unlock after you upgrade your plan in Settings.',
                       style: theme.textTheme.bodyLarge,
                     ),
                   ),
@@ -222,7 +229,7 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> {
                     if (lockedPremium) ...<Widget>[
                       const SizedBox(height: 8),
                       Text(
-                        'Start the 7-day trial from Command Center to save this premium scene tonight.',
+                        'Upgrade your plan in Settings to save this premium scene tonight.',
                         style: theme.textTheme.bodySmall,
                       ),
                     ],
@@ -254,7 +261,7 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> {
                                 : () {
                                     if (lockedPremium) {
                                       _showMessage(
-                                        'Activate your 7-day trial first to save premium scenes.',
+                                        'Upgrade your plan first to save premium scenes.',
                                       );
                                       return;
                                     }

@@ -1,8 +1,10 @@
 import hashlib
 import os
-import tempfile
+import shutil
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
+import uuid
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -15,22 +17,32 @@ def _legacy_sha256(password: str) -> str:
     return hashlib.sha256((password or "").encode("utf-8")).hexdigest()
 
 
+@contextmanager
+def _noop_io_lock(_path):
+    yield
+
+
 class TestMobileAuthApi(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.db_path = Path(self._tmp.name) / "subscription_db.json"
-        self.profile_path = Path(self._tmp.name) / "user_profile.json"
-        self._sqlite_path = Path(self._tmp.name) / "mobile_auth.sqlite3"
+        base_tmp = Path.cwd() / ".tmp"
+        base_tmp.mkdir(parents=True, exist_ok=True)
+        self._tmp_dir = base_tmp / f"mobile_auth_{uuid.uuid4().hex}"
+        self._tmp_dir.mkdir(parents=True, exist_ok=True)
+        self.db_path = self._tmp_dir / "subscription_db.json"
+        self.profile_path = self._tmp_dir / "user_profile.json"
+        self._sqlite_path = self._tmp_dir / "mobile_auth.sqlite3"
         self._database_url = f"sqlite:///{self._sqlite_path.as_posix()}"
-        self.store = SubscriptionStore(db_path=self.db_path)
-        self.store.hash_password = lambda password: _legacy_sha256(password)
-        self.store.check_password = lambda password, stored_hash: stored_hash == _legacy_sha256(password)
 
+        self._io_lock_patch = patch("Storage.io._path_io_lock", _noop_io_lock)
         self._patch_env = patch.dict(
             os.environ,
             {"DATABASE_URL": self._database_url},
             clear=False,
         )
+        self._io_lock_patch.start()
+        self.store = SubscriptionStore(db_path=self.db_path)
+        self.store.hash_password = lambda password: _legacy_sha256(password)
+        self.store.check_password = lambda password, stored_hash: stored_hash == _legacy_sha256(password)
         self._patch_store = patch.object(web_server, "store", self.store)
         self._patch_profile = patch.object(web_server, "PROFILE_PATH", self.profile_path)
         self._patch_env.start()
@@ -63,10 +75,11 @@ class TestMobileAuthApi(unittest.TestCase):
         web_server._DB_SLEEP_SESSION_REPOSITORY = None
         web_server._DB_COMMAND_REPOSITORY = None
         web_server._DB_MOBILE_AUTH_REPOSITORY = None
+        self._io_lock_patch.stop()
         self._patch_profile.stop()
         self._patch_store.stop()
         self._patch_env.stop()
-        self._tmp.cleanup()
+        shutil.rmtree(self._tmp_dir, ignore_errors=True)
 
     def test_register_returns_bearer_tokens_and_me_works(self):
         response = self.client.post(
@@ -239,6 +252,106 @@ class TestMobileAuthApi(unittest.TestCase):
         self.assertIsNotNone(db_user)
         self.assertEqual(str(getattr(db_user, "email", "") or ""), "legacy-only@example.com")
         self.assertEqual(str(getattr(db_user, "password_hash", "") or ""), legacy_hash)
+
+    def test_phone_otp_request_and_verify_returns_mobile_session(self):
+        request = self.client.post(
+            "/v1/mobile/auth/otp/request",
+            json={
+                "phone_number": "+965 5000 1234",
+                "client_name": "flutter_phone_auth",
+            },
+        )
+        self.assertEqual(request.status_code, 200)
+        request_body = request.json()
+        self.assertTrue(request_body.get("ok"))
+        request_id = str(request_body.get("request_id", "") or "")
+        otp_code = str(request_body.get("debug_code", "") or "")
+        self.assertTrue(request_id)
+        self.assertTrue(otp_code)
+
+        verify = self.client.post(
+            "/v1/mobile/auth/otp/verify",
+            json={
+                "request_id": request_id,
+                "phone_number": "+96550001234",
+                "otp_code": otp_code,
+                "name": "Phone User",
+                "client_name": "flutter_phone_auth",
+            },
+        )
+        self.assertEqual(verify.status_code, 200)
+        verify_body = verify.json()
+        access_token = str(verify_body.get("access_token", "") or "")
+        self.assertTrue(access_token)
+        self.assertEqual(
+            verify_body.get("user", {}).get("client_name"),
+            "flutter_phone_auth",
+        )
+
+        me = self.client.get(
+            "/v1/mobile/auth/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        self.assertEqual(me.status_code, 200)
+        me_body = me.json()
+        self.assertTrue(str(me_body.get("user", {}).get("email", "")).endswith("@phone.local"))
+
+    def test_social_login_reuses_existing_identity(self):
+        with patch.object(
+            web_server,
+            "_verify_mobile_social_identity",
+            return_value={
+                "provider_user_id": "social_google_user_01",
+                "email": "social-user@example.com",
+                "name": "Social User",
+                "email_verified": True,
+                "verification_method": "google_id_token",
+            },
+        ):
+            first = self.client.post(
+                "/v1/mobile/auth/social",
+                json={
+                    "provider": "google",
+                    "provider_id_token": "mock.id.token",
+                    "email": "social-user@example.com",
+                    "name": "Social User",
+                    "client_name": "flutter_social",
+                },
+            )
+            self.assertEqual(first.status_code, 200)
+            first_body = first.json()
+            first_user_id = str(first_body.get("user", {}).get("user_id", "") or "")
+            self.assertTrue(first_user_id)
+            self.assertEqual(first_body.get("social_provider"), "google")
+            self.assertEqual(first_body.get("social_verification"), "google_id_token")
+
+            second = self.client.post(
+                "/v1/mobile/auth/social",
+                json={
+                    "provider": "google",
+                    "provider_id_token": "mock.id.token",
+                    "email": "social-user@example.com",
+                    "name": "Social User",
+                    "client_name": "flutter_social",
+                },
+            )
+            self.assertEqual(second.status_code, 200)
+            second_body = second.json()
+            second_user_id = str(second_body.get("user", {}).get("user_id", "") or "")
+            self.assertEqual(second_user_id, first_user_id)
+
+    def test_social_login_requires_provider_token_by_default(self):
+        response = self.client.post(
+            "/v1/mobile/auth/social",
+            json={
+                "provider": "google",
+                "provider_user_id": "legacy_social_user",
+                "email": "legacy-social@example.com",
+                "name": "Legacy Social",
+                "client_name": "flutter_social",
+            },
+        )
+        self.assertEqual(response.status_code, 422)
 
 
 if __name__ == "__main__":

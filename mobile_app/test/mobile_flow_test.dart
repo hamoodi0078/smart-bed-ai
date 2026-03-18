@@ -12,7 +12,7 @@ import 'package:mobile_app/src/ui/screens/settings_screen.dart';
 import 'package:mobile_app/src/ui/screens/timeline_screen.dart';
 
 void main() {
-  testWidgets('launch screen shows Danah Abuhalifa branding', (tester) async {
+  testWidgets('launch screen shows Danah branding', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: <Override>[
@@ -23,13 +23,10 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Smart Bed'), findsOneWidget);
-    expect(find.text('Danah Abuhalifa'), findsOneWidget);
-    expect(find.text('Smart Living, Smart Sleep'), findsOneWidget);
-    expect(
-      find.text('Warming up your calm command center...'),
-      findsOneWidget,
-    );
+    expect(find.text('Danah Smart Bed'), findsOneWidget);
+    expect(find.text('Built by Dana Abuhalifa'), findsOneWidget);
+    expect(find.text('Dana is getting ready'), findsOneWidget);
+    expect(find.text('Restoring your Danah session...'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 1900));
     await tester.pumpWidget(const SizedBox.shrink());
@@ -47,14 +44,14 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.text('Create Account'));
+    await tester.tap(find.text('Register'));
     await tester.pump();
 
-    expect(find.text('Name'), findsOneWidget);
-    expect(find.text('Create Mobile Access'), findsOneWidget);
+    expect(find.text('Full name'), findsOneWidget);
+    expect(find.text('Create Danah account'), findsOneWidget);
   });
 
-  testWidgets('dashboard renders command-center milestone cards', (
+  testWidgets('dashboard renders the Danah home shell', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -63,6 +60,10 @@ void main() {
           authControllerProvider.overrideWith(_ReadyAuthController.new),
           dashboardBundleProvider.overrideWith((ref) async => _dashboardBundle),
           bedStateProvider.overrideWith((ref) async => _bedState),
+          islamicOverviewProvider.overrideWith((ref) async => _islamicOverview),
+          subscriptionStatusProvider.overrideWith(
+            (ref) async => _subscriptionStatus,
+          ),
           timelineFeedProvider.overrideWith((ref) async => _timelineItems),
           firstThreeNightsChecklistProvider.overrideWith(
             (ref) async => _checklist,
@@ -76,19 +77,15 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('Command Center'), findsOneWidget);
-    expect(find.text('Quick actions'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Was this nightly summary helpful?'),
-      300,
-    );
-    expect(find.text('Was this nightly summary helpful?'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Beta metrics'), 300);
-    expect(find.text('Beta metrics'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Undo Last Action'), 300);
-    expect(find.text('Undo Last Action'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Start 7-day trial'), 300);
-    expect(find.text('Start 7-day trial'), findsOneWidget);
+    expect(find.textContaining('Hamoud'), findsOneWidget);
+    expect(find.text('Dana is live. Your prayer timings, routines, and bed controls are synced for Karachi, Pakistan.'), findsOneWidget);
+    expect(find.text('Next prayer'), findsOneWidget);
+    expect(find.text('Tonight at a glance'), findsOneWidget);
+    expect(find.text('Account momentum'), findsOneWidget);
+    expect(find.text('Dana insight'), findsOneWidget);
+    expect(find.text('Start wind-down'), findsOneWidget);
+    expect(find.text('3D bed view'), findsOneWidget);
+    expect(find.text('Dana Live'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -117,6 +114,7 @@ void main() {
     await tester.tap(find.text('Preview').first);
     await tester.pump();
 
+    expect(find.text('Open 3D viewer'), findsOneWidget);
     expect(repo.previewSceneCalls, 1);
     expect(repo.lastPreviewSceneKey, 'wind_down');
   });
@@ -168,6 +166,9 @@ void main() {
             return value;
           }),
           settingsBundleProvider.overrideWith((ref) async => _settingsBundle),
+          subscriptionStatusProvider.overrideWith(
+            (ref) async => _subscriptionStatus,
+          ),
         ],
         child: const MaterialApp(home: Scaffold(body: SettingsScreen())),
       ),
@@ -175,15 +176,12 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Display name'),
-      'Hamoud Prime',
-    );
+    await tester.enterText(find.byType(TextField).first, 'Hamoud Prime');
     await tester.pump();
 
-    await tester.ensureVisible(find.text('Save changes'));
+    await tester.ensureVisible(find.text('Save settings'));
     await tester.pump();
-    await tester.tap(find.text('Save changes'), warnIfMissed: false);
+    await tester.tap(find.text('Save settings'), warnIfMissed: false);
     await tester.pump();
 
     expect(repo, isNotNull);
@@ -380,6 +378,12 @@ const _settingsBundle = SettingsBundle(
     timezone: 'Asia/Kuwait',
     pushEnabled: true,
     emailEnabled: false,
+    locationMode: 'auto',
+    countryCode: 'PK',
+    city: 'Karachi',
+    latitude: 24.8607,
+    longitude: 67.0011,
+    themeMode: 'system',
   ),
 );
 
@@ -453,4 +457,63 @@ const _dashboardBundle = DashboardBundle(
     trialEndDate: '',
     features: <String, int>{'max_scenes': 3, 'wind_down_minutes': 10},
   ),
+);
+
+const _islamicOverview = IslamicOverview(
+  prayers: <String, String>{
+    'Fajr': '05:21',
+    'Dhuhr': '12:33',
+    'Asr': '16:08',
+    'Maghrib': '18:27',
+    'Isha': '19:42',
+  },
+  nextPrayer: PrayerCountdown(
+    name: 'Isha',
+    time: '19:42',
+    minutesUntil: 37,
+  ),
+  location: PrayerLocation(
+    mode: 'auto',
+    city: 'Karachi',
+    countryCode: 'PK',
+    countryName: 'Pakistan',
+    timezone: 'Asia/Karachi',
+    latitude: 24.8607,
+    longitude: 67.0011,
+    label: 'Karachi, Pakistan',
+  ),
+  hadith: <String, dynamic>{
+    'hadith': 'Actions are judged by intentions.',
+    'source': 'Sahih Bukhari',
+  },
+  sleepHadith: <String, dynamic>{
+    'hadith': 'Recite the evening remembrance before sleep.',
+  },
+  hijri: <String, dynamic>{
+    'hijri_date': '15 Ramadan 1447',
+  },
+  islamicEvent: 'Ramadan Kareem',
+  ramadanActive: true,
+  sunnahTip: 'Sleep on your right side as the Prophet recommended.',
+  ledColor: '#7B68EE',
+);
+
+const _subscriptionStatus = SubscriptionStatus(
+  subscriptionStatus: 'premium',
+  trialActive: false,
+  trialDaysRemaining: null,
+  trialEndDate: '',
+  planTier: 'premium',
+  billingInterval: 'monthly',
+  paymentProvider: 'paypal',
+  priceKwd: 4.9,
+  status: 'active',
+  nextRenewalAt: '2026-04-14T00:00:00Z',
+  graceEndAt: '',
+  providerSubscriptionId: 'I-DEMO123',
+  providerPlanId: 'P-DEMO456',
+  providerStatus: 'ACTIVE',
+  startedAt: '2026-03-14T00:00:00Z',
+  lastPaymentAt: '2026-03-14T00:00:00Z',
+  cancelledAt: '',
 );

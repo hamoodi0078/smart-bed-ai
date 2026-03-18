@@ -15,6 +15,8 @@ from typing import Iterator
 _LOG = logging.getLogger("storage.io")
 _LOCK_TIMEOUT_SECONDS = 10.0
 _LOCK_POLL_SECONDS = 0.05
+_ATOMIC_REPLACE_RETRIES = 6
+_ATOMIC_REPLACE_BASE_DELAY_SECONDS = 0.05
 _LOCAL_LOCKS_GUARD = Lock()
 _LOCAL_LOCKS: dict[str, RLock] = {}
 
@@ -107,6 +109,14 @@ def _fsync_directory(directory: Path) -> None:
         os.close(fd)
 
 
+def _should_retry_atomic_replace(exc: OSError) -> bool:
+    if os.name != "nt":
+        return False
+    winerror = int(getattr(exc, "winerror", 0) or 0)
+    # 5=Access denied, 32=Sharing violation while another process/thread holds a handle.
+    return winerror in {5, 32}
+
+
 def locked_read_json(path: str | Path) -> dict:
     json_path = _normalize_path(path)
     with _path_io_lock(json_path):
@@ -153,7 +163,19 @@ def atomic_write_json(path: str | Path, data: dict) -> None:
                 tmp.flush()
                 os.fsync(tmp.fileno())
 
-            os.replace(str(tmp_path), str(json_path))
+            replaced = False
+            for attempt in range(_ATOMIC_REPLACE_RETRIES + 1):
+                try:
+                    os.replace(str(tmp_path), str(json_path))
+                    replaced = True
+                    break
+                except OSError as exc:
+                    if (attempt >= _ATOMIC_REPLACE_RETRIES) or (not _should_retry_atomic_replace(exc)):
+                        raise RuntimeError(f"Unable to atomically write JSON file: {json_path}") from exc
+                    delay = _ATOMIC_REPLACE_BASE_DELAY_SECONDS * float(attempt + 1)
+                    time.sleep(delay)
+            if not replaced:
+                raise RuntimeError(f"Unable to atomically write JSON file: {json_path}")
             _fsync_directory(json_path.parent)
         except OSError as exc:
             raise RuntimeError(f"Unable to atomically write JSON file: {json_path}") from exc

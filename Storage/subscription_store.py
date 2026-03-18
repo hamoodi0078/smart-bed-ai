@@ -75,6 +75,35 @@ class SubscriptionStore:
     def _now_iso(self) -> str:
         return to_iso(self._utc_now().replace(microsecond=0))
 
+    @staticmethod
+    def _subscription_defaults(user_id: str = "") -> dict:
+        return {
+            "user_id": user_id,
+            "tier": "free",
+            "interval": "monthly",
+            "status": "active",
+            "payment_provider": "none",
+            "price_kwd": 0.0,
+            "next_renewal_at": "",
+            "grace_end_at": "",
+            "provider_subscription_id": "",
+            "provider_plan_id": "",
+            "provider_status": "",
+            "started_at": "",
+            "last_payment_at": "",
+            "cancelled_at": "",
+            "updated_at": "",
+        }
+
+    def _ensure_subscription_defaults(self, subscription: dict) -> tuple[dict, bool]:
+        changed = False
+        defaults = self._subscription_defaults(str(subscription.get("user_id", "") or ""))
+        for key, default_value in defaults.items():
+            if key not in subscription:
+                subscription[key] = deepcopy(default_value)
+                changed = True
+        return subscription, changed
+
     def _load(self) -> dict:
         file_existed = self.db_path.exists()
         with self._io_lock:
@@ -108,6 +137,8 @@ class SubscriptionStore:
             "admin_sessions": {},
             "admin_audit_logs": [],
             "incidents": [],
+            "billing_webhook_idempotency": {},
+            "billing_webhook_replay": {},
         }
 
     def _normalize_db(self, payload: dict) -> tuple[dict, bool]:
@@ -124,6 +155,13 @@ class SubscriptionStore:
             if key not in data:
                 data[key] = deepcopy(default_value)
                 changed = True
+
+        if not isinstance(data.get("billing_webhook_idempotency", {}), dict):
+            data["billing_webhook_idempotency"] = {}
+            changed = True
+        if not isinstance(data.get("billing_webhook_replay", {}), dict):
+            data["billing_webhook_replay"] = {}
+            changed = True
 
         return data, changed
 
@@ -187,17 +225,8 @@ class SubscriptionStore:
         }
         self.db["users"].append(user)
 
-        sub = {
-            "user_id": user["user_id"],
-            "tier": "free",
-            "interval": "monthly",
-            "status": "active",
-            "payment_provider": "none",
-            "price_kwd": 0.0,
-            "next_renewal_at": "",
-            "grace_end_at": "",
-            "updated_at": self._now_iso(),
-        }
+        sub = self._subscription_defaults(user["user_id"])
+        sub["updated_at"] = self._now_iso()
         self.db["subscriptions"].append(sub)
         self.save()
         return user
@@ -334,7 +363,15 @@ class SubscriptionStore:
             return None
         if expires_at < self._utc_now():
             return None
-        return self.get_user(sess.get("user_id", ""))
+        user = self.get_user(sess.get("user_id", ""))
+        if isinstance(user, dict):
+            return user
+        # Compatibility path: some callers issue a valid session for a DB-backed
+        # user that is not mirrored in the legacy JSON "users" list.
+        user_id = str(sess.get("user_id", "") or "").strip()
+        if not user_id:
+            return None
+        return {"user_id": user_id}
 
     def revoke_session(self, token: str) -> bool:
         token_key = str(token or "").strip()
@@ -521,21 +558,50 @@ class SubscriptionStore:
     def get_subscription(self, user_id: str) -> dict:
         for sub in self.db["subscriptions"]:
             if sub.get("user_id") == user_id:
+                sub, changed = self._ensure_subscription_defaults(sub)
+                if changed:
+                    if not str(sub.get("updated_at", "") or "").strip():
+                        sub["updated_at"] = self._now_iso()
+                    self.save()
                 return sub
-        sub = {
-            "user_id": user_id,
-            "tier": "free",
-            "interval": "monthly",
-            "status": "active",
-            "payment_provider": "none",
-            "price_kwd": 0.0,
-            "next_renewal_at": "",
-            "grace_end_at": "",
-            "updated_at": self._now_iso(),
-        }
+        sub = self._subscription_defaults(user_id)
+        sub["updated_at"] = self._now_iso()
         self.db["subscriptions"].append(sub)
         self.save()
         return sub
+
+    def get_checkout_session(self, session_id: str) -> Optional[dict]:
+        session_key = str(session_id or "").strip()
+        if not session_key:
+            return None
+        for row in self.db.get("checkout_sessions", []):
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("session_id", "") or "").strip() == session_key:
+                return row
+        return None
+
+    def get_checkout_session_by_provider_order_id(self, provider_order_id: str) -> Optional[dict]:
+        order_key = str(provider_order_id or "").strip()
+        if not order_key:
+            return None
+        for row in self.db.get("checkout_sessions", []):
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("provider_order_id", "") or "").strip() == order_key:
+                return row
+        return None
+
+    def get_checkout_session_by_provider_subscription_id(self, provider_subscription_id: str) -> Optional[dict]:
+        subscription_key = str(provider_subscription_id or "").strip()
+        if not subscription_key:
+            return None
+        for row in self.db.get("checkout_sessions", []):
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("provider_subscription_id", "") or "").strip() == subscription_key:
+                return row
+        return None
 
     def create_checkout_session(
         self,
@@ -572,6 +638,17 @@ class SubscriptionStore:
             "status": "created",
             "created_at": self._now_iso(),
             "approve_url": approve_url,
+            "return_url": "",
+            "cancel_url": "",
+            "provider_order_id": "",
+            "provider_subscription_id": "",
+            "provider_plan_id": "",
+            "provider_capture_id": "",
+            "provider_environment": "",
+            "provider_currency": "",
+            "provider_status": "",
+            "captured_at": "",
+            "cancelled_at": "",
         }
         self.db["checkout_sessions"].append(checkout)
         self.save()
@@ -586,6 +663,7 @@ class SubscriptionStore:
         payment_provider: str = "paypal",
         raw_payload: Optional[dict] = None,
     ) -> dict:
+        metadata = self._payment_event_metadata(event_type=event_type, raw_payload=raw_payload or {})
         event = {
             "event_id": f"evt_{token_urlsafe(10)}",
             "event_type": event_type,
@@ -594,32 +672,111 @@ class SubscriptionStore:
             "interval": (interval or "monthly").lower().strip(),
             "payment_provider": payment_provider,
             "created_at": self._now_iso(),
+            "summary": self._payment_event_summary(
+                event_type=event_type,
+                tier=(tier or "").lower().strip(),
+                interval=(interval or "monthly").lower().strip(),
+            ),
+            "status": metadata.get("provider_status", ""),
+            "amount_value": metadata.get("amount_value", ""),
+            "currency": metadata.get("currency", ""),
+            "provider_reference": metadata.get("provider_reference", ""),
+            "provider_subscription_id": metadata.get("provider_subscription_id", ""),
+            "provider_plan_id": metadata.get("provider_plan_id", ""),
             "raw": raw_payload or {},
         }
         self.db["payment_events"].append(event)
 
         typ = (event_type or "").strip().lower()
-        if typ in ("checkout.completed", "subscription.renewed", "payment.succeeded"):
+        if any(
+            str(metadata.get(key, "") or "").strip()
+            for key in (
+                "provider_subscription_id",
+                "provider_plan_id",
+                "provider_status",
+                "next_renewal_at",
+                "last_payment_at",
+            )
+        ):
+            self.update_subscription_provider_state(
+                user_id=user_id,
+                payment_provider=payment_provider,
+                provider_subscription_id=str(metadata.get("provider_subscription_id", "") or ""),
+                provider_plan_id=str(metadata.get("provider_plan_id", "") or ""),
+                provider_status=str(metadata.get("provider_status", "") or ""),
+                next_renewal_at=str(metadata.get("next_renewal_at", "") or ""),
+                last_payment_at=str(metadata.get("last_payment_at", "") or ""),
+            )
+        if typ in (
+            "checkout.completed",
+            "checkout.order.completed",
+            "payment.succeeded",
+            "payment.capture.completed",
+            "subscription.renewed",
+            "billing.subscription.activated",
+            "billing.subscription.re-activated",
+            "billing.subscription.renewed",
+            "payment.sale.completed",
+        ):
             target_tier = event["tier"] or self.get_subscription(user_id).get("tier", "free")
             self.upsert_subscription(
                 user_id=user_id,
                 tier=target_tier,
                 interval=event["interval"],
                 payment_provider=payment_provider,
+                provider_subscription_id=str(metadata.get("provider_subscription_id", "") or ""),
+                provider_plan_id=str(metadata.get("provider_plan_id", "") or ""),
+                provider_status=str(metadata.get("provider_status", "") or ""),
+                next_renewal_at=str(metadata.get("next_renewal_at", "") or ""),
+                started_at=str(metadata.get("last_payment_at", "") or self._now_iso()),
+                last_payment_at=str(metadata.get("last_payment_at", "") or self._now_iso()),
             )
-        elif typ in ("payment.failed", "subscription.past_due"):
+        elif typ in (
+            "payment.failed",
+            "payment.capture.denied",
+            "payment.capture.declined",
+            "subscription.past_due",
+            "billing.subscription.payment.failed",
+        ):
             self.set_subscription_grace(user_id, grace_days=7)
-        elif typ in ("subscription.cancelled", "subscription.expired"):
+        elif typ in (
+            "billing.subscription.suspended",
+        ):
+            sub = self.get_subscription(user_id)
+            sub["status"] = "paused"
+            sub["provider_status"] = str(metadata.get("provider_status", "") or "SUSPENDED")
+            sub["updated_at"] = self._now_iso()
+        elif typ in (
+            "subscription.cancelled",
+            "subscription.expired",
+            "billing.subscription.cancelled",
+            "billing.subscription.expired",
+        ):
             sub = self.get_subscription(user_id)
             sub["status"] = "inactive"
             sub["tier"] = "free"
             sub["price_kwd"] = 0.0
+            sub["provider_status"] = str(metadata.get("provider_status", "") or typ.upper())
+            sub["cancelled_at"] = self._now_iso()
+            sub["next_renewal_at"] = ""
             sub["updated_at"] = self._now_iso()
 
         self.save()
         return self.get_subscription(user_id)
 
-    def upsert_subscription(self, user_id: str, tier: str, interval: str, payment_provider: str = "paypal") -> dict:
+    def upsert_subscription(
+        self,
+        user_id: str,
+        tier: str,
+        interval: str,
+        payment_provider: str = "paypal",
+        provider_subscription_id: str = "",
+        provider_plan_id: str = "",
+        provider_status: str = "",
+        next_renewal_at: str = "",
+        started_at: str = "",
+        last_payment_at: str = "",
+    ) -> dict:
         tier_norm = (tier or "free").lower().strip()
         interval_norm = (interval or "monthly").lower().strip()
         if tier_norm not in PLAN_DEFINITIONS:
@@ -636,7 +793,24 @@ class SubscriptionStore:
         sub["payment_provider"] = payment_provider
         sub["price_kwd"] = plan["monthly_price_kwd"] if interval_norm == "monthly" else plan["yearly_price_kwd"]
         months = 1 if interval_norm == "monthly" else 12
-        sub["next_renewal_at"] = to_iso((self._utc_now() + timedelta(days=30 * months)).replace(microsecond=0))
+        sub["next_renewal_at"] = str(next_renewal_at or "").strip() or to_iso(
+            (self._utc_now() + timedelta(days=30 * months)).replace(microsecond=0)
+        )
+        if str(provider_subscription_id or "").strip():
+            sub["provider_subscription_id"] = str(provider_subscription_id or "").strip()
+        if str(provider_plan_id or "").strip():
+            sub["provider_plan_id"] = str(provider_plan_id or "").strip()
+        if str(provider_status or "").strip():
+            sub["provider_status"] = str(provider_status or "").strip()
+        if str(started_at or "").strip():
+            sub["started_at"] = str(started_at or "").strip()
+        elif not str(sub.get("started_at", "") or "").strip():
+            sub["started_at"] = self._now_iso()
+        if str(last_payment_at or "").strip():
+            sub["last_payment_at"] = str(last_payment_at or "").strip()
+        elif not str(sub.get("last_payment_at", "") or "").strip():
+            sub["last_payment_at"] = self._now_iso()
+        sub["cancelled_at"] = ""
         sub["updated_at"] = self._now_iso()
         self.save()
         return sub
@@ -648,6 +822,340 @@ class SubscriptionStore:
         sub["updated_at"] = self._now_iso()
         self.save()
         return sub
+
+    def update_subscription_provider_state(
+        self,
+        user_id: str,
+        *,
+        payment_provider: str = "",
+        provider_subscription_id: str = "",
+        provider_plan_id: str = "",
+        provider_status: str = "",
+        next_renewal_at: str = "",
+        last_payment_at: str = "",
+    ) -> dict:
+        sub = self.get_subscription(user_id)
+        if str(payment_provider or "").strip():
+            sub["payment_provider"] = str(payment_provider or "").strip()
+        if str(provider_subscription_id or "").strip():
+            sub["provider_subscription_id"] = str(provider_subscription_id or "").strip()
+        if str(provider_plan_id or "").strip():
+            sub["provider_plan_id"] = str(provider_plan_id or "").strip()
+        if str(provider_status or "").strip():
+            sub["provider_status"] = str(provider_status or "").strip()
+        if str(next_renewal_at or "").strip():
+            sub["next_renewal_at"] = str(next_renewal_at or "").strip()
+        if str(last_payment_at or "").strip():
+            sub["last_payment_at"] = str(last_payment_at or "").strip()
+        sub["updated_at"] = self._now_iso()
+        self.save()
+        return sub
+
+    def list_payment_events(self, user_id: str, limit: int = 12) -> list[dict]:
+        user_key = str(user_id or "").strip()
+        items = []
+        for row in self.db.get("payment_events", []):
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("user_id", "") or "").strip() != user_key:
+                continue
+            items.append(
+                {
+                    "event_id": str(row.get("event_id", "") or "").strip(),
+                    "event_type": str(row.get("event_type", "") or "").strip(),
+                    "summary": str(row.get("summary", "") or "").strip(),
+                    "status": str(row.get("status", "") or "").strip(),
+                    "tier": str(row.get("tier", "") or "").strip(),
+                    "interval": str(row.get("interval", "") or "").strip(),
+                    "payment_provider": str(row.get("payment_provider", "") or "").strip(),
+                    "amount_value": str(row.get("amount_value", "") or "").strip(),
+                    "currency": str(row.get("currency", "") or "").strip(),
+                    "provider_reference": str(row.get("provider_reference", "") or "").strip(),
+                    "provider_subscription_id": str(
+                        row.get("provider_subscription_id", "") or ""
+                    ).strip(),
+                    "provider_plan_id": str(row.get("provider_plan_id", "") or "").strip(),
+                    "created_at": str(row.get("created_at", "") or "").strip(),
+                }
+            )
+        items.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+        lim = max(1, min(100, int(limit or 12)))
+        return items[:lim]
+
+    def list_payment_events_admin(
+        self,
+        limit: int = 100,
+        *,
+        only_failures: bool = False,
+        user_filter: str = "",
+        status_filter: str = "",
+    ) -> list[dict]:
+        lim = max(1, min(500, int(limit or 100)))
+        user_text = str(user_filter or "").strip().lower()
+        status_text = str(status_filter or "").strip().lower()
+        users_by_id = {
+            str(row.get("user_id", "") or "").strip(): str(row.get("email", "") or "").strip().lower()
+            for row in self.db.get("users", [])
+            if isinstance(row, dict)
+        }
+
+        out: list[dict] = []
+        for row in self.db.get("payment_events", []):
+            if not isinstance(row, dict):
+                continue
+            event_type = str(row.get("event_type", "") or "").strip()
+            status_value = str(row.get("status", "") or "").strip()
+            user_id = str(row.get("user_id", "") or "").strip()
+            user_email = users_by_id.get(user_id, "")
+            event_type_norm = event_type.lower()
+            status_norm = status_value.lower()
+            is_failure = self._is_payment_failure_event(event_type_norm, status_norm)
+
+            if only_failures and not is_failure:
+                continue
+            if user_text:
+                if user_text not in user_id.lower() and user_text not in user_email:
+                    continue
+            if status_text:
+                if status_text not in event_type_norm and status_text not in status_norm:
+                    continue
+
+            out.append(
+                {
+                    "event_id": str(row.get("event_id", "") or "").strip(),
+                    "event_type": event_type,
+                    "summary": str(row.get("summary", "") or "").strip(),
+                    "status": status_value,
+                    "tier": str(row.get("tier", "") or "").strip(),
+                    "interval": str(row.get("interval", "") or "").strip(),
+                    "payment_provider": str(row.get("payment_provider", "") or "").strip(),
+                    "amount_value": str(row.get("amount_value", "") or "").strip(),
+                    "currency": str(row.get("currency", "") or "").strip(),
+                    "provider_reference": str(row.get("provider_reference", "") or "").strip(),
+                    "provider_subscription_id": str(row.get("provider_subscription_id", "") or "").strip(),
+                    "provider_plan_id": str(row.get("provider_plan_id", "") or "").strip(),
+                    "created_at": str(row.get("created_at", "") or "").strip(),
+                    "user_id": user_id,
+                    "user_email": user_email,
+                    "is_failure": is_failure,
+                }
+            )
+
+        out.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+        return out[:lim]
+
+    @staticmethod
+    def _is_payment_failure_event(event_type: str, status_value: str) -> bool:
+        typ = str(event_type or "").strip().lower()
+        status = str(status_value or "").strip().lower()
+        if typ in {
+            "payment.failed",
+            "payment.capture.denied",
+            "payment.capture.declined",
+            "subscription.past_due",
+            "billing.subscription.payment.failed",
+        }:
+            return True
+        if any(flag in typ for flag in ("failed", "past_due", "declined", "denied")):
+            return True
+        if any(flag in status for flag in ("failed", "past_due", "declined", "denied")):
+            return True
+        return False
+
+    def get_billing_webhook_receipt(self, idempotency_key: str) -> Optional[dict]:
+        key = str(idempotency_key or "").strip()
+        if not key:
+            return None
+        row = self.db.get("billing_webhook_idempotency", {}).get(key)
+        return dict(row) if isinstance(row, dict) else None
+
+    def remember_billing_webhook_receipt(
+        self,
+        *,
+        idempotency_key: str,
+        event_type: str,
+        user_id: str,
+        checkout_session_id: str = "",
+        event_id: str = "",
+    ) -> dict:
+        key = str(idempotency_key or "").strip()
+        if not key:
+            raise ValueError("idempotency_key is required")
+        now_iso = self._now_iso()
+        row = {
+            "idempotency_key": key,
+            "event_type": str(event_type or "").strip(),
+            "user_id": str(user_id or "").strip(),
+            "checkout_session_id": str(checkout_session_id or "").strip(),
+            "event_id": str(event_id or "").strip(),
+            "processed_at": now_iso,
+        }
+        self.db["billing_webhook_idempotency"][key] = row
+        self.save()
+        return dict(row)
+
+    def get_billing_webhook_replay(self, replay_key: str) -> Optional[dict]:
+        key = str(replay_key or "").strip()
+        if not key:
+            return None
+        row = self.db.get("billing_webhook_replay", {}).get(key)
+        return dict(row) if isinstance(row, dict) else None
+
+    def remember_billing_webhook_replay(
+        self,
+        *,
+        replay_key: str,
+        transmission_id: str = "",
+        event_id: str = "",
+        idempotency_key: str = "",
+    ) -> dict:
+        key = str(replay_key or "").strip()
+        if not key:
+            raise ValueError("replay_key is required")
+        now_iso = self._now_iso()
+        row = {
+            "replay_key": key,
+            "transmission_id": str(transmission_id or "").strip(),
+            "event_id": str(event_id or "").strip(),
+            "idempotency_key": str(idempotency_key or "").strip(),
+            "processed_at": now_iso,
+        }
+        self.db["billing_webhook_replay"][key] = row
+        self.save()
+        return dict(row)
+
+    def prune_billing_webhook_memory(self, max_age_seconds: int = 24 * 3600) -> dict:
+        ttl_seconds = max(60, int(max_age_seconds or 24 * 3600))
+        cutoff = self._utc_now() - timedelta(seconds=ttl_seconds)
+
+        removed_idempotency = 0
+        removed_replay = 0
+        changed = False
+
+        for key, row in list(self.db.get("billing_webhook_idempotency", {}).items()):
+            if not isinstance(row, dict):
+                del self.db["billing_webhook_idempotency"][key]
+                removed_idempotency += 1
+                changed = True
+                continue
+            processed_at = self._parse_datetime_utc(str(row.get("processed_at", "") or ""))
+            if processed_at is None or processed_at < cutoff:
+                del self.db["billing_webhook_idempotency"][key]
+                removed_idempotency += 1
+                changed = True
+
+        for key, row in list(self.db.get("billing_webhook_replay", {}).items()):
+            if not isinstance(row, dict):
+                del self.db["billing_webhook_replay"][key]
+                removed_replay += 1
+                changed = True
+                continue
+            processed_at = self._parse_datetime_utc(str(row.get("processed_at", "") or ""))
+            if processed_at is None or processed_at < cutoff:
+                del self.db["billing_webhook_replay"][key]
+                removed_replay += 1
+                changed = True
+
+        if changed:
+            self.save()
+        return {
+            "removed_idempotency": removed_idempotency,
+            "removed_replay": removed_replay,
+        }
+
+    def _payment_event_metadata(self, event_type: str, raw_payload: dict) -> dict:
+        payload = dict(raw_payload) if isinstance(raw_payload, dict) else {}
+        resource = payload.get("resource", {})
+        if not isinstance(resource, dict):
+            resource = {}
+        supplementary = resource.get("supplementary_data", {})
+        if not isinstance(supplementary, dict):
+            supplementary = {}
+        related = supplementary.get("related_ids", {})
+        if not isinstance(related, dict):
+            related = {}
+        billing_info = resource.get("billing_info", {})
+        if not isinstance(billing_info, dict):
+            billing_info = {}
+        last_payment = billing_info.get("last_payment", {})
+        if not isinstance(last_payment, dict):
+            last_payment = {}
+
+        normalized_type = str(event_type or "").strip().lower()
+        resource_id = str(resource.get("id", "") or "").strip()
+        provider_subscription_id = str(payload.get("provider_subscription_id", "") or "").strip()
+        if not provider_subscription_id:
+            if normalized_type.startswith("billing.subscription.") and resource_id:
+                provider_subscription_id = resource_id
+            else:
+                provider_subscription_id = (
+                    str(related.get("subscription_id", "") or "").strip()
+                    or str(resource.get("billing_agreement_id", "") or "").strip()
+                    or str(payload.get("subscription_id", "") or "").strip()
+                )
+        provider_plan_id = (
+            str(resource.get("plan_id", "") or "").strip()
+            or str(payload.get("provider_plan_id", "") or "").strip()
+        )
+        provider_status = (
+            str(resource.get("status", "") or "").strip()
+            or str(payload.get("provider_status", "") or "").strip()
+            or normalized_type.upper()
+        )
+        next_renewal_at = (
+            str(billing_info.get("next_billing_time", "") or "").strip()
+            or str(payload.get("next_billing_time", "") or "").strip()
+        )
+        amount = resource.get("amount")
+        if not isinstance(amount, dict):
+            amount = last_payment.get("amount")
+        if not isinstance(amount, dict):
+            amount = {}
+        amount_value = str(amount.get("value", "") or amount.get("total", "") or "").strip()
+        currency = str(amount.get("currency_code", "") or amount.get("currency", "") or "").strip()
+        provider_reference = (
+            resource_id
+            or str(related.get("sale_id", "") or "").strip()
+            or provider_subscription_id
+        )
+        last_payment_at = (
+            str(last_payment.get("time", "") or "").strip()
+            or str(resource.get("create_time", "") or "").strip()
+            or str(payload.get("status_update_time", "") or "").strip()
+        )
+        return {
+            "provider_subscription_id": provider_subscription_id,
+            "provider_plan_id": provider_plan_id,
+            "provider_status": provider_status,
+            "next_renewal_at": next_renewal_at,
+            "last_payment_at": last_payment_at,
+            "amount_value": amount_value,
+            "currency": currency,
+            "provider_reference": provider_reference,
+        }
+
+    @staticmethod
+    def _payment_event_summary(event_type: str, tier: str, interval: str) -> str:
+        normalized = str(event_type or "").strip().lower()
+        base = {
+            "billing.subscription.created": "Subscription created",
+            "billing.subscription.activated": "Subscription activated",
+            "billing.subscription.re-activated": "Subscription reactivated",
+            "billing.subscription.renewed": "Subscription renewed",
+            "payment.sale.completed": "Recurring payment captured",
+            "billing.subscription.payment.failed": "Recurring payment failed",
+            "billing.subscription.cancelled": "Subscription cancelled",
+            "billing.subscription.expired": "Subscription expired",
+            "billing.subscription.suspended": "Subscription suspended",
+            "checkout.completed": "Checkout completed",
+        }.get(normalized, normalized.replace(".", " ").replace("_", " ").title())
+        tier_label = str(tier or "").strip().upper()
+        interval_label = str(interval or "").strip().lower()
+        if tier_label and interval_label:
+            return f"{base} - {tier_label} {interval_label}"
+        if tier_label:
+            return f"{base} - {tier_label}"
+        return base
 
     def enforce_grace_expiry(self, user_id: str) -> dict:
         sub = self.get_subscription(user_id)

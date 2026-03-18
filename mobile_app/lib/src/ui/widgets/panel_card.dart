@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
@@ -16,27 +16,29 @@ class PanelCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = SmartBedPalette.secondaryAccent.withValues(alpha: 0.22);
-    final boxShadowColor = SmartBedPalette.accent.withValues(alpha: 0.28);
-    return Container(
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+    final borderColor = SmartBedPalette.accent.withValues(alpha: isDark ? 0.20 : 0.12);
+    final shadowColor = SmartBedPalette.accent.withValues(alpha: isDark ? 0.18 : 0.08);
+
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient:
             gradient ??
-            const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+            LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
               colors: <Color>[
-                SmartBedPalette.surfaceDark,
-                SmartBedPalette.surfaceLight,
+                SmartBedPalette.surface(brightness),
+                SmartBedPalette.surfaceAlt(brightness),
               ],
             ),
-        color: gradient == null ? SmartBedPalette.surfaceDark : null,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: borderColor),
         boxShadow: <BoxShadow>[
           BoxShadow(
-            color: boxShadowColor,
-            blurRadius: 34,
+            color: shadowColor,
+            blurRadius: isDark ? 30 : 22,
             spreadRadius: -10,
             offset: const Offset(0, 10),
           ),
@@ -46,3 +48,4 @@ class PanelCard extends StatelessWidget {
     );
   }
 }
+

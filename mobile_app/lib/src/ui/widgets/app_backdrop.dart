@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
@@ -9,40 +9,43 @@ class AppBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+    final background = SmartBedPalette.scaffold(brightness);
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: <Color>[
-            SmartBedPalette.background,
-            SmartBedPalette.surfaceDark,
-            SmartBedPalette.background,
+            background,
+            SmartBedPalette.surface(brightness),
+            background,
           ],
         ),
       ),
       child: Stack(
         children: <Widget>[
-          const _GlowBlob(
+          _GlowBlob(
             alignment: Alignment.topLeft,
-            color: Color(0x664F46E5),
-            size: 320,
+            color: SmartBedPalette.accent.withValues(alpha: isDark ? 0.18 : 0.10),
+            size: 340,
             offsetX: -110,
+            offsetY: -100,
+          ),
+          _GlowBlob(
+            alignment: Alignment.topRight,
+            color: SmartBedPalette.secondaryAccent.withValues(alpha: isDark ? 0.14 : 0.08),
+            size: 300,
+            offsetX: 100,
             offsetY: -90,
           ),
-          const _GlowBlob(
+          _GlowBlob(
             alignment: Alignment.bottomRight,
-            color: Color(0x5522D3EE),
-            size: 340,
-            offsetX: 120,
+            color: SmartBedPalette.warmAccent.withValues(alpha: isDark ? 0.12 : 0.07),
+            size: 360,
+            offsetX: 140,
             offsetY: 120,
-          ),
-          const _GlowBlob(
-            alignment: Alignment.centerLeft,
-            color: Color(0x334F46E5),
-            size: 260,
-            offsetX: -140,
-            offsetY: 70,
           ),
           child,
         ],
@@ -80,7 +83,7 @@ class _GlowBlob extends StatelessWidget {
               color: color,
               shape: BoxShape.circle,
               boxShadow: <BoxShadow>[
-                BoxShadow(color: color, blurRadius: 120, spreadRadius: 26),
+                BoxShadow(color: color, blurRadius: 120, spreadRadius: 24),
               ],
             ),
           ),
@@ -89,3 +92,4 @@ class _GlowBlob extends StatelessWidget {
     );
   }
 }
+

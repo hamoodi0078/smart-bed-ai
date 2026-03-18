@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Backend: Start API (repo root)",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File ..\\scripts\\start_backend.ps1",
+      "problemMatcher": [],
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Flutter: Pub Get",
+      "type": "shell",
+      "command": "flutter pub get",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flutter: Analyze",
+      "type": "shell",
+      "command": "flutter analyze",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flutter: Test",
+      "type": "shell",
+      "command": "flutter test",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

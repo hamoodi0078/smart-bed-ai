@@ -4,7 +4,7 @@ import os
 from contextlib import contextmanager
 from typing import Iterator
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -14,6 +14,9 @@ from .models import Base
 
 class DatabaseConnection:
     SQLITE_FALLBACK_URL = "sqlite:///./data/manues.db"
+    SCHEMA_META_TABLE = "schema_meta"
+    SCHEMA_VERSION_KEY = "schema_version"
+    CURRENT_SCHEMA_VERSION = 1
 
     def __init__(self, database_url: str | None = None):
         if database_url is None:
@@ -63,6 +66,78 @@ class DatabaseConnection:
 
     def create_tables(self) -> None:
         Base.metadata.create_all(bind=self.engine)
+        self._ensure_schema_version()
+        self._assert_required_tables_present()
+
+    def _ensure_schema_version(self) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(
+                text(
+                    f"CREATE TABLE IF NOT EXISTS {self.SCHEMA_META_TABLE} "
+                    "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+                )
+            )
+            raw_value = connection.execute(
+                text(
+                    f"SELECT value FROM {self.SCHEMA_META_TABLE} "
+                    "WHERE key = :key"
+                ),
+                {"key": self.SCHEMA_VERSION_KEY},
+            ).scalar_one_or_none()
+            try:
+                current = int(str(raw_value or "0").strip())
+            except Exception:
+                current = 0
+
+            if current < self.CURRENT_SCHEMA_VERSION:
+                # Current migration strategy is table-first: ensure ORM metadata is present.
+                Base.metadata.create_all(bind=self.engine)
+                updated = connection.execute(
+                    text(
+                        f"UPDATE {self.SCHEMA_META_TABLE} SET value = :value "
+                        "WHERE key = :key"
+                    ),
+                    {"key": self.SCHEMA_VERSION_KEY, "value": str(self.CURRENT_SCHEMA_VERSION)},
+                )
+                if int(getattr(updated, "rowcount", 0) or 0) == 0:
+                    connection.execute(
+                        text(
+                            f"INSERT INTO {self.SCHEMA_META_TABLE} (key, value) "
+                            "VALUES (:key, :value)"
+                        ),
+                        {"key": self.SCHEMA_VERSION_KEY, "value": str(self.CURRENT_SCHEMA_VERSION)},
+                    )
+
+    def _assert_required_tables_present(self) -> None:
+        expected = set(Base.metadata.tables.keys())
+        inspector = inspect(self.engine)
+        existing = set(inspector.get_table_names())
+        missing = sorted(expected - existing)
+        if not missing:
+            return
+        Base.metadata.create_all(bind=self.engine)
+        inspector = inspect(self.engine)
+        existing = set(inspector.get_table_names())
+        missing = sorted(expected - existing)
+        if missing:
+            raise RuntimeError(
+                "Database schema is incomplete; missing required tables: "
+                + ", ".join(missing)
+            )
+
+    def schema_version(self) -> int:
+        with self.engine.connect() as connection:
+            raw_value = connection.execute(
+                text(
+                    f"SELECT value FROM {self.SCHEMA_META_TABLE} "
+                    "WHERE key = :key"
+                ),
+                {"key": self.SCHEMA_VERSION_KEY},
+            ).scalar_one_or_none()
+        try:
+            return int(str(raw_value or "0").strip())
+        except Exception:
+            return 0
 
     def health_check(self) -> bool:
         try:

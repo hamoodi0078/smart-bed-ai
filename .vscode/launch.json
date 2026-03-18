@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter Windows (Smart Bed / mobile_app)",
+      "request": "launch",
+      "type": "dart",
+      "program": "${workspaceFolder}/mobile_app/lib/main.dart",
+      "cwd": "${workspaceFolder}/mobile_app",
+      "deviceId": "windows",
+      "toolArgs": [
+        "--dart-define=SMART_BED_API_BASE_URL=http://127.0.0.1:8001"
+      ]
+    }
+  ]
+}

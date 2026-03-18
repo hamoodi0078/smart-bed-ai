@@ -893,8 +893,13 @@ function initChatWidget() {
 
 function activateNavButtons() {
   const links = document.querySelectorAll(".nav-link");
+  const currentPath = String(location.pathname || "").trim();
+  const currentLeaf = currentPath.split("/").pop();
   links.forEach((link) => {
-    if (link.dataset.href === location.pathname.split("/").pop()) {
+    const targetHref = String(link.dataset.href || "").trim();
+    const normalizedTarget = targetHref.startsWith("/") ? targetHref : `/${targetHref}`;
+    const targetLeaf = normalizedTarget.split("/").pop();
+    if (targetHref && (normalizedTarget === currentPath || targetLeaf === currentLeaf)) {
       link.classList.add("active");
     }
     link.addEventListener("click", () => {
@@ -1877,6 +1882,90 @@ async function hydrateAdminUserDashboard() {
   }
 }
 
+function statusClassForBillingEvent(row) {
+  const failure = Boolean(row?.is_failure);
+  if (failure) return "bad";
+  const eventType = String(row?.event_type || "").toLowerCase();
+  const status = String(row?.status || "").toLowerCase();
+  if (eventType.includes("cancelled") || eventType.includes("expired") || status.includes("cancel")) {
+    return "warn";
+  }
+  return "good";
+}
+
+async function hydrateAdminBillingTimeline() {
+  const tbody = document.getElementById("admin-billing-timeline-body");
+  const totalEl = document.getElementById("admin-billing-total");
+  const failuresEl = document.getElementById("admin-billing-failures");
+  const successesEl = document.getElementById("admin-billing-successes");
+  const latestEl = document.getElementById("admin-billing-latest");
+  const providersEl = document.getElementById("admin-billing-providers");
+  const refreshBtn = document.getElementById("admin-billing-refresh");
+  if (!tbody) return;
+
+  const render = async () => {
+    tbody.innerHTML = '<tr><td colspan="6" class="table-note">Loading billing timeline...</td></tr>';
+    try {
+      const res = await apiFetch("/v1/admin/billing/timeline?limit=80");
+      if (res.status === 401) {
+        redirectToLogin("admin");
+        return;
+      }
+      if (!res.ok) {
+        tbody.innerHTML = '<tr><td colspan="6" class="table-note">Billing timeline unavailable right now.</td></tr>';
+        return;
+      }
+      const payload = await res.json().catch(() => ({}));
+      const summary = payload?.summary || {};
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+
+      if (totalEl) totalEl.textContent = String(summary?.total_events || 0);
+      if (failuresEl) failuresEl.textContent = String(summary?.failure_events || 0);
+      if (successesEl) successesEl.textContent = String(summary?.success_events || 0);
+      if (latestEl) latestEl.textContent = formatLocalTimestamp(summary?.latest_event_at || "");
+
+      const mix = summary?.provider_mix || {};
+      if (providersEl) {
+        const parts = Object.entries(mix).map(([provider, count]) => `${provider}: ${count}`);
+        providersEl.textContent = parts.length ? parts.join(" | ") : "Provider mix unavailable";
+      }
+
+      if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="table-note">No billing events recorded yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = "";
+      items.forEach((item) => {
+        const tr = document.createElement("tr");
+        const amount = String(item?.amount_value || "").trim();
+        const currency = String(item?.currency || "").trim();
+        const amountLabel = amount ? `${currency ? `${currency} ` : ""}${amount}` : "-";
+        const userLabel = String(item?.user_email || item?.user_id || "unknown");
+        const status = String(item?.status || item?.event_type || "event");
+        tr.innerHTML = `
+          <td>${formatLocalTimestamp(String(item?.created_at || ""))}</td>
+          <td>${userLabel}</td>
+          <td>${String(item?.summary || item?.event_type || "Billing event")}</td>
+          <td><span class="status ${statusClassForBillingEvent(item)}">${status}</span></td>
+          <td>${amountLabel}</td>
+          <td>${String(item?.provider_reference || item?.provider_subscription_id || "-")}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (_err) {
+      tbody.innerHTML = '<tr><td colspan="6" class="table-note">Billing timeline unavailable right now.</td></tr>';
+    }
+  };
+
+  if (refreshBtn && refreshBtn.dataset.bound !== "1") {
+    refreshBtn.dataset.bound = "1";
+    refreshBtn.addEventListener("click", render);
+  }
+
+  await render();
+}
+
 function bindAdminActions() {
   if (!location.pathname.includes("admin-panel")) return;
 
@@ -1906,6 +1995,10 @@ function bindAdminActions() {
       }
       const payload = await res.json().catch(() => ({}));
       if (status) status.textContent = payload?.message || payload?.title || "Action completed.";
+      if (action === "open_billing") {
+        location.href = "/admin-billing";
+        return;
+      }
       hydrateAdminAudit();
     } catch (_err) {
       if (status) status.textContent = "Network error while executing action.";
@@ -1977,5 +2070,6 @@ window.addEventListener("DOMContentLoaded", () => {
   hydrateAdminFleet();
   hydrateAdminAudit();
   hydrateAdminUserDashboard();
+  hydrateAdminBillingTimeline();
   bindAdminActions();
 });

@@ -57,6 +57,11 @@ def _env_float(name: str, default: float) -> float:
         return float(default)
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = str(os.getenv(name, "1" if default else "0") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -158,6 +163,13 @@ class Settings:
     enable_sensor_bridge: bool = os.getenv("ENABLE_SENSOR_BRIDGE", "1") == "1"
     sensor_pressure_enabled: bool = os.getenv("SENSOR_PRESSURE_ENABLED", "0") == "1"
     sensor_motion_enabled: bool = os.getenv("SENSOR_MOTION_ENABLED", "0") == "1"
+    sensor_pressure_pin: int = _env_int("SENSOR_PRESSURE_PIN", -1)
+    sensor_motion_pin: int = _env_int("SENSOR_MOTION_PIN", -1)
+    sensor_pressure_pull_up: bool = _env_bool("SENSOR_PRESSURE_PULL_UP", True)
+    sensor_motion_pull_up: bool = _env_bool("SENSOR_MOTION_PULL_UP", False)
+    sensor_pressure_active_low: bool = _env_bool("SENSOR_PRESSURE_ACTIVE_LOW", True)
+    sensor_motion_active_low: bool = _env_bool("SENSOR_MOTION_ACTIVE_LOW", False)
+    sensor_poll_interval_seconds: float = _env_float("SENSOR_POLL_INTERVAL_SECONDS", 0.2)
     aec_min_confidence_when_playing: float = float(os.getenv("AEC_MIN_CONFIDENCE_WHEN_PLAYING", "0.72"))
     spotify_access_token: str = os.getenv("SPOTIFY_ACCESS_TOKEN", "")
     spotify_device_id: str = os.getenv("SPOTIFY_DEVICE_ID", "")
@@ -173,6 +185,19 @@ class Settings:
     )
     app_base_url: str = os.getenv("APP_BASE_URL", "http://127.0.0.1:8000")
     app_backend_base_url: str = os.getenv("APP_BACKEND_BASE_URL", "http://127.0.0.1:8000")
+    paypal_client_id: str = os.getenv("PAYPAL_CLIENT_ID", "")
+    paypal_client_secret: str = os.getenv("PAYPAL_CLIENT_SECRET", "")
+    paypal_api_base: str = os.getenv("PAYPAL_API_BASE", "https://api-m.sandbox.paypal.com")
+    paypal_webhook_id: str = os.getenv("PAYPAL_WEBHOOK_ID", "")
+    paypal_brand_name: str = os.getenv("PAYPAL_BRAND_NAME", "Danah Smart Bed")
+    paypal_currency_code: str = os.getenv("PAYPAL_CURRENCY_CODE", "USD")
+    paypal_timeout_seconds: int = _env_int("PAYPAL_TIMEOUT_SECONDS", 20)
+    paypal_webhook_max_age_seconds: int = _env_int("PAYPAL_WEBHOOK_MAX_AGE_SECONDS", 600)
+    paypal_webhook_receipt_ttl_seconds: int = _env_int("PAYPAL_WEBHOOK_RECEIPT_TTL_SECONDS", 86400)
+    paypal_standard_monthly_plan_id: str = os.getenv("PAYPAL_STANDARD_MONTHLY_PLAN_ID", "")
+    paypal_standard_yearly_plan_id: str = os.getenv("PAYPAL_STANDARD_YEARLY_PLAN_ID", "")
+    paypal_pro_monthly_plan_id: str = os.getenv("PAYPAL_PRO_MONTHLY_PLAN_ID", "")
+    paypal_pro_yearly_plan_id: str = os.getenv("PAYPAL_PRO_YEARLY_PLAN_ID", "")
     bed_device_id: str = os.getenv("BED_DEVICE_ID", "")
     bed_firmware_version: str = os.getenv("BED_FIRMWARE_VERSION", "1.0.0")
     use_backend_ai_proxy: bool = os.getenv("USE_BACKEND_AI_PROXY", "1") == "1"
@@ -180,6 +205,14 @@ class Settings:
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_chat_model: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
     openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    led_hw_enabled: bool = _env_bool("LED_HARDWARE_ENABLED", False)
+    led_backend: str = os.getenv("LED_BACKEND", "auto")
+    led_frequency_hz: int = _env_int("LED_FREQUENCY_HZ", 800000)
+    led_user_dma_channel: int = _env_int("LED_USER_DMA_CHANNEL", 10)
+    led_state_dma_channel: int = _env_int("LED_STATE_DMA_CHANNEL", 11)
+    led_invert_signal: bool = _env_bool("LED_INVERT_SIGNAL", False)
+    led_max_brightness: int = _env_int("LED_MAX_BRIGHTNESS", 255)
+    led_animation_fps: float = _env_float("LED_ANIMATION_FPS", 20.0)
     user_strip_pin: int = int(os.getenv("USER_STRIP_PIN", "18"))
     state_strip_pin: int = int(os.getenv("STATE_STRIP_PIN", "13"))
     user_strip_led_count: int = int(os.getenv("USER_STRIP_LED_COUNT", "120"))

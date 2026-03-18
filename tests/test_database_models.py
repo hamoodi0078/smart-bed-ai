@@ -1,6 +1,8 @@
 import os
 import unittest
 
+from sqlalchemy import text
+
 from database import Bed, DatabaseConnection, Event, SleepSession, User
 
 
@@ -78,6 +80,33 @@ class TestDatabaseModels(unittest.TestCase):
         db.create_tables()
         result = db.health_check()
         self.assertIsInstance(result, bool)
+
+    def test_create_tables_persists_schema_version_metadata(self):
+        db = DatabaseConnection(database_url="sqlite://")
+        db.create_tables()
+        with db.engine.connect() as connection:
+            stored = connection.execute(
+                text(
+                    "SELECT value FROM schema_meta WHERE key = :key"
+                ),
+                {"key": DatabaseConnection.SCHEMA_VERSION_KEY},
+            ).scalar_one_or_none()
+        self.assertEqual(int(str(stored or "0")), DatabaseConnection.CURRENT_SCHEMA_VERSION)
+        self.assertEqual(db.schema_version(), DatabaseConnection.CURRENT_SCHEMA_VERSION)
+
+    def test_create_tables_ensures_required_runtime_tables_exist(self):
+        db = DatabaseConnection(database_url="sqlite://")
+        db.create_tables()
+        with db.engine.connect() as connection:
+            names = {
+                str(row[0])
+                for row in connection.execute(
+                    text("SELECT name FROM sqlite_master WHERE type='table'")
+                ).fetchall()
+            }
+        self.assertIn("mobile_command_records", names)
+        self.assertIn("mobile_auth_sessions", names)
+        self.assertIn("beta_metrics_snapshots", names)
 
 
 if __name__ == "__main__":

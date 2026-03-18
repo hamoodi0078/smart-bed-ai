@@ -87,6 +87,7 @@ from automation_engine import (
     format_repeat_days
 )
 from led_controller import apply_led_hardware_config, apply_music_led_preferences
+from hardware.pi_sensors import build_sensor_monitor
 from prayer_handler import apply_fajr_gentle_light_scene, is_islamic_reminder_request, next_islamic_reminder
 from voice_handler import (
     ensure_emotional_followup_shape,
@@ -246,9 +247,17 @@ def main():
         firmware_version=settings.bed_firmware_version,
         timeout_seconds=settings.ai_timeout_seconds,
     )
+    sensor_monitor = None
 
     def build_health_report() -> str:
-        results = run_device_health_checks(settings, spotify, local_music, tts_player=tts_player)
+        results = run_device_health_checks(
+            settings,
+            spotify,
+            local_music,
+            tts_player=tts_player,
+            led=led,
+            sensor_monitor=sensor_monitor,
+        )
         return format_health_report(results)
 
     def on_sleep_timer_finish():
@@ -341,6 +350,32 @@ def main():
     profile.setdefault("runtime_flags", {})
     profile["runtime_flags"].setdefault("sensor_pressure_active", False)
     profile["runtime_flags"].setdefault("sensor_motion_active", False)
+
+    def _apply_sensor_snapshot(snapshot, persist: bool = True):
+        runtime_flags = profile.setdefault("runtime_flags", {})
+        next_pressure = bool(getattr(snapshot, "pressure_active", False)) if bool(settings.sensor_pressure_enabled) else False
+        next_motion = bool(getattr(snapshot, "motion_active", False)) if bool(settings.sensor_motion_enabled) else False
+        changed = False
+        if bool(runtime_flags.get("sensor_pressure_active", False)) != next_pressure:
+            runtime_flags["sensor_pressure_active"] = next_pressure
+            changed = True
+        if bool(runtime_flags.get("sensor_motion_active", False)) != next_motion:
+            runtime_flags["sensor_motion_active"] = next_motion
+            changed = True
+        if changed:
+            print(
+                "[SENSORS] "
+                f"pressure_active={runtime_flags.get('sensor_pressure_active', False)} "
+                f"motion_active={runtime_flags.get('sensor_motion_active', False)}"
+            )
+            if persist:
+                save_profile(profile)
+
+    sensor_monitor = build_sensor_monitor(settings)
+    _apply_sensor_snapshot(sensor_monitor.snapshot(), persist=False)
+    sensor_monitor.start(_apply_sensor_snapshot)
+    print(f"Bed: {sensor_monitor.status_line()}")
+
     stt.language_hint = str(profile.get("preferences", {}).get("language", "auto") or "auto")
     output_ok, _ = audio_output.ensure_output(profile)
     if not output_ok:

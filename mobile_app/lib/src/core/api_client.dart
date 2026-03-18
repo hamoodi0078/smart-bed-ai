@@ -76,6 +76,66 @@ class SmartBedApi {
     return AuthSession.fromJson(json);
   }
 
+  Future<OtpRequestResult> requestOtp({
+    required String phoneNumber,
+    String clientName = 'flutter_app',
+  }) async {
+    final json = await _post(
+      '/v1/mobile/auth/otp/request',
+      data: <String, Object>{
+        'phone_number': phoneNumber,
+        'client_name': clientName,
+      },
+    );
+    return OtpRequestResult.fromJson(json);
+  }
+
+  Future<AuthSession> verifyOtp({
+    required String requestId,
+    required String phoneNumber,
+    required String otpCode,
+    String name = '',
+    String clientName = 'flutter_app',
+  }) async {
+    final json = await _post(
+      '/v1/mobile/auth/otp/verify',
+      data: <String, Object>{
+        'request_id': requestId,
+        'phone_number': phoneNumber,
+        'otp_code': otpCode,
+        'name': name,
+        'client_name': clientName,
+      },
+    );
+    return AuthSession.fromJson(json);
+  }
+
+  Future<AuthSession> socialLogin({
+    required String provider,
+    String providerUserId = '',
+    String providerAccessToken = '',
+    String providerIdToken = '',
+    String providerAuthCode = '',
+    String email = '',
+    String name = '',
+    String clientName = 'flutter_app',
+  }) async {
+    final json = await _post(
+      '/v1/mobile/auth/social',
+      data: <String, Object>{
+        'provider': provider,
+        'provider_user_id': providerUserId,
+        'provider_access_token': providerAccessToken,
+        'provider_id_token': providerIdToken,
+        'provider_auth_code': providerAuthCode,
+        'email': email,
+        'name': name,
+        'client_name': clientName,
+      },
+    );
+    return AuthSession.fromJson(json);
+  }
+
   Future<AuthSession> refresh(String refreshToken) async {
     final json = await _post(
       '/v1/mobile/auth/refresh',
@@ -259,6 +319,97 @@ class SmartBedApi {
     return UserProfilePrefs.fromJson(_asMap(json['profile'], 'profile'));
   }
 
+  Future<IslamicOverview> getIslamicOverview(String accessToken) async {
+    final json = await _get(
+      '/v1/mobile/islamic/overview',
+      accessToken: accessToken,
+    );
+    return IslamicOverview.fromJson(json);
+  }
+
+  Future<String> sendChatMessage({
+    required String accessToken,
+    required String message,
+  }) async {
+    final json = await _post(
+      '/v1/ai/chat',
+      data: <String, Object>{'message': message},
+      accessToken: accessToken,
+    );
+    return _string(json['reply'], fallback: 'Dana is unavailable right now.');
+  }
+
+  Future<SubscriptionStatus> getSubscriptionStatus(String accessToken) async {
+    final json = await _get(
+      '/v1/mobile/subscription/status',
+      accessToken: accessToken,
+    );
+    return SubscriptionStatus.fromJson(json);
+  }
+
+  Future<List<BillingHistoryEvent>> getSubscriptionHistory(
+    String accessToken, {
+    int limit = 12,
+  }) async {
+    final json = await _get(
+      '/v1/mobile/subscription/history',
+      accessToken: accessToken,
+      queryParameters: <String, Object>{'limit': limit},
+    );
+    final items = json['events'] is List
+        ? json['events'] as List
+        : const <Object?>[];
+    return items
+        .map((item) => BillingHistoryEvent.fromJson(_asMap(item, 'billing event')))
+        .toList(growable: false);
+  }
+
+  Future<CheckoutSessionInfo> createSubscriptionCheckout({
+    required String accessToken,
+    required String tier,
+    required String interval,
+    String returnUrl = '',
+    String cancelUrl = '',
+  }) async {
+    final json = await _post(
+      '/v1/mobile/subscription/checkout',
+      data: <String, Object>{
+        'tier': tier,
+        'interval': interval,
+        'return_url': returnUrl,
+        'cancel_url': cancelUrl,
+      },
+      accessToken: accessToken,
+    );
+    return CheckoutSessionInfo.fromJson(
+      _asMap(json['checkout'], 'checkout session'),
+    );
+  }
+
+  Future<String> pauseActiveSubscription({
+    required String accessToken,
+    String reason = '',
+  }) async {
+    final json = await _post(
+      '/v1/mobile/subscription/pause',
+      data: <String, Object>{'reason': reason},
+      accessToken: accessToken,
+    );
+    return _string(json['message'], fallback: 'Subscription paused.');
+  }
+
+  Future<String> cancelActiveSubscription({
+    required String accessToken,
+    String reason = '',
+  }) async {
+    final json = await _post(
+      '/v1/mobile/subscription/cancel-active',
+      data: <String, Object>{'reason': reason},
+      accessToken: accessToken,
+    );
+    return _string(json['message'], fallback: 'Subscription cancelled.');
+  }
+
   Future<DeviceCommandReceipt> createDeviceCommand({
     required String accessToken,
     required String action,
@@ -312,6 +463,171 @@ class SmartBedApi {
     return getTrialStatus(userId: userId, accessToken: accessToken);
   }
 
+  Future<DeviceControls> getDeviceControls(String accessToken) async {
+    final json = await _get(
+      '/v1/mobile/device-controls',
+      accessToken: accessToken,
+    );
+    return DeviceControls.fromJson(
+      _asMap(json['controls'], 'device controls'),
+    );
+  }
+
+  Future<DeviceControls> updateDeviceControls({
+    required String accessToken,
+    required DeviceControls controls,
+  }) async {
+    final json = await _post(
+      '/v1/mobile/device-controls',
+      data: controls.toJson(),
+      accessToken: accessToken,
+    );
+    return DeviceControls.fromJson(
+      _asMap(json['controls'], 'device controls'),
+    );
+  }
+
+  Future<BedPairingStatus> getBedPairingStatus(String accessToken) async {
+    final json = await _get(
+      '/v1/mobile/bed/pairing',
+      accessToken: accessToken,
+    );
+    return BedPairingStatus.fromJson(json);
+  }
+
+  Future<BedPairingStatus> pairBed({
+    required String accessToken,
+    String qrPayload = '',
+    String deviceId = '',
+    String claimToken = '',
+    String bedLocation = 'Kuwait',
+  }) async {
+    final json = await _post(
+      '/v1/mobile/bed/pair',
+      data: <String, Object>{
+        'qr_payload': qrPayload,
+        'device_id': deviceId,
+        'claim_token': claimToken,
+        'bed_location': bedLocation,
+      },
+      accessToken: accessToken,
+    );
+    return BedPairingStatus.fromJson(json);
+  }
+
+  Future<void> unpairBed({
+    required String accessToken,
+    String deviceId = '',
+  }) async {
+    await _post(
+      '/v1/mobile/bed/unpair',
+      data: <String, Object>{'device_id': deviceId},
+      accessToken: accessToken,
+    );
+  }
+
+  Future<List<AlarmSchedule>> getAlarms(String accessToken) async {
+    final json = await _get('/v1/mobile/alarms', accessToken: accessToken);
+    final raw = json['alarms'] is List ? json['alarms'] as List : const <Object?>[];
+    return raw
+        .map((item) => AlarmSchedule.fromJson(_asMap(item, 'alarm')))
+        .toList(growable: false);
+  }
+
+  Future<List<AlarmSchedule>> upsertAlarm({
+    required String accessToken,
+    required AlarmSchedule alarm,
+  }) async {
+    final json = await _post(
+      '/v1/mobile/alarms',
+      data: alarm.toJson(),
+      accessToken: accessToken,
+    );
+    final raw = json['alarms'] is List ? json['alarms'] as List : const <Object?>[];
+    return raw
+        .map((item) => AlarmSchedule.fromJson(_asMap(item, 'alarm')))
+        .toList(growable: false);
+  }
+
+  Future<void> toggleAlarm({
+    required String accessToken,
+    required String alarmId,
+    required bool enabled,
+  }) async {
+    await _post(
+      '/v1/mobile/alarms/$alarmId/toggle',
+      data: <String, Object>{'enabled': enabled},
+      accessToken: accessToken,
+    );
+  }
+
+  Future<void> deleteAlarm({
+    required String accessToken,
+    required String alarmId,
+  }) async {
+    await _delete('/v1/mobile/alarms/$alarmId', accessToken: accessToken);
+  }
+
+  Future<String> getSpotifyAuthUrl({
+    required String accessToken,
+    String doneUri = '',
+  }) async {
+    final json = await _get(
+      '/v1/mobile/spotify/auth-url',
+      accessToken: accessToken,
+      queryParameters: <String, Object>{'done_uri': doneUri},
+    );
+    return _string(json['auth_url']);
+  }
+
+  Future<SpotifyConnectionStatus> getSpotifyStatus(String accessToken) async {
+    final json = await _get('/v1/mobile/spotify/status', accessToken: accessToken);
+    return SpotifyConnectionStatus.fromJson(json);
+  }
+
+  Future<SpotifyPlaybackStatus> getSpotifyPlaybackStatus(
+    String accessToken,
+  ) async {
+    final json = await _get(
+      '/v1/mobile/spotify/playback-status',
+      accessToken: accessToken,
+    );
+    return SpotifyPlaybackStatus.fromJson(json);
+  }
+
+  Future<String> spotifyPlaybackAction({
+    required String accessToken,
+    required String action,
+    String deviceId = '',
+    String playlistUri = '',
+    int volumePercent = 50,
+  }) async {
+    final json = await _post(
+      '/v1/mobile/spotify/playback',
+      data: <String, Object>{
+        'action': action,
+        'device_id': deviceId,
+        'playlist_uri': playlistUri,
+        'volume_percent': volumePercent,
+      },
+      accessToken: accessToken,
+    );
+    return _string(json['message'], fallback: 'Spotify action sent.');
+  }
+
+  Future<void> disconnectSpotify({required String accessToken}) async {
+    await _post(
+      '/v1/mobile/spotify/disconnect',
+      data: const <String, Object>{},
+      accessToken: accessToken,
+    );
+  }
+
+  Future<MobileDeviceInfo> getMobileDeviceInfo(String accessToken) async {
+    final json = await _get('/v1/mobile/devices', accessToken: accessToken);
+    return MobileDeviceInfo.fromJson(json);
+  }
+
   Future<Map<String, dynamic>> _get(
     String path, {
     Map<String, Object>? queryParameters,
@@ -338,6 +654,21 @@ class SmartBedApi {
       final response = await _dio.post<Object?>(
         path,
         data: data,
+        options: _options(accessToken),
+      );
+      return _decodeResponse(response);
+    } on DioException catch (error) {
+      throw _networkException(error);
+    }
+  }
+
+  Future<Map<String, dynamic>> _delete(
+    String path, {
+    String? accessToken,
+  }) async {
+    try {
+      final response = await _dio.delete<Object?>(
+        path,
         options: _options(accessToken),
       );
       return _decodeResponse(response);
@@ -392,7 +723,7 @@ class SmartBedApi {
         error.type == DioExceptionType.sendTimeout) {
       return const ApiException(
         message:
-            'The Smart Bed API timed out. Check the local backend and try again.',
+            'The Danah backend timed out. Check the local server and try again.',
       );
     }
     if (error.type == DioExceptionType.connectionError ||
@@ -400,11 +731,11 @@ class SmartBedApi {
             (error.message ?? '').contains('XMLHttpRequest onError callback'))) {
       return ApiException(
         message:
-            'Unable to reach Smart Bed API at ${_dio.options.baseUrl}. Start the backend server and try again.',
+            'Unable to reach the Danah backend at ${_dio.options.baseUrl}. Start the backend server and try again.',
       );
     }
     return ApiException(
-      message: error.message ?? 'Unable to reach the Smart Bed API.',
+      message: error.message ?? 'Unable to reach the Danah backend.',
     );
   }
 }

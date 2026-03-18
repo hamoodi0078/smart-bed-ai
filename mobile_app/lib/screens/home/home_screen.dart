@@ -99,14 +99,24 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildTopBar() {
     return Row(
       children: [
-        const Expanded(
-          child: Text(
-            'Good Evening, Hamoud ??',
-            style: TextStyle(
-              color: AppColors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
+        Expanded(
+          child: Row(
+            children: const [
+              Text(
+                'Good Evening, Hamoud',
+                style: TextStyle(
+                  color: AppColors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(width: 6),
+              Icon(
+                Icons.nightlight_round,
+                color: AppColors.softWhite,
+                size: 18,
+              ),
+            ],
           ),
         ),
         Container(
@@ -139,20 +149,32 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '??  Peace be with you. Ready for a restful night?',
-            style: TextStyle(
-              color: AppColors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              height: 1.4,
-            ),
+          Row(
+            children: const [
+              Icon(
+                Icons.nightlight_round,
+                color: AppColors.accent,
+                size: 18,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Peace be with you. Ready for a restful night?',
+                  style: TextStyle(
+                    color: AppColors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
           ),
-          SizedBox(height: 10),
-          Text(
+          const SizedBox(height: 10),
+          const Text(
             'Dana Guide',
             style: TextStyle(
               color: AppColors.accent,
@@ -168,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildQuickStatsRow() {
     final String lastNight = (_bedStatus['last_night_hours'] ?? '7.2h').toString();
     final String sleepScore = (_bedStatus['sleep_score'] ?? '82').toString();
-    final String streak = (_bedStatus['streak_days'] ?? '5??').toString();
+    final String streak = (_bedStatus['streak_days'] ?? '5').toString();
 
     return Row(
       children: [
@@ -193,6 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Streak',
             value: streak,
             accentColor: AppColors.orange,
+            trailingIcon: Icons.local_fire_department,
           ),
         ),
       ],
@@ -214,9 +237,16 @@ class _HomeScreenState extends State<HomeScreen> {
             MaterialPageRoute<void>(builder: (_) => const WindDownScreen()),
           );
         },
-        child: const Text(
-          'Start Wind-Down Journey ??',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Start Wind-Down Journey',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            SizedBox(width: 8),
+            Icon(Icons.nightlight_round, size: 18),
+          ],
         ),
       ),
     );
@@ -245,15 +275,21 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '?? Next Prayer',
-            style: TextStyle(
-              color: AppColors.softWhite,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
+          const Row(
+            children: [
+              Icon(Icons.mosque_rounded, color: AppColors.softWhite, size: 16),
+              SizedBox(width: 6),
+              Text(
+                'Next Prayer',
+                style: TextStyle(
+                  color: AppColors.softWhite,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
             nextPrayer,
             style: TextStyle(
@@ -282,11 +318,13 @@ class _StatCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.accentColor,
+    this.trailingIcon,
   });
 
   final String label;
   final String value;
   final Color accentColor;
+  final IconData? trailingIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -308,13 +346,25 @@ class _StatCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              color: accentColor,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  color: accentColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (trailingIcon != null) ...[
+                const SizedBox(width: 4),
+                Icon(
+                  trailingIcon,
+                  size: 16,
+                  color: accentColor,
+                ),
+              ],
+            ],
           ),
         ],
       ),

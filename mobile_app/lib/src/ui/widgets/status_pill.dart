@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
@@ -16,26 +16,28 @@ class StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
     final (background, foreground) = switch (tone) {
       StatusTone.success => (
-        SmartBedPalette.connected.withValues(alpha: 0.24),
-        const Color(0xFFB8F7CF),
+        SmartBedPalette.connected.withValues(alpha: isDark ? 0.20 : 0.14),
+        isDark ? const Color(0xFFBDF5D5) : const Color(0xFF15693A),
       ),
       StatusTone.warning => (
-        SmartBedPalette.warning.withValues(alpha: 0.25),
-        const Color(0xFFFFDE9A),
+        SmartBedPalette.warning.withValues(alpha: isDark ? 0.24 : 0.14),
+        isDark ? const Color(0xFFFFE0A3) : const Color(0xFF8B5A00),
       ),
       StatusTone.info => (
-        SmartBedPalette.secondaryAccent.withValues(alpha: 0.24),
-        const Color(0xFFBDF3FF),
+        SmartBedPalette.accent.withValues(alpha: isDark ? 0.18 : 0.12),
+        isDark ? const Color(0xFFB9F2FF) : const Color(0xFF0B6277),
       ),
       StatusTone.danger => (
-        SmartBedPalette.danger.withValues(alpha: 0.25),
-        const Color(0xFFFFC7C7),
+        SmartBedPalette.danger.withValues(alpha: isDark ? 0.22 : 0.14),
+        isDark ? const Color(0xFFFFC9C9) : const Color(0xFF8F1F1F),
       ),
       StatusTone.neutral => (
-        SmartBedPalette.surfaceLight.withValues(alpha: 0.9),
-        SmartBedPalette.bodyText,
+        SmartBedPalette.surfaceAlt(brightness).withValues(alpha: isDark ? 0.92 : 0.96),
+        SmartBedPalette.body(brightness),
       ),
     };
 
@@ -44,9 +46,7 @@ class StatusPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: foreground.withValues(alpha: 0.3),
-        ),
+        border: Border.all(color: foreground.withValues(alpha: 0.25)),
       ),
       child: Text(
         label,
@@ -60,3 +60,4 @@ class StatusPill extends StatelessWidget {
     );
   }
 }
+

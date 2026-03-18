@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
-import '../qr/qr_scanner_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -59,10 +58,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  void _goToQrScanner() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const QRScannerScreen()),
-    );
+  void _goToAuth() {
+    Navigator.pushNamed(context, '/auth');
   }
 
   @override
@@ -106,7 +103,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const Spacer(),
           if (_currentPage < 2)
             TextButton(
-              onPressed: _goToQrScanner,
+              onPressed: _goToAuth,
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.softWhite.withValues(alpha: 0.8),
                 textStyle: const TextStyle(
@@ -212,7 +209,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: _goToQrScanner,
+              onPressed: _goToAuth,
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accent,
                 foregroundColor: AppColors.background,

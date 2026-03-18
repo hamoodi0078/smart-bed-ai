@@ -22,6 +22,8 @@ class TestSubscriptionEndpoints(unittest.TestCase):
         self.user_repo = web_server._db_user_repository()
         self.user = self.user_repo.create_user("trial-endpoint@example.com", "hashed_pw", "Trial Endpoint User")
         self.client = TestClient(web_server.app)
+        user_token = web_server.store.issue_user_token(user_id=self.user.id)
+        self.client.cookies.set("sb_user_token", str(user_token.get("access_token", "") or ""))
 
     def tearDown(self):
         web_server._DB_CONNECTION = None

@@ -33,9 +33,10 @@ void main() {
 
     await tester.pump();
 
-    expect(find.text('Smart Bed'), findsOneWidget);
-    expect(find.text('Enter Command Center'), findsOneWidget);
-    expect(find.text('Bearer auth'), findsOneWidget);
+    expect(find.text('Danah Smart Bed'), findsOneWidget);
+    expect(find.text('Built by Dana Abuhalifa'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Continue to Danah'), findsOneWidget);
   });
 }
 

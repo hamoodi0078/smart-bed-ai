@@ -79,20 +79,24 @@
 - `device_health.py` - Device health checks
 
 ### Mobile App (`mobile_app/`)
-- Expo SDK 51, React Native, TypeScript
-- Screens: Auth, Dashboard, Plan, Usage, Devices, Spotify, Billing, Settings
-- API client with full endpoint coverage
-- Tab navigation with 7 tabs
+- Flutter (Dart, Material 3, Riverpod, GoRouter)
+- Primary screens: Launch, Auth, Dashboard, Dana chat, Islamic, Timeline, Scenes, Report, Settings
+- API client and state controllers in `lib/src/core` + `lib/src/state`
+- Production command flows validated via `flutter analyze` + `flutter test`
 
 ---
 
 ## Pre-Deployment Checklist
+
+Backend-only Raspberry Pi transfer reference:
+- `docs/raspberry-pi-backend-only-transfer.md`
 
 ### 1. Environment Setup (Raspberry Pi)
 - [ ] Flash Raspberry Pi OS (64-bit recommended)
 - [ ] Install Python 3.11+
 - [ ] Install system packages: `sudo apt install portaudio19-dev libatlas-base-dev`
 - [ ] Clone project to `/home/pi/smart-bed/`
+- [ ] Prefer `git clone/pull` for updates (avoid ad-hoc ZIP copy for production)
 - [ ] Create `.env` from `.env.example` and fill in real values
 - [ ] `pip install -r requirements.txt`
 - [ ] Install pygame: `pip install pygame`
@@ -125,12 +129,14 @@
 - [ ] Verify tier entitlement mapping (Free/Standard/Pro)
 
 ### 5. Mobile App
-- [ ] `cd mobile_app && npm install`
-- [ ] Update `DEFAULT_BASE_URL` in `App.tsx` to production backend
-- [ ] `npx expo start` for development testing
-- [ ] Test all screens: Auth, Dashboard, Plan, Usage, Devices, Spotify, Billing, Settings
-- [ ] Build for Android: `npx expo run:android` or `eas build --platform android`
-- [ ] Build for iOS: `npx expo run:ios` or `eas build --platform ios`
+- [ ] `cd mobile_app`
+- [ ] `flutter pub get`
+- [ ] Set API base URL via `--dart-define=SMART_BED_API_BASE_URL=https://your-host`
+- [ ] `flutter analyze`
+- [ ] `flutter test`
+- [ ] Test all screens: Launch, Auth, Dashboard, Dana, Islamic, Timeline, Scenes, Report, Settings
+- [ ] Build for Android: `flutter build apk --release` (or `flutter build appbundle`)
+- [ ] Build for iOS: `flutter build ipa`
 - [ ] Create Play Store / App Store listings
 - [ ] Upload APK/IPA and submit for review
 

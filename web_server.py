@@ -9,8 +9,11 @@ import json
 import logging
 import math
 import os
+import binascii
 import re
 import secrets
+import hmac
+import hashlib
 import threading
 import time
 import uuid
@@ -19,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 import base64
@@ -62,6 +65,7 @@ from core.errors import (
 )
 from core.structured_logging import emit_json_log
 from scenes import SceneStore
+from subscriptions import BillingService, BillingServiceError
 from time_utils import ensure_utc, from_iso, to_iso, utcnow
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -85,6 +89,7 @@ _DB_EVENT_REPOSITORY: Any | None = None
 _DB_SLEEP_SESSION_REPOSITORY: Any | None = None
 _DB_COMMAND_REPOSITORY: Any | None = None
 _DB_MOBILE_AUTH_REPOSITORY: Any | None = None
+_BILLING_SERVICE: Any | None = None
 _SLEEP_ENGINE = SleepIntelligenceEngine()
 
 _SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
@@ -277,10 +282,16 @@ class UserRoutineRequest(BaseModel):
 
 
 class UserProfilePrefsRequest(BaseModel):
-    display_name: str = "User"
+    display_name: str = ""
     timezone: str = "Asia/Kuwait"
     push_enabled: bool = True
     email_enabled: bool = False
+    location_mode: Literal["auto", "manual"] = "auto"
+    country_code: str = ""
+    city: str = ""
+    latitude: float | None = None
+    longitude: float | None = None
+    theme_mode: Literal["system", "dark", "light"] = "system"
 
 
 class UserDeviceControlRequest(BaseModel):
@@ -339,12 +350,93 @@ class MobileLoginRequest(BaseModel):
     client_name: str = "flutter_app"
 
 
+class MobileOtpRequestRequest(BaseModel):
+    phone_number: str
+    client_name: str = "flutter_app"
+
+
+class MobileOtpVerifyRequest(BaseModel):
+    request_id: str
+    phone_number: str
+    otp_code: str
+    name: str = ""
+    client_name: str = "flutter_app"
+
+
+class MobileSocialLoginRequest(BaseModel):
+    provider: Literal["google", "apple", "facebook"]
+    provider_user_id: str = ""
+    provider_access_token: str = ""
+    provider_id_token: str = ""
+    provider_auth_code: str = ""
+    email: str = ""
+    name: str = ""
+    client_name: str = "flutter_app"
+
+
 class MobileRefreshRequest(BaseModel):
     refresh_token: str
 
 
 class MobileLogoutRequest(BaseModel):
     refresh_token: str = ""
+
+
+class MobileBedPairRequest(BaseModel):
+    qr_payload: str = ""
+    device_id: str = ""
+    claim_token: str = ""
+    bed_location: str = "Kuwait"
+
+
+class MobileBedUnpairRequest(BaseModel):
+    device_id: str = ""
+
+
+class MobileAlarmUpsertRequest(BaseModel):
+    alarm_id: str = ""
+    time: str = "07:00"
+    days: list[int] = Field(default_factory=list)
+    enabled: bool = True
+    label: str = ""
+    sound: str = "default"
+    vibrate: bool = True
+
+
+class MobileAlarmToggleRequest(BaseModel):
+    enabled: bool
+
+
+class MobileSubscriptionCheckoutRequest(BaseModel):
+    tier: Literal["standard", "pro"] = "standard"
+    interval: Literal["monthly", "yearly"] = "monthly"
+    return_url: str = ""
+    cancel_url: str = ""
+
+
+class MobileSubscriptionCaptureRequest(BaseModel):
+    session_id: str
+    payer_id: str = ""
+    provider_order_id: str = ""
+    provider_subscription_id: str = ""
+
+
+class MobileSubscriptionCancelRequest(BaseModel):
+    session_id: str
+
+
+class MobileSubscriptionActionRequest(BaseModel):
+    reason: str = ""
+
+
+class BillingWebhookRequest(BaseModel):
+    event_type: str
+    session_id: str = ""
+    user_id: str = ""
+    tier: str = ""
+    interval: str = "monthly"
+    raw: dict[str, Any] = Field(default_factory=dict)
+    resource: dict[str, Any] = Field(default_factory=dict)
 
 
 class FirstThreeNightsStepRequest(BaseModel):
@@ -722,17 +814,223 @@ def _normalize_user_routine(payload: dict[str, Any] | None) -> dict[str, Any]:
 
 def _normalize_user_profile_prefs(payload: dict[str, Any] | None) -> dict[str, Any]:
     data = payload if isinstance(payload, dict) else {}
-    display_name = str(data.get("display_name", "User") or "User").strip()
+    display_name = str(data.get("display_name", "") or "").strip()
     timezone = str(data.get("timezone", "Asia/Kuwait") or "Asia/Kuwait").strip()
-    if not display_name:
-        display_name = "User"
     if not timezone:
         timezone = "Asia/Kuwait"
+
+    location_mode = str(data.get("location_mode", "auto") or "auto").strip().lower()
+    if location_mode not in {"auto", "manual"}:
+        location_mode = "auto"
+
+    theme_mode = str(data.get("theme_mode", "system") or "system").strip().lower()
+    if theme_mode not in {"system", "dark", "light"}:
+        theme_mode = "system"
+
+    city = str(data.get("city", "") or "").strip()
+    country_code = str(data.get("country_code", "") or "").strip().upper()[:2]
+
+    def _coerce_coordinate(value: Any) -> float | None:
+        if value in (None, ""):
+            return None
+        try:
+            coordinate = float(value)
+        except Exception:
+            return None
+        return round(coordinate, 6)
+
     return {
         "display_name": display_name,
         "timezone": timezone,
         "push_enabled": bool(data.get("push_enabled", True)),
         "email_enabled": bool(data.get("email_enabled", False)),
+        "location_mode": location_mode,
+        "country_code": country_code,
+        "city": city,
+        "latitude": _coerce_coordinate(data.get("latitude")),
+        "longitude": _coerce_coordinate(data.get("longitude")),
+        "theme_mode": theme_mode,
+    }
+
+
+def _email_local_part(value: str) -> str:
+    email = str(value or "").strip()
+    if "@" in email:
+        return email.split("@", 1)[0].strip()
+    return email
+
+
+def _first_name_token(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return re.split(r"\s+", text)[0].strip()
+
+
+def _resolved_user_display_name(
+    user: dict[str, Any],
+    profile_prefs: dict[str, Any] | None = None,
+) -> str:
+    prefs = profile_prefs if isinstance(profile_prefs, dict) else {}
+    configured = _first_name_token(str(prefs.get("display_name", "") or ""))
+    if configured:
+        return configured
+
+    account_name = _first_name_token(str(user.get("name", "") or ""))
+    if account_name:
+        return account_name
+
+    email_name = _first_name_token(_email_local_part(str(user.get("email", "") or "")))
+    return email_name or "User"
+
+
+def _country_name_from_code(code: str) -> str:
+    mapping = {
+        "KW": "Kuwait",
+        "PK": "Pakistan",
+        "SA": "Saudi Arabia",
+        "AE": "United Arab Emirates",
+        "QA": "Qatar",
+        "BH": "Bahrain",
+        "OM": "Oman",
+        "EG": "Egypt",
+        "TR": "Turkey",
+        "GB": "United Kingdom",
+        "US": "United States",
+    }
+    key = str(code or "").strip().upper()
+    if key in mapping:
+        return mapping[key]
+    if len(key) == 2 and key.isalpha():
+        return key
+    return ""
+
+
+def _profile_location_summary(profile_prefs: dict[str, Any]) -> dict[str, Any]:
+    prefs = profile_prefs if isinstance(profile_prefs, dict) else {}
+    mode = str(prefs.get("location_mode", "auto") or "auto").strip().lower() or "auto"
+    city = str(prefs.get("city", "") or "").strip()
+    country_code = str(prefs.get("country_code", "") or "").strip().upper()
+    country_name = _country_name_from_code(country_code)
+    timezone_name = str(prefs.get("timezone", "") or "").strip()
+    latitude = prefs.get("latitude")
+    longitude = prefs.get("longitude")
+
+    parts = [part for part in (city, country_name or country_code) if part]
+    if parts:
+        label = ", ".join(parts)
+    elif latitude is not None and longitude is not None:
+        label = (
+            f"{timezone_name or 'Detected location'} · "
+            f"{float(latitude):.2f}, {float(longitude):.2f}"
+        )
+    elif timezone_name:
+        label = timezone_name
+    else:
+        label = "Location pending"
+
+    return {
+        "mode": mode,
+        "city": city,
+        "country_code": country_code,
+        "country_name": country_name,
+        "timezone": timezone_name,
+        "latitude": latitude,
+        "longitude": longitude,
+        "label": label,
+    }
+
+
+def _fallback_location_from_profile(profile_prefs: dict[str, Any]) -> tuple[str, str]:
+    timezone_name = str(profile_prefs.get("timezone", "") or "").strip()
+    country_code = str(profile_prefs.get("country_code", "") or "").strip().upper()
+    city = str(profile_prefs.get("city", "") or "").strip()
+    country_name = _country_name_from_code(country_code)
+
+    if city and country_name:
+        return city, country_name
+    if city:
+        return city, country_name or "Kuwait"
+    if country_code == "PK" or timezone_name == "Asia/Karachi":
+        return "Karachi", "Pakistan"
+    return "Kuwait City", "Kuwait"
+
+
+def _mobile_prayer_service_for_user(
+    user: dict[str, Any],
+    profile: dict[str, Any],
+):
+    from islamic_mode.prayer_times import PrayerTimesService
+
+    profile_prefs = _chat_profile_prefs_for_user(profile, user)
+    location = _profile_location_summary(profile_prefs)
+    latitude = location.get("latitude")
+    longitude = location.get("longitude")
+    mode = str(location.get("mode", "auto") or "auto").strip().lower()
+    if mode == "auto" and latitude is not None and longitude is not None:
+        service = PrayerTimesService(
+            method=8,
+            latitude=float(latitude),
+            longitude=float(longitude),
+        )
+    else:
+        city, country = _fallback_location_from_profile(profile_prefs)
+        service = PrayerTimesService(city=city, country=country, method=8)
+
+    prayer_bundle = service.get_today_prayer_bundle()
+    resolved_location = _profile_location_summary(
+        {
+            **profile_prefs,
+            "timezone": str(
+                ((prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}).get("timezone", "")
+                or location.get("timezone", "")
+                or "Asia/Kuwait"
+            ).strip(),
+            "city": str(
+                ((prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}).get("city", "")
+                or location.get("city", "")
+            ).strip(),
+            "country_code": str(location.get("country_code", "") or "").strip().upper(),
+            "latitude": ((prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}).get(
+                "latitude",
+                latitude,
+            ),
+            "longitude": ((prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}).get(
+                "longitude",
+                longitude,
+            ),
+            "location_mode": mode,
+        }
+    )
+    return service, prayer_bundle, resolved_location, profile_prefs
+
+
+def _mobile_islamic_overview_payload(user: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+    from islamic_mode.hadith_daily import HadithService
+    from islamic_mode.islamic_calendar import IslamicCalendarService
+    from islamic_mode.sunnah_tips import SunnahSleepTips
+
+    service, prayer_bundle, location, _ = _mobile_prayer_service_for_user(user, profile)
+    calendar_service = IslamicCalendarService()
+    hadith_service = HadithService()
+    tips_service = SunnahSleepTips()
+
+    prayers = prayer_bundle.get("prayers", {}) if isinstance(prayer_bundle, dict) else {}
+    next_prayer = service.get_next_prayer()
+    hijri = calendar_service.get_hijri_date()
+    event = calendar_service.get_todays_islamic_event()
+
+    return {
+        "prayers": prayers,
+        "next_prayer": next_prayer,
+        "location": location,
+        "hadith": hadith_service.get_daily_hadith(),
+        "sleep_hadith": hadith_service.get_sleep_hadith(),
+        "hijri": hijri,
+        "islamic_event": event,
+        "ramadan_active": calendar_service.is_ramadan(),
+        "sunnah_tip": tips_service.get_tip_of_night(),
+        "led_color": service.get_prayer_led_color(str(next_prayer.get("name", "") or "")),
     }
 
 
@@ -749,6 +1047,828 @@ def _normalize_device_controls(payload: dict[str, Any] | None) -> dict[str, Any]
         "alarm_on": bool(data.get("alarm_on", True)),
         "light_level": light_level,
     }
+
+
+_MOBILE_OTP_TTL_SECONDS = 10 * 60
+_MOBILE_OTP_MAX_ATTEMPTS = 5
+_MOBILE_ALARM_MAX_ITEMS = 12
+
+
+def _mobile_otp_debug_enabled() -> bool:
+    return str(os.getenv("MOBILE_OTP_DEBUG", "1") or "1").strip() != "0"
+
+
+def _env_truthy(name: str, default: bool = False) -> bool:
+    raw = str(os.getenv(name, "1" if default else "0") or ("1" if default else "0")).strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _normalize_phone_number(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        return ""
+    if digits.startswith("00"):
+        digits = digits[2:]
+    return f"+{digits}"
+
+
+def _mask_phone_number(phone_number: str) -> str:
+    raw = str(phone_number or "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if len(digits) <= 4:
+        return raw or "unknown"
+    return f"+{'*' * (len(digits) - 4)}{digits[-4:]}"
+
+
+def _otp_hmac_digest(*, phone_number: str, request_id: str, otp_code: str) -> str:
+    secret = (
+        str(os.getenv("MOBILE_OTP_SECRET", "") or "").strip()
+        or str(settings.paypal_client_secret or "").strip()
+        or "danah_mobile_otp_secret"
+    )
+    message = f"{phone_number}|{request_id}|{otp_code}".encode("utf-8")
+    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def _mobile_http_json_request(
+    *,
+    url: str,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    query_params: dict[str, Any] | None = None,
+    form_data: dict[str, Any] | None = None,
+    json_body: dict[str, Any] | None = None,
+    timeout_seconds: int = 15,
+    error_prefix: str = "External auth provider",
+) -> dict[str, Any]:
+    base_url = str(url or "").strip()
+    if not base_url:
+        return {}
+
+    final_url = base_url
+    if isinstance(query_params, dict) and query_params:
+        encoded_query = urlencode({k: "" if v is None else str(v) for k, v in query_params.items()})
+        sep = "&" if "?" in base_url else "?"
+        final_url = f"{base_url}{sep}{encoded_query}"
+
+    request_body = None
+    merged_headers = {str(k): str(v) for k, v in (headers or {}).items() if str(k).strip()}
+    if isinstance(form_data, dict):
+        request_body = urlencode({k: "" if v is None else str(v) for k, v in form_data.items()}).encode("utf-8")
+        merged_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+    elif isinstance(json_body, dict):
+        request_body = json.dumps(json_body, ensure_ascii=True).encode("utf-8")
+        merged_headers.setdefault("Content-Type", "application/json")
+
+    request = UrlRequest(final_url, data=request_body, method=str(method or "GET").upper())
+    for key, value in merged_headers.items():
+        request.add_header(key, value)
+
+    try:
+        with urlopen(request, timeout=max(3, int(timeout_seconds))) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            if not raw.strip():
+                return {}
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                return {"raw": raw}
+            return payload if isinstance(payload, dict) else {"data": payload}
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+        raise HTTPException(status_code=502, detail=f"{error_prefix} HTTP error: {exc.code} {detail[:180]}") from exc
+    except URLError as exc:
+        raise HTTPException(status_code=502, detail=f"{error_prefix} is unreachable") from exc
+
+
+def _mobile_otp_delivery_mode() -> str:
+    raw = str(os.getenv("MOBILE_OTP_DELIVERY_MODE", "auto") or "auto").strip().lower()
+    if raw in {"simulated", "twilio_sms", "webhook", "auto"}:
+        return raw
+    return "auto"
+
+
+def _mobile_otp_delivery_timeout_seconds() -> int:
+    raw = str(os.getenv("MOBILE_OTP_DELIVERY_TIMEOUT_SECONDS", "15") or "15").strip()
+    try:
+        value = int(raw)
+    except Exception:
+        value = 15
+    return max(3, min(60, value))
+
+
+def _mobile_twilio_sms_config() -> dict[str, str]:
+    return {
+        "account_sid": str(os.getenv("TWILIO_ACCOUNT_SID", "") or "").strip(),
+        "auth_token": str(os.getenv("TWILIO_AUTH_TOKEN", "") or "").strip(),
+        "from_number": str(os.getenv("TWILIO_SMS_FROM", "") or "").strip(),
+    }
+
+
+def _mobile_twilio_sms_configured(config: dict[str, str]) -> bool:
+    return bool(
+        str(config.get("account_sid", "")).strip()
+        and str(config.get("auth_token", "")).strip()
+        and str(config.get("from_number", "")).strip()
+    )
+
+
+def _mobile_otp_sms_message(otp_code: str) -> str:
+    ttl_minutes = max(1, int(_MOBILE_OTP_TTL_SECONDS // 60))
+    template = str(
+        os.getenv(
+            "MOBILE_OTP_SMS_TEMPLATE",
+            "Danah verification code: {code}. It expires in {minutes} minutes.",
+        )
+        or ""
+    ).strip()
+    if not template:
+        template = "Danah verification code: {code}. It expires in {minutes} minutes."
+    try:
+        rendered = template.format(code=otp_code, minutes=ttl_minutes)
+    except Exception:
+        rendered = f"Danah verification code: {otp_code}. It expires in {ttl_minutes} minutes."
+    return " ".join(str(rendered).split())
+
+
+def _mobile_send_otp_via_twilio(phone_number: str, otp_code: str) -> dict[str, Any]:
+    config = _mobile_twilio_sms_config()
+    if not _mobile_twilio_sms_configured(config):
+        raise HTTPException(status_code=500, detail="Twilio SMS delivery is not configured")
+
+    account_sid = config.get("account_sid", "")
+    auth_token = config.get("auth_token", "")
+    auth_bytes = f"{account_sid}:{auth_token}".encode("utf-8")
+    basic = base64.b64encode(auth_bytes).decode("ascii")
+    payload = _mobile_http_json_request(
+        url=f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
+        method="POST",
+        headers={"Authorization": f"Basic {basic}"},
+        form_data={
+            "To": phone_number,
+            "From": str(config.get("from_number", "")).strip(),
+            "Body": _mobile_otp_sms_message(otp_code),
+        },
+        timeout_seconds=_mobile_otp_delivery_timeout_seconds(),
+        error_prefix="Twilio SMS",
+    )
+    return {
+        "provider": "twilio_sms",
+        "message_id": str(payload.get("sid", "") or ""),
+        "status": str(payload.get("status", "queued") or "queued"),
+    }
+
+
+def _mobile_send_otp_via_webhook(phone_number: str, otp_code: str, request_id: str) -> dict[str, Any]:
+    webhook_url = str(os.getenv("MOBILE_OTP_WEBHOOK_URL", "") or "").strip()
+    if not webhook_url:
+        raise HTTPException(status_code=500, detail="OTP webhook delivery is not configured")
+
+    headers: dict[str, str] = {}
+    webhook_bearer = str(os.getenv("MOBILE_OTP_WEBHOOK_BEARER", "") or "").strip()
+    if webhook_bearer:
+        headers["Authorization"] = f"Bearer {webhook_bearer}"
+
+    payload = _mobile_http_json_request(
+        url=webhook_url,
+        method="POST",
+        headers=headers,
+        json_body={
+            "phone_number": phone_number,
+            "otp_code": otp_code,
+            "request_id": request_id,
+            "ttl_seconds": _MOBILE_OTP_TTL_SECONDS,
+            "message": _mobile_otp_sms_message(otp_code),
+        },
+        timeout_seconds=_mobile_otp_delivery_timeout_seconds(),
+        error_prefix="OTP webhook",
+    )
+    accepted = payload.get("ok", payload.get("accepted", True))
+    if not bool(accepted):
+        raise HTTPException(status_code=502, detail="OTP webhook rejected delivery")
+    return {
+        "provider": "webhook",
+        "message_id": str(payload.get("message_id", "") or payload.get("id", "") or ""),
+        "status": str(payload.get("status", "accepted") or "accepted"),
+    }
+
+
+def _mobile_send_otp_code(phone_number: str, otp_code: str, request_id: str) -> dict[str, Any]:
+    mode = _mobile_otp_delivery_mode()
+    if mode == "auto":
+        if _mobile_twilio_sms_configured(_mobile_twilio_sms_config()):
+            mode = "twilio_sms"
+        elif str(os.getenv("MOBILE_OTP_WEBHOOK_URL", "") or "").strip():
+            mode = "webhook"
+        else:
+            mode = "simulated"
+
+    if mode == "simulated":
+        return {"provider": "simulated", "message_id": "", "status": "accepted"}
+    if mode == "twilio_sms":
+        return _mobile_send_otp_via_twilio(phone_number, otp_code)
+    if mode == "webhook":
+        return _mobile_send_otp_via_webhook(phone_number, otp_code, request_id)
+    return {"provider": "simulated", "message_id": "", "status": "accepted"}
+
+
+def _sanitize_identity_value(value: Any, *, max_len: int = 64) -> str:
+    raw = str(value or "").strip().lower()
+    safe = re.sub(r"[^a-z0-9._-]+", "_", raw).strip("._-")
+    if not safe:
+        safe = "user"
+    return safe[:max_len]
+
+
+def _phone_shadow_email(phone_number: str) -> str:
+    digits = "".join(ch for ch in str(phone_number or "") if ch.isdigit())
+    tail = digits[-12:] if digits else secrets.token_hex(4)
+    return f"phone_{tail}@phone.local"
+
+
+def _social_shadow_email(provider: str, provider_user_id: str) -> str:
+    safe_provider = _sanitize_identity_value(provider, max_len=16)
+    safe_identity = _sanitize_identity_value(provider_user_id, max_len=48)
+    return f"{safe_provider}_{safe_identity}@social.local"
+
+
+def _mobile_social_allow_unverified() -> bool:
+    return _env_truthy("MOBILE_SOCIAL_ALLOW_UNVERIFIED", default=False)
+
+
+def _mobile_social_timeout_seconds() -> int:
+    raw = str(os.getenv("MOBILE_SOCIAL_TIMEOUT_SECONDS", "15") or "15").strip()
+    try:
+        seconds = int(raw)
+    except Exception:
+        seconds = 15
+    return max(3, min(60, seconds))
+
+
+def _social_claim_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    return text in {"1", "true", "yes", "on"}
+
+
+def _safe_epoch_seconds(value: Any) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return 0
+
+
+def _decode_jwt_payload_unverified(token: str) -> dict[str, Any]:
+    raw = str(token or "").strip()
+    if not raw or "." not in raw:
+        return {}
+    parts = raw.split(".")
+    if len(parts) < 2:
+        return {}
+    payload_part = str(parts[1] or "").strip()
+    if not payload_part:
+        return {}
+    padding = "=" * (-len(payload_part) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(f"{payload_part}{padding}".encode("ascii"))
+    except (ValueError, binascii.Error):
+        return {}
+    try:
+        parsed = json.loads(decoded.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _verify_google_social_identity(*, access_token: str = "", id_token: str = "") -> dict[str, Any]:
+    token = str(access_token or "").strip()
+    identity_token = str(id_token or "").strip()
+    if not token and not identity_token:
+        raise HTTPException(status_code=422, detail="Google login requires provider_access_token or provider_id_token")
+
+    google_client_id = str(os.getenv("MOBILE_SOCIAL_GOOGLE_CLIENT_ID", "") or "").strip()
+    provider_payload: dict[str, Any] = {}
+
+    if identity_token:
+        provider_payload = _mobile_http_json_request(
+            url="https://oauth2.googleapis.com/tokeninfo",
+            method="GET",
+            query_params={"id_token": identity_token},
+            timeout_seconds=_mobile_social_timeout_seconds(),
+            error_prefix="Google token verification",
+        )
+        provider_user_id = str(provider_payload.get("sub", "") or "").strip()
+        if not provider_user_id:
+            raise HTTPException(status_code=401, detail="Google identity token is invalid")
+        aud = str(provider_payload.get("aud", "") or "").strip()
+        if google_client_id and aud and aud != google_client_id:
+            raise HTTPException(status_code=401, detail="Google token audience mismatch")
+        exp_at = _safe_epoch_seconds(provider_payload.get("exp"))
+        now_ts = int(ensure_utc(utcnow()).timestamp())
+        if exp_at and exp_at < now_ts - 30:
+            raise HTTPException(status_code=401, detail="Google identity token is expired")
+        return {
+            "provider_user_id": provider_user_id,
+            "email": str(provider_payload.get("email", "") or "").strip().lower(),
+            "name": str(provider_payload.get("name", "") or "").strip(),
+            "email_verified": _social_claim_bool(provider_payload.get("email_verified")),
+            "verification_method": "google_id_token",
+        }
+
+    provider_payload = _mobile_http_json_request(
+        url="https://openidconnect.googleapis.com/v1/userinfo",
+        method="GET",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout_seconds=_mobile_social_timeout_seconds(),
+        error_prefix="Google access token",
+    )
+    provider_user_id = str(provider_payload.get("sub", "") or provider_payload.get("id", "") or "").strip()
+    if not provider_user_id:
+        raise HTTPException(status_code=401, detail="Google access token is invalid")
+    return {
+        "provider_user_id": provider_user_id,
+        "email": str(provider_payload.get("email", "") or "").strip().lower(),
+        "name": str(provider_payload.get("name", "") or "").strip(),
+        "email_verified": _social_claim_bool(provider_payload.get("email_verified")),
+        "verification_method": "google_access_token",
+    }
+
+
+def _verify_facebook_social_identity(*, access_token: str = "") -> dict[str, Any]:
+    token = str(access_token or "").strip()
+    if not token:
+        raise HTTPException(status_code=422, detail="Facebook login requires provider_access_token")
+
+    app_secret = str(os.getenv("MOBILE_SOCIAL_FACEBOOK_APP_SECRET", "") or "").strip()
+    app_id = str(os.getenv("MOBILE_SOCIAL_FACEBOOK_APP_ID", "") or "").strip()
+    appsecret_proof = ""
+    if app_secret:
+        appsecret_proof = hmac.new(app_secret.encode("utf-8"), token.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    params = {
+        "fields": "id,name,email",
+        "access_token": token,
+    }
+    if appsecret_proof:
+        params["appsecret_proof"] = appsecret_proof
+    provider_payload = _mobile_http_json_request(
+        url="https://graph.facebook.com/me",
+        method="GET",
+        query_params=params,
+        timeout_seconds=_mobile_social_timeout_seconds(),
+        error_prefix="Facebook token verification",
+    )
+    provider_user_id = str(provider_payload.get("id", "") or "").strip()
+    if not provider_user_id:
+        raise HTTPException(status_code=401, detail="Facebook access token is invalid")
+
+    if app_id and app_secret:
+        debug_payload = _mobile_http_json_request(
+            url="https://graph.facebook.com/debug_token",
+            method="GET",
+            query_params={
+                "input_token": token,
+                "access_token": f"{app_id}|{app_secret}",
+            },
+            timeout_seconds=_mobile_social_timeout_seconds(),
+            error_prefix="Facebook debug token",
+        )
+        debug_data = debug_payload.get("data", {}) if isinstance(debug_payload.get("data", {}), dict) else {}
+        if not bool(debug_data.get("is_valid", False)):
+            raise HTTPException(status_code=401, detail="Facebook access token is invalid")
+        token_app_id = str(debug_data.get("app_id", "") or "").strip()
+        if token_app_id and token_app_id != app_id:
+            raise HTTPException(status_code=401, detail="Facebook token audience mismatch")
+
+    return {
+        "provider_user_id": provider_user_id,
+        "email": str(provider_payload.get("email", "") or "").strip().lower(),
+        "name": str(provider_payload.get("name", "") or "").strip(),
+        "email_verified": bool(str(provider_payload.get("email", "") or "").strip()),
+        "verification_method": "facebook_access_token",
+    }
+
+
+def _apple_social_config() -> dict[str, str]:
+    return {
+        "client_id": str(os.getenv("MOBILE_SOCIAL_APPLE_CLIENT_ID", "") or "").strip(),
+        "client_secret": str(os.getenv("MOBILE_SOCIAL_APPLE_CLIENT_SECRET", "") or "").strip(),
+    }
+
+
+def _exchange_apple_social_auth_code(auth_code: str) -> dict[str, Any]:
+    config = _apple_social_config()
+    client_id = str(config.get("client_id", "")).strip()
+    client_secret = str(config.get("client_secret", "")).strip()
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="Apple social auth code verification is not configured",
+        )
+
+    payload = _mobile_http_json_request(
+        url="https://appleid.apple.com/auth/token",
+        method="POST",
+        form_data={
+            "grant_type": "authorization_code",
+            "code": str(auth_code or "").strip(),
+            "client_id": client_id,
+            "client_secret": client_secret,
+        },
+        timeout_seconds=_mobile_social_timeout_seconds(),
+        error_prefix="Apple auth code exchange",
+    )
+    error_code = str(payload.get("error", "") or "").strip()
+    if error_code:
+        raise HTTPException(status_code=401, detail=f"Apple auth code is invalid: {error_code}")
+    return payload
+
+
+def _verify_apple_social_identity(*, id_token: str = "", auth_code: str = "") -> dict[str, Any]:
+    verified_id_token = str(id_token or "").strip()
+    if auth_code:
+        exchange_payload = _exchange_apple_social_auth_code(auth_code)
+        exchanged_id_token = str(exchange_payload.get("id_token", "") or "").strip()
+        if exchanged_id_token:
+            verified_id_token = exchanged_id_token
+
+    if not verified_id_token:
+        raise HTTPException(
+            status_code=422,
+            detail="Apple login requires provider_auth_code or provider_id_token",
+        )
+
+    claims = _decode_jwt_payload_unverified(verified_id_token)
+    provider_user_id = str(claims.get("sub", "") or "").strip()
+    if not provider_user_id:
+        raise HTTPException(status_code=401, detail="Apple identity token is invalid")
+
+    issuer = str(claims.get("iss", "") or "").strip()
+    if issuer and issuer not in {"https://appleid.apple.com", "appleid.apple.com"}:
+        raise HTTPException(status_code=401, detail="Apple token issuer is invalid")
+
+    configured_client_id = str(_apple_social_config().get("client_id", "") or "").strip()
+    audience = str(claims.get("aud", "") or "").strip()
+    if configured_client_id and audience and audience != configured_client_id:
+        raise HTTPException(status_code=401, detail="Apple token audience mismatch")
+
+    exp_at = _safe_epoch_seconds(claims.get("exp"))
+    now_ts = int(ensure_utc(utcnow()).timestamp())
+    if exp_at and exp_at < now_ts - 30:
+        raise HTTPException(status_code=401, detail="Apple identity token is expired")
+
+    return {
+        "provider_user_id": provider_user_id,
+        "email": str(claims.get("email", "") or "").strip().lower(),
+        "name": "",
+        "email_verified": _social_claim_bool(claims.get("email_verified")),
+        "verification_method": "apple_auth_code" if auth_code else "apple_id_token",
+    }
+
+
+def _verify_mobile_social_identity(payload: MobileSocialLoginRequest) -> dict[str, Any]:
+    provider = str(payload.provider or "").strip().lower()
+    access_token = str(payload.provider_access_token or "").strip()
+    id_token = str(payload.provider_id_token or "").strip()
+    auth_code = str(payload.provider_auth_code or "").strip()
+    legacy_raw = str(payload.provider_user_id or "").strip()
+    legacy_user_id = _sanitize_identity_value(legacy_raw, max_len=72) if legacy_raw else ""
+
+    if (not access_token) and (not id_token) and (not auth_code):
+        if legacy_user_id and _mobile_social_allow_unverified():
+            return {
+                "provider_user_id": legacy_user_id,
+                "email": str(payload.email or "").strip().lower(),
+                "name": str(payload.name or "").strip(),
+                "email_verified": False,
+                "verification_method": "legacy_unverified",
+            }
+
+    try:
+        if provider == "google":
+            verified = _verify_google_social_identity(access_token=access_token, id_token=id_token)
+        elif provider == "facebook":
+            verified = _verify_facebook_social_identity(access_token=access_token)
+        elif provider == "apple":
+            verified = _verify_apple_social_identity(id_token=id_token, auth_code=auth_code)
+        else:
+            raise HTTPException(status_code=422, detail="Unsupported social provider")
+    except HTTPException as exc:
+        detail = str(exc.detail or "")
+        if exc.status_code == 502 and ("HTTP error: 400" in detail or "HTTP error: 401" in detail):
+            raise HTTPException(status_code=401, detail="Social token is invalid or expired") from exc
+        raise
+
+    verified_user_id_raw = str(verified.get("provider_user_id", "") or "").strip()
+    provider_user_id = _sanitize_identity_value(verified_user_id_raw, max_len=72) if verified_user_id_raw else ""
+    if not provider_user_id:
+        if legacy_user_id and _mobile_social_allow_unverified():
+            provider_user_id = legacy_user_id
+            verified["verification_method"] = "legacy_unverified"
+            verified["email_verified"] = False
+        else:
+            raise HTTPException(status_code=401, detail="Social provider identity could not be verified")
+
+    verified["provider_user_id"] = provider_user_id
+    verified["email"] = str(verified.get("email", "") or "").strip().lower()
+    verified["name"] = str(verified.get("name", "") or "").strip()
+    verified["email_verified"] = bool(verified.get("email_verified", False))
+    return verified
+
+
+def _mobile_user_payload_by_id(user_id: str, *, client_name: str = "") -> dict[str, Any] | None:
+    key = str(user_id or "").strip()
+    if not key:
+        return None
+    db_user = _db_user_repository().get_user_by_id(key)
+    if db_user is None:
+        return None
+    payload = _db_user_to_mobile_user_payload(db_user, client_name=client_name)
+    _ensure_legacy_store_user_shadow(
+        payload,
+        password_hash=str(getattr(db_user, "password_hash", "") or "mobile_shadow_managed"),
+    )
+    return payload
+
+
+def _ensure_external_identity_user(*, email: str, name: str, password_hash: str = "mobile_shadow_managed") -> dict[str, Any]:
+    normalized_email = str(email or "").strip().lower()
+    if "@" not in normalized_email:
+        normalized_email = f"{_sanitize_identity_value(normalized_email or 'user', max_len=40)}@shadow.local"
+    normalized_name = str(name or "").strip()
+
+    repo = _db_user_repository()
+    db_user = repo.get_user_by_email(normalized_email)
+    if db_user is None:
+        created = repo.create_user(
+            email=normalized_email,
+            password_hash=str(password_hash or "").strip() or "mobile_shadow_managed",
+            full_name=normalized_name or None,
+        )
+        payload = _db_user_to_mobile_user_payload(created)
+        _ensure_legacy_store_user_shadow(
+            payload,
+            password_hash=str(password_hash or "").strip() or "mobile_shadow_managed",
+        )
+        return payload
+
+    if normalized_name and not str(getattr(db_user, "full_name", "") or "").strip():
+        try:
+            db_user = repo.update_user(str(getattr(db_user, "id", "") or ""), full_name=normalized_name)
+        except Exception:
+            pass
+
+    payload = _db_user_to_mobile_user_payload(db_user)
+    _ensure_legacy_store_user_shadow(
+        payload,
+        password_hash=str(getattr(db_user, "password_hash", "") or "mobile_shadow_managed"),
+    )
+    return payload
+
+
+def _extract_device_id_from_qr_payload(qr_payload: str, *, fallback_device_id: str = "") -> str:
+    raw = str(qr_payload or "").strip()
+    fallback = str(fallback_device_id or "").strip()
+    candidate = raw or fallback
+    if not candidate:
+        return ""
+
+    parsed = urlparse(candidate)
+    if parsed.query:
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+            if str(key or "").strip().lower() == "device_id":
+                candidate = str(value or "").strip()
+                break
+    elif "device_id=" in candidate.lower():
+        _, _, suffix = candidate.lower().partition("device_id=")
+        candidate = suffix.strip()
+
+    normalized = re.sub(r"[^A-Za-z0-9._-]+", "", str(candidate or "").strip()).upper()
+    return normalized[:80]
+
+
+def _extract_claim_token_from_qr_payload(qr_payload: str, *, fallback_claim_token: str = "") -> str:
+    fallback = str(fallback_claim_token or "").strip()
+    raw = str(qr_payload or "").strip()
+    if not raw:
+        return fallback
+
+    parsed = urlparse(raw)
+    if parsed.query:
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+            normalized_key = str(key or "").strip().lower()
+            if normalized_key in {"claim_token", "pairing_token", "pair_token", "token"}:
+                candidate = re.sub(r"[^A-Za-z0-9._-]+", "", str(value or "").strip())
+                if candidate:
+                    return candidate[:120]
+    else:
+        for segment in re.split(r"[?&]", raw):
+            if "=" not in segment:
+                continue
+            key, _, value = segment.partition("=")
+            normalized_key = str(key or "").strip().lower()
+            if normalized_key in {"claim_token", "pairing_token", "pair_token", "token"}:
+                candidate = re.sub(r"[^A-Za-z0-9._-]+", "", str(value or "").strip())
+                if candidate:
+                    return candidate[:120]
+    return re.sub(r"[^A-Za-z0-9._-]+", "", fallback)[:120]
+
+
+def _mobile_pairing_claim_required() -> bool:
+    return _env_truthy("MOBILE_PAIRING_REQUIRE_CLAIM_TOKEN", default=True)
+
+
+def _mobile_pairing_allow_auto_register() -> bool:
+    return _env_truthy("MOBILE_PAIRING_ALLOW_AUTO_REGISTER", default=False)
+
+
+def _pairing_claim_matches_device(device_row: dict[str, Any], claim_token: str) -> bool:
+    row = device_row if isinstance(device_row, dict) else {}
+    stored = str(row.get("claim_token", "") or "").strip()
+    if not stored:
+        return not _mobile_pairing_claim_required()
+    candidate = str(claim_token or "").strip()
+    if not candidate:
+        return False
+    return hmac.compare_digest(stored, candidate)
+
+
+def _append_query_params(url: str, params: dict[str, str]) -> str:
+    raw_url = str(url or "").strip()
+    if not raw_url:
+        return raw_url
+    parsed = urlparse(raw_url)
+    query_pairs = list(parse_qsl(parsed.query, keep_blank_values=True))
+    query_map = {str(key): str(value) for key, value in query_pairs}
+    for key, value in (params or {}).items():
+        if str(key or "").strip():
+            query_map[str(key)] = str(value or "")
+    encoded = urlencode(query_map)
+    return urlunparse(parsed._replace(query=encoded))
+
+
+def _safe_mobile_done_uri(candidate: str) -> str:
+    value = str(candidate or "").strip()
+    if not value:
+        return ""
+    lower = value.lower()
+    if lower.startswith("danah://") or lower.startswith("smartbed://"):
+        return value
+    if lower.startswith("/"):
+        return value
+    return ""
+
+
+def _load_registered_qr_device(
+    device_id: str,
+    bed_location: str = "Kuwait",
+    *,
+    auto_create: bool = True,
+) -> dict[str, Any]:
+    normalized_id = str(device_id or "").strip()
+    if not normalized_id:
+        return {}
+    from qr_code.generate_qr import load_registered_devices, register_device
+
+    devices = load_registered_devices()
+    for row in devices:
+        if str(row.get("device_id", "")).strip() == normalized_id:
+            return row
+    if not auto_create:
+        return {}
+    register_device(normalized_id, bed_location=bed_location or "Kuwait")
+    devices = load_registered_devices()
+    for row in devices:
+        if str(row.get("device_id", "")).strip() == normalized_id:
+            return row
+    return {}
+
+
+def _normalize_alarm_time(value: Any) -> str:
+    raw = str(value or "").strip()
+    if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", raw):
+        return raw
+    return "07:00"
+
+
+def _normalize_alarm_days(values: Any) -> list[int]:
+    if not isinstance(values, list):
+        return []
+    seen: set[int] = set()
+    out: list[int] = []
+    for item in values:
+        try:
+            day = int(item)
+        except Exception:
+            continue
+        if day < 1 or day > 7:
+            continue
+        if day in seen:
+            continue
+        seen.add(day)
+        out.append(day)
+    out.sort()
+    return out
+
+
+def _alarm_next_trigger_utc(
+    alarm_payload: dict[str, Any],
+    *,
+    timezone_name: str = "Asia/Kuwait",
+    now_utc: datetime | None = None,
+) -> str:
+    alarm = alarm_payload if isinstance(alarm_payload, dict) else {}
+    if not bool(alarm.get("enabled", True)):
+        return ""
+
+    hh_mm = _normalize_alarm_time(alarm.get("time"))
+    hour = int(hh_mm[:2])
+    minute = int(hh_mm[3:])
+    days = _normalize_alarm_days(alarm.get("days", []))
+    now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+
+    tz_name = str(timezone_name or "").strip() or "Asia/Kuwait"
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = timezone.utc
+    now_local = now.astimezone(tz)
+
+    for offset in range(0, 8):
+        date_local = (now_local + timedelta(days=offset)).date()
+        if days and date_local.isoweekday() not in days:
+            continue
+        candidate_local = datetime(
+            year=date_local.year,
+            month=date_local.month,
+            day=date_local.day,
+            hour=hour,
+            minute=minute,
+            tzinfo=tz,
+        )
+        if candidate_local <= now_local:
+            continue
+        return to_iso(candidate_local.astimezone(timezone.utc).replace(microsecond=0))
+    return ""
+
+
+def _normalize_mobile_alarm(
+    payload: dict[str, Any] | None,
+    *,
+    existing_alarm_id: str = "",
+    now_iso: str = "",
+) -> dict[str, Any]:
+    data = payload if isinstance(payload, dict) else {}
+    alarm_id = str(data.get("alarm_id", "") or "").strip() or str(existing_alarm_id or "").strip()
+    if not alarm_id:
+        alarm_id = f"alarm_{secrets.token_hex(6)}"
+
+    label = str(data.get("label", "") or "").strip()[:48]
+    sound = str(data.get("sound", "default") or "default").strip()[:48]
+    if not sound:
+        sound = "default"
+
+    return {
+        "alarm_id": alarm_id,
+        "time": _normalize_alarm_time(data.get("time", "07:00")),
+        "days": _normalize_alarm_days(data.get("days", [])),
+        "enabled": bool(data.get("enabled", True)),
+        "label": label,
+        "sound": sound,
+        "vibrate": bool(data.get("vibrate", True)),
+        "created_at": str(data.get("created_at", "") or "").strip() or (str(now_iso or "").strip() or _now_utc_iso()),
+        "updated_at": str(now_iso or "").strip() or _now_utc_iso(),
+    }
+
+
+def _serialize_mobile_alarm_rows(
+    rows: list[dict[str, Any]] | None,
+    *,
+    timezone_name: str = "Asia/Kuwait",
+    now_utc: datetime | None = None,
+) -> list[dict[str, Any]]:
+    alarms = rows if isinstance(rows, list) else []
+    serialized: list[dict[str, Any]] = []
+    for row in alarms:
+        if not isinstance(row, dict):
+            continue
+        normalized = _normalize_mobile_alarm(
+            row,
+            existing_alarm_id=str(row.get("alarm_id", "") or ""),
+            now_iso=str(row.get("updated_at", "") or _now_utc_iso()),
+        )
+        normalized["next_trigger_at_utc"] = _alarm_next_trigger_utc(
+            normalized,
+            timezone_name=timezone_name,
+            now_utc=now_utc,
+        )
+        serialized.append(normalized)
+    serialized.sort(key=lambda item: str(item.get("time", "23:59")))
+    return serialized
 
 
 def _sanitize_user_key(value: str) -> str:
@@ -828,10 +1948,14 @@ def _chat_local_fallback(message: str) -> str:
 def _chat_profile_prefs_for_user(profile: dict[str, Any], user: dict[str, Any]) -> dict[str, Any]:
     defaults = _normalize_user_profile_prefs(
         {
-            "display_name": str(user.get("name", "") or user.get("email", "") or "User"),
+            "display_name": "",
             "timezone": "Asia/Kuwait",
             "push_enabled": True,
             "email_enabled": False,
+            "location_mode": "auto",
+            "country_code": "KW",
+            "city": "",
+            "theme_mode": "system",
         }
     )
     key = _user_profile_key(user)
@@ -865,9 +1989,12 @@ def _chat_user_context(
     controls: dict[str, Any],
     memory_line: str,
 ) -> str:
+    location = _profile_location_summary(profile_prefs)
     lines = [
-        f"user_name={str(profile_prefs.get('display_name', '') or user.get('name', '') or user.get('email', '') or 'User').strip()}",
+        f"user_name={_resolved_user_display_name(user, profile_prefs)}",
         f"user_timezone={str(profile_prefs.get('timezone', 'Asia/Kuwait') or 'Asia/Kuwait').strip()}",
+        f"user_location_mode={str(location.get('mode', 'auto') or 'auto')}",
+        f"user_location_label={str(location.get('label', '') or '').strip()}",
         f"response_style={str(settings_payload.get('response_style', 'balanced') or 'balanced').strip().lower()}",
         f"engagement_level={str(settings_payload.get('engagement_level', 'high') or 'high').strip().lower()}",
         f"wind_down_minutes={int(settings_payload.get('wind_down_minutes', 45) or 45)}",
@@ -878,6 +2005,16 @@ def _chat_user_context(
         f"audio_on={bool(controls.get('audio_on', False))}",
         f"alarm_on={bool(controls.get('alarm_on', True))}",
     ]
+    if location.get("city"):
+        lines.append(f"user_city={str(location.get('city', '')).strip()}")
+    if location.get("country_code"):
+        lines.append(f"user_country_code={str(location.get('country_code', '')).strip()}")
+    if location.get("latitude") is not None and location.get("longitude") is not None:
+        lines.append(
+            "user_coordinates="
+            f"{float(location.get('latitude', 0.0)):.6f},"
+            f"{float(location.get('longitude', 0.0)):.6f}"
+        )
     memory_text = str(memory_line or "").strip()
     if memory_text:
         lines.append(memory_text)
@@ -1211,12 +2348,13 @@ def _timeline_priority_score(row: dict[str, Any] | None) -> int:
         "failed": 95,
         "danger": 95,
         "error": 95,
+        "quiet": 96,
+        "cooldown": 90,
         "override": 88,
         "review": 84,
         "queued": 82,
         "running": 76,
         "active": 74,
-        "quiet": 70,
         "completed": 62,
         "ready": 60,
         "available": 42,
@@ -1275,6 +2413,47 @@ def _timeline_item_signature(item: dict[str, Any]) -> str:
             str(row.get("time", "") or "").strip().lower(),
         ]
     )
+
+
+def _with_min_timeline_priority(item: dict[str, Any] | None, minimum: int) -> dict[str, Any]:
+    row = dict(item) if isinstance(item, dict) else {}
+    try:
+        existing = int(row.get("priority", 0) or 0)
+    except Exception:
+        existing = 0
+    row["priority"] = max(existing, int(minimum))
+    return row
+
+
+def _is_runtime_status_row(row: dict[str, Any]) -> bool:
+    event = str(row.get("event", "") or "").strip().lower()
+    if not event:
+        return False
+    if event.startswith("quiet hours active"):
+        return True
+    if event.startswith("quiet hours override active"):
+        return True
+    if event.startswith("quiet hours override enabled"):
+        return True
+    if ": next run available in " in event:
+        return True
+    if event.endswith(": available now"):
+        return True
+    return False
+
+
+def _strip_runtime_status_rows(items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    normalized = _normalize_timeline_items(items)
+    out: list[dict[str, Any]] = []
+    for row in normalized:
+        # Keep explicit command-linked rows; only prune synthesized runtime status rows.
+        if str(row.get("command_id", "") or "").strip():
+            out.append(row)
+            continue
+        if _is_runtime_status_row(row):
+            continue
+        out.append(row)
+    return out
 
 
 def _merge_timeline_items(
@@ -1418,13 +2597,13 @@ def _mobile_timeline_items_db_first(
     if not user_key:
         return normalized_profile
 
-    db_items = _mobile_timeline_items_from_db(user_key, limit=safe_limit)
+    db_items = _strip_runtime_status_rows(_mobile_timeline_items_from_db(user_key, limit=safe_limit))
     if db_items:
         return _merge_timeline_items(db_items, normalized_profile, limit=safe_limit)
 
     if normalized_profile:
         _persist_mobile_timeline_snapshot(user_key, normalized_profile, trace_id=trace_id)
-        refreshed_db_items = _mobile_timeline_items_from_db(user_key, limit=safe_limit)
+        refreshed_db_items = _strip_runtime_status_rows(_mobile_timeline_items_from_db(user_key, limit=safe_limit))
         if refreshed_db_items:
             return _merge_timeline_items(refreshed_db_items, normalized_profile, limit=safe_limit)
     return normalized_profile
@@ -2990,6 +4169,29 @@ def _spotify_auth_url(config: dict[str, str], state: str) -> str:
     return f"https://accounts.spotify.com/authorize?{urlencode(params)}"
 
 
+def _spotify_create_oauth_state(
+    *,
+    profile: dict[str, Any],
+    user_key: str,
+    done_uri: str = "",
+) -> str:
+    if not user_key:
+        return ""
+    states = _get_scoped_profile_section(profile, "spotify_oauth_state")
+    state = secrets.token_urlsafe(24)
+    row: dict[str, Any] = {
+        "state": state,
+        "created_at": _now_utc_iso(),
+    }
+    safe_done_uri = _safe_mobile_done_uri(done_uri)
+    if safe_done_uri:
+        row["done_uri"] = safe_done_uri
+    states[user_key] = row
+    profile["spotify_oauth_state"] = states
+    _save_profile(profile)
+    return state
+
+
 def _spotify_http_post(url: str, form_data: dict[str, Any], headers: dict[str, str] | None = None) -> dict[str, Any]:
     encoded = urlencode({k: "" if v is None else str(v) for k, v in form_data.items()}).encode("utf-8")
     request = UrlRequest(url, data=encoded, method="POST")
@@ -3471,10 +4673,22 @@ def _enforce_same_origin(request: Request):
         raise HTTPException(status_code=403, detail="Origin validation failed")
     parsed = urlparse(origin)
     origin_host = (parsed.netloc or "").strip().lower()
-    if not origin_host or origin_host != host:
+    if not origin_host:
         _bump("same_origin_denied")
-        _event("warning", "same_origin_block", path=request.url.path, origin=origin, host=host)
+        _event("warning", "same_origin_block", path=request.url.path, origin=origin, host=host, reason="missing_origin_host")
         raise HTTPException(status_code=403, detail="Cross-site request blocked")
+    if origin_host == host:
+        return
+
+    # Dev/browser support: allow explicit CORS origins and regex-matched origins.
+    if origin in ALLOWED_ORIGINS:
+        return
+    if ALLOWED_ORIGIN_REGEX and re.match(ALLOWED_ORIGIN_REGEX, origin):
+        return
+
+    _bump("same_origin_denied")
+    _event("warning", "same_origin_block", path=request.url.path, origin=origin, host=host)
+    raise HTTPException(status_code=403, detail="Cross-site request blocked")
 
 
 def _cookie_user(request: Request) -> dict[str, Any] | None:
@@ -3527,6 +4741,20 @@ def _mobile_user(request: Request) -> dict[str, Any] | None:
     return user if isinstance(user, dict) else None
 
 
+def _mobile_user_from_query_access_token(request: Request) -> dict[str, Any] | None:
+    token = str(request.query_params.get("access_token", "") or "").strip()
+    if not token:
+        return None
+    user = _mobile_user_from_access_token(token)
+    if isinstance(user, dict):
+        return user
+    legacy = store.validate_mobile_access_token(token)
+    if isinstance(legacy, dict):
+        _ensure_db_user_shadow(legacy)
+        return legacy
+    return None
+
+
 def _cookie_admin(request: Request) -> dict[str, Any] | None:
     token = request.cookies.get("sb_admin_token", "")
     if not token:
@@ -3571,6 +4799,7 @@ def _database_connection():
     global _DB_SLEEP_SESSION_REPOSITORY
     global _DB_COMMAND_REPOSITORY
     global _DB_MOBILE_AUTH_REPOSITORY
+    global _BILLING_SERVICE
 
     env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
     if (_DB_CONNECTION is None) or (_DB_CONNECTION_URL != env_url):
@@ -3587,6 +4816,7 @@ def _database_connection():
         _DB_SLEEP_SESSION_REPOSITORY = None
         _DB_COMMAND_REPOSITORY = None
         _DB_MOBILE_AUTH_REPOSITORY = None
+        _BILLING_SERVICE = None
     return _DB_CONNECTION
 
 
@@ -3642,6 +4872,13 @@ def _db_mobile_auth_repository():
 
         _DB_MOBILE_AUTH_REPOSITORY = MobileAuthRepository(db=_database_connection())
     return _DB_MOBILE_AUTH_REPOSITORY
+
+
+def _billing_service() -> BillingService:
+    global _BILLING_SERVICE
+    if _BILLING_SERVICE is None:
+        _BILLING_SERVICE = BillingService.from_settings(store=store)
+    return _BILLING_SERVICE
 
 
 def _mobile_user_from_access_token(access_token: str) -> dict[str, Any] | None:
@@ -3762,6 +4999,32 @@ def _subscription_features(subscription_status: str) -> dict[str, int]:
         "wind_down_minutes": 30 if premium_like else 10,
         "automations_limit": 999 if premium_like else 2,
     }
+
+
+def _resolve_subscription_actor_user_id(request: Request, requested_user_id: str = "") -> str:
+    requested = str(requested_user_id or "").strip()
+    user = _authenticated_user(request)
+    admin = _cookie_admin(request)
+
+    if not user and not admin:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    if admin:
+        if requested:
+            return requested
+        admin_user_id = str(admin.get("user_id", "") or "").strip()
+        if admin_user_id:
+            return admin_user_id
+        raise HTTPException(status_code=400, detail="user_id is required")
+
+    actor_user_id = str((user or {}).get("user_id", "") or "").strip()
+    if not actor_user_id:
+        raise HTTPException(status_code=400, detail="Unable to resolve authenticated user")
+
+    if requested and requested != actor_user_id:
+        raise HTTPException(status_code=403, detail="Cannot access another user's subscription")
+
+    return requested or actor_user_id
 
 
 def _subscription_status_payload(user_id: str) -> dict[str, Any]:
@@ -3994,6 +5257,20 @@ def admin_panel(request: Request):
     )
 
 
+@app.get("/admin-billing")
+def admin_billing(request: Request):
+    if not _cookie_admin(request):
+        return RedirectResponse(url="/login?role=admin&next=/admin-billing", status_code=302)
+    return FileResponse(
+        WEB_DIR / "admin-billing.html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
 @app.get("/assets/{asset_name}")
 def asset_file(asset_name: str) -> FileResponse:
     safe_name = Path(asset_name).name
@@ -4183,6 +5460,9 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
     if not isinstance(profile, dict):
         profile = {}
     key = _user_profile_key(user)
+    profile_prefs = _chat_profile_prefs_for_user(profile, user)
+    resolved_name = _resolved_user_display_name(user, profile_prefs)
+    location_summary = _profile_location_summary(profile_prefs)
     resolved = _resolved_user_settings(profile, user)
     commands: list[dict[str, Any]] = []
     last_command_result = _last_command_result_from_profile(profile, key)
@@ -4240,8 +5520,8 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
     )
 
     return {
-        "name": profile.get("name", "Guest"),
-        "location": "Kuwait",
+        "name": resolved_name,
+        "location": str(location_summary.get("label", "Location pending") or "Location pending"),
         "response_style": resolved["response_style"],
         "engagement_level": resolved["engagement_level"],
         "partner_mode_enabled": resolved["partner_mode_enabled"],
@@ -4552,9 +5832,10 @@ def start_trial_subscription(payload: TrialStartRequest, request: Request):
             ),
             headers={_TRACE_ID_HEADER: trace_id},
         )
+    resolved_user_id = _resolve_subscription_actor_user_id(request, user_id)
 
     repo = _db_user_repository()
-    user = repo.get_user_by_id(user_id)
+    user = repo.get_user_by_id(resolved_user_id)
     if user is None:
         return JSONResponse(
             status_code=404,
@@ -4582,7 +5863,7 @@ def start_trial_subscription(payload: TrialStartRequest, request: Request):
     start_at = utcnow().replace(microsecond=0)
     end_at = start_at + timedelta(days=7)
     updated_user = repo.update_subscription(
-        user_id=user_id,
+        user_id=resolved_user_id,
         status="trial",
         trial_start=start_at,
         trial_end=end_at,
@@ -4597,14 +5878,16 @@ def start_trial_subscription(payload: TrialStartRequest, request: Request):
 
 
 @app.get("/v1/subscriptions/status")
-def subscription_status(user_id: str = "") -> dict[str, Any]:
-    payload = _subscription_status_payload(user_id)
+def subscription_status(request: Request, user_id: str = "") -> dict[str, Any]:
+    resolved_user_id = _resolve_subscription_actor_user_id(request, user_id)
+    payload = _subscription_status_payload(resolved_user_id)
     return {"ok": True, **payload}
 
 
 @app.get("/v1/subscriptions/trial/status")
-def trial_subscription_status(user_id: str = "") -> dict[str, Any]:
-    payload = _subscription_status_payload(user_id)
+def trial_subscription_status(request: Request, user_id: str = "") -> dict[str, Any]:
+    resolved_user_id = _resolve_subscription_actor_user_id(request, user_id)
+    payload = _subscription_status_payload(resolved_user_id)
     return {
         "ok": True,
         "subscription_status": payload.get("subscription_status", "free"),
@@ -4612,6 +5895,331 @@ def trial_subscription_status(user_id: str = "") -> dict[str, Any]:
         "trial_days_remaining": payload.get("trial_days_remaining"),
         "trial_end_date": payload.get("trial_end_date"),
         "features": payload.get("features", _subscription_features("free")),
+    }
+
+
+def _subscription_checkout_session(session_id: str) -> dict[str, Any] | None:
+    return store.get_checkout_session(session_id)
+
+
+def _mobile_subscription_status_response(user_id: str) -> dict[str, Any]:
+    base = _subscription_status_payload(user_id)
+    checkout = store.get_subscription(user_id)
+    return {
+        "ok": True,
+        "subscription_status": base.get("subscription_status", "free"),
+        "trial_active": bool(base.get("trial_active", False)),
+        "trial_days_remaining": base.get("trial_days_remaining"),
+        "trial_end_date": base.get("trial_end_date"),
+        "features": base.get("features", _subscription_features("free")),
+        "plan_tier": str(checkout.get("tier", "free") or "free"),
+        "billing_interval": str(checkout.get("interval", "monthly") or "monthly"),
+        "payment_provider": str(checkout.get("payment_provider", "none") or "none"),
+        "price_kwd": float(checkout.get("price_kwd", 0.0) or 0.0),
+        "status": str(checkout.get("status", "active") or "active"),
+        "next_renewal_at": str(checkout.get("next_renewal_at", "") or ""),
+        "grace_end_at": str(checkout.get("grace_end_at", "") or ""),
+        "provider_subscription_id": str(checkout.get("provider_subscription_id", "") or ""),
+        "provider_plan_id": str(checkout.get("provider_plan_id", "") or ""),
+        "provider_status": str(checkout.get("provider_status", "") or ""),
+        "started_at": str(checkout.get("started_at", "") or ""),
+        "last_payment_at": str(checkout.get("last_payment_at", "") or ""),
+        "cancelled_at": str(checkout.get("cancelled_at", "") or ""),
+    }
+
+
+def _capture_mobile_checkout(
+    *,
+    user_id: str,
+    checkout: dict[str, Any],
+    payer_id: str = "",
+    provider_order_id: str = "",
+    provider_subscription_id: str = "",
+    raw_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    try:
+        updated_checkout = _billing_service().capture_checkout_session(
+            session_id=str(checkout.get("session_id", "") or ""),
+            user_id=user_id,
+            payer_id=payer_id,
+            provider_order_id=provider_order_id,
+            provider_subscription_id=provider_subscription_id,
+            raw_payload=raw_payload or {"session_id": str(checkout.get("session_id", "") or "")},
+        )
+    except BillingServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if str(updated_checkout.get("status", "") or "").strip().lower() == "completed":
+        try:
+            _db_user_repository().update_subscription(user_id=user_id, status="premium")
+        except Exception:
+            pass
+    return {
+        **_mobile_subscription_status_response(user_id),
+        "checkout": updated_checkout,
+    }
+
+
+@app.get("/v1/mobile/subscription/status")
+def mobile_subscription_status(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    return _mobile_subscription_status_response(str(user.get("user_id", "") or ""))
+
+
+@app.get("/v1/mobile/subscription/history")
+def mobile_subscription_history(request: Request, limit: int = 12) -> dict[str, Any]:
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "").strip()
+    return {
+        "ok": True,
+        "events": store.list_payment_events(user_id, limit=limit),
+    }
+
+
+@app.post("/v1/mobile/subscription/checkout")
+def mobile_subscription_checkout(
+    payload: MobileSubscriptionCheckoutRequest,
+    request: Request,
+) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "").strip()
+    checkout = _billing_service().create_checkout_session(
+        user_id=user_id,
+        tier=str(payload.tier or "standard"),
+        interval=str(payload.interval or "monthly"),
+        return_url=str(payload.return_url or "").strip(),
+        cancel_url=str(payload.cancel_url or "").strip(),
+        payer_email=str(user.get("email", "") or "").strip(),
+    )
+    return {"ok": True, "checkout": checkout}
+
+
+@app.post("/v1/mobile/subscription/capture")
+def mobile_subscription_capture(
+    payload: MobileSubscriptionCaptureRequest,
+    request: Request,
+) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "").strip()
+    checkout = _subscription_checkout_session(payload.session_id)
+    if not isinstance(checkout, dict):
+        raise HTTPException(status_code=404, detail="Checkout session not found")
+    if str(checkout.get("user_id", "") or "").strip() != user_id:
+        raise HTTPException(status_code=403, detail="Checkout session does not belong to this user")
+    return _capture_mobile_checkout(
+        user_id=user_id,
+        checkout=checkout,
+        payer_id=str(payload.payer_id or "").strip(),
+        provider_order_id=str(payload.provider_order_id or "").strip(),
+        provider_subscription_id=str(payload.provider_subscription_id or "").strip(),
+        raw_payload={
+            "session_id": str(payload.session_id or "").strip(),
+            "provider_order_id": str(payload.provider_order_id or "").strip(),
+            "provider_subscription_id": str(payload.provider_subscription_id or "").strip(),
+            "source": "mobile_capture",
+        },
+    )
+
+
+@app.post("/v1/mobile/subscription/cancel")
+def mobile_subscription_cancel(
+    payload: MobileSubscriptionCancelRequest,
+    request: Request,
+) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "").strip()
+    checkout = _subscription_checkout_session(payload.session_id)
+    if not isinstance(checkout, dict):
+        raise HTTPException(status_code=404, detail="Checkout session not found")
+    if str(checkout.get("user_id", "") or "").strip() != user_id:
+        raise HTTPException(status_code=403, detail="Checkout session does not belong to this user")
+    checkout = _billing_service().cancel_checkout_session(
+        session_id=str(payload.session_id or "").strip(),
+        user_id=user_id,
+        reason="mobile_cancel",
+    )
+    return {
+        **_mobile_subscription_status_response(user_id),
+        "message": "Checkout was cancelled.",
+        "checkout": checkout,
+    }
+
+
+@app.post("/v1/mobile/subscription/pause")
+def mobile_subscription_pause(
+    payload: MobileSubscriptionActionRequest,
+    request: Request,
+) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "").strip()
+    try:
+        _billing_service().pause_active_subscription(
+            user_id=user_id,
+            reason=str(payload.reason or "").strip() or "Paused by user",
+        )
+    except BillingServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        _db_user_repository().update_subscription(user_id=user_id, status="premium")
+    except Exception:
+        pass
+    return {
+        **_mobile_subscription_status_response(user_id),
+        "message": "Subscription paused.",
+    }
+
+
+@app.post("/v1/mobile/subscription/cancel-active")
+def mobile_subscription_cancel_active(
+    payload: MobileSubscriptionActionRequest,
+    request: Request,
+) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "").strip()
+    try:
+        _billing_service().cancel_active_subscription(
+            user_id=user_id,
+            reason=str(payload.reason or "").strip() or "Cancelled by user",
+        )
+    except BillingServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        _db_user_repository().update_subscription(user_id=user_id, status="free")
+    except Exception:
+        pass
+    return {
+        **_mobile_subscription_status_response(user_id),
+        "message": "Subscription cancelled.",
+    }
+
+
+@app.get("/billing/paypal/approve")
+def billing_paypal_approve(
+    session_id: str = "",
+    token: str = "",
+    ba_token: str = "",
+    subscription_id: str = "",
+    PayerID: str = "",
+):
+    checkout = _subscription_checkout_session(session_id)
+    if not isinstance(checkout, dict):
+        raise HTTPException(status_code=404, detail="Checkout session not found")
+    user_id = str(checkout.get("user_id", "") or "").strip()
+    provider_subscription_id = (
+        str(subscription_id or "").strip()
+        or str(ba_token or "").strip()
+        or str(token or "").strip()
+    )
+    result = _capture_mobile_checkout(
+        user_id=user_id,
+        checkout=checkout,
+        payer_id=str(PayerID or "").strip(),
+        provider_order_id=str(token or "").strip(),
+        provider_subscription_id=provider_subscription_id,
+        raw_payload={
+            "session_id": session_id,
+            "provider_order_id": str(token or "").strip(),
+            "provider_subscription_id": provider_subscription_id,
+            "payer_id": str(PayerID or "").strip(),
+            "source": "paypal_approve_redirect",
+        },
+    )
+    return_url = str(checkout.get("return_url", "") or "").strip()
+    payment_state = (
+        "success"
+        if str(result.get("checkout", {}).get("status", "") or "").strip().lower() == "completed"
+        else "pending"
+    )
+    if return_url:
+        separator = "&" if "?" in return_url else "?"
+        return RedirectResponse(
+            url=f"{return_url}{separator}payment={payment_state}&session_id={session_id}",
+            status_code=302,
+        )
+    return result
+
+
+@app.get("/billing/paypal/cancel")
+def billing_paypal_cancel(session_id: str = ""):
+    checkout = _subscription_checkout_session(session_id)
+    if not isinstance(checkout, dict):
+        raise HTTPException(status_code=404, detail="Checkout session not found")
+    user_id = str(checkout.get("user_id", "") or "").strip()
+    _billing_service().cancel_checkout_session(
+        session_id=session_id,
+        user_id=user_id,
+        reason="paypal_cancel_redirect",
+    )
+    cancel_url = str(checkout.get("cancel_url", "") or "").strip()
+    if cancel_url:
+        separator = "&" if "?" in cancel_url else "?"
+        return RedirectResponse(
+            url=f"{cancel_url}{separator}payment=cancelled&session_id={session_id}",
+            status_code=302,
+        )
+    return {
+        **_mobile_subscription_status_response(user_id),
+        "message": "Checkout was cancelled.",
+    }
+
+
+@app.post("/v1/billing/paypal/webhook")
+async def billing_paypal_webhook(request: Request) -> dict[str, Any]:
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="Invalid webhook JSON payload") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Webhook payload must be a JSON object")
+
+    try:
+        result = _billing_service().handle_paypal_webhook(
+            headers={str(key): str(value) for key, value in request.headers.items()},
+            payload=payload,
+        )
+    except BillingServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    normalized_event = result.event_type.strip().lower()
+    if not result.duplicate:
+        if normalized_event in {
+            "checkout.completed",
+            "payment.succeeded",
+            "subscription.renewed",
+            "billing.subscription.activated",
+            "billing.subscription.re-activated",
+            "billing.subscription.renewed",
+            "payment.sale.completed",
+        }:
+            try:
+                _db_user_repository().update_subscription(user_id=result.user_id, status="premium")
+            except Exception:
+                pass
+        elif normalized_event in {
+            "billing.subscription.cancelled",
+            "billing.subscription.expired",
+            "subscription.cancelled",
+            "subscription.expired",
+        }:
+            try:
+                _db_user_repository().update_subscription(user_id=result.user_id, status="free")
+            except Exception:
+                pass
+    return {
+        **_mobile_subscription_status_response(result.user_id),
+        "verified": result.verified,
+        "event_type": result.event_type,
+        "checkout_session_id": result.checkout_session_id,
+        "duplicate": result.duplicate,
+        "replayed": result.replayed,
+        "webhook_event_id": result.webhook_event_id,
+        "transmission_id": result.transmission_id,
+        "idempotency_key": result.idempotency_key,
     }
 
 
@@ -4665,6 +6273,14 @@ def _mobile_auth_response(user: dict[str, Any], tokens: dict[str, Any]) -> dict[
         "refresh_token": str(tokens.get("refresh_token", "") or ""),
         "refresh_expires_at": str(tokens.get("refresh_expires_at", "") or ""),
     }
+
+
+def _issue_mobile_auth_tokens_for_user(user: dict[str, Any], *, client_name: str = "flutter_app") -> dict[str, Any]:
+    tokens = _db_mobile_auth_repository().issue_tokens(
+        user_id=str(user.get("user_id", "") or ""),
+        client_name=str(client_name or "flutter_app").strip() or "flutter_app",
+    )
+    return _mobile_auth_response(user, tokens)
 
 
 def _db_user_to_mobile_user_payload(db_user: Any, *, client_name: str = "") -> dict[str, Any]:
@@ -4861,6 +6477,234 @@ def mobile_auth_login(payload: MobileLoginRequest, request: Request) -> dict[str
     return _mobile_auth_response(user, tokens)
 
 
+@app.post("/v1/mobile/auth/otp/request")
+def mobile_auth_request_otp(payload: MobileOtpRequestRequest, request: Request) -> dict[str, Any]:
+    phone_number = _normalize_phone_number(payload.phone_number)
+    if not phone_number:
+        raise HTTPException(status_code=422, detail="A valid phone_number is required")
+
+    now = ensure_utc(utcnow())
+    expires_at = to_iso((now + timedelta(seconds=_MOBILE_OTP_TTL_SECONDS)).replace(microsecond=0))
+    client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
+    otp_code = f"{secrets.randbelow(1000000):06d}"
+    request_id = f"otp_{secrets.token_hex(10)}"
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    otp_section = _get_scoped_profile_section(profile, "mobile_phone_otp_requests")
+    stale_ids: list[str] = []
+    for raw_id, row in otp_section.items():
+        if not isinstance(row, dict):
+            stale_ids.append(str(raw_id))
+            continue
+        expires = _parse_iso_timestamp(str(row.get("expires_at", "") or ""))
+        if (not isinstance(expires, datetime)) or (ensure_utc(expires) < now):
+            stale_ids.append(str(raw_id))
+    for stale_id in stale_ids:
+        otp_section.pop(stale_id, None)
+
+    delivery_result = _mobile_send_otp_code(phone_number, otp_code, request_id)
+    delivery_provider = str(delivery_result.get("provider", "simulated") or "simulated")
+    delivery_status = str(delivery_result.get("status", "accepted") or "accepted")
+    delivery_message_id = str(delivery_result.get("message_id", "") or "")
+
+    otp_section[request_id] = {
+        "phone_number": phone_number,
+        "otp_digest": _otp_hmac_digest(
+            phone_number=phone_number,
+            request_id=request_id,
+            otp_code=otp_code,
+        ),
+        "expires_at": expires_at,
+        "attempts": 0,
+        "client_name": client_name,
+        "created_at": to_iso(now.replace(microsecond=0)),
+        "delivery_provider": delivery_provider,
+        "delivery_status": delivery_status,
+        "delivery_message_id": delivery_message_id,
+    }
+    profile["mobile_phone_otp_requests"] = otp_section
+    _save_profile(profile)
+
+    _event(
+        "info",
+        "mobile_otp_requested",
+        phone=_mask_phone_number(phone_number),
+        client_name=client_name,
+        delivery=delivery_provider,
+    )
+    response: dict[str, Any] = {
+        "ok": True,
+        "request_id": request_id,
+        "phone_number_masked": _mask_phone_number(phone_number),
+        "expires_in": _MOBILE_OTP_TTL_SECONDS,
+        "expires_at": expires_at,
+        "delivery": delivery_provider,
+    }
+    if _mobile_otp_debug_enabled():
+        response["debug_code"] = otp_code
+    return response
+
+
+@app.post("/v1/mobile/auth/otp/verify")
+def mobile_auth_verify_otp(payload: MobileOtpVerifyRequest, request: Request) -> dict[str, Any]:
+    request_id = str(payload.request_id or "").strip()
+    phone_number = _normalize_phone_number(payload.phone_number)
+    otp_code = "".join(ch for ch in str(payload.otp_code or "").strip() if ch.isdigit())
+    client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
+    if not request_id:
+        raise HTTPException(status_code=422, detail="request_id is required")
+    if not phone_number:
+        raise HTTPException(status_code=422, detail="A valid phone_number is required")
+    if len(otp_code) < 4:
+        raise HTTPException(status_code=422, detail="otp_code must be at least 4 digits")
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    otp_section = _get_scoped_profile_section(profile, "mobile_phone_otp_requests")
+    row = otp_section.get(request_id, {}) if isinstance(otp_section.get(request_id, {}), dict) else {}
+    if not row:
+        raise HTTPException(status_code=401, detail="OTP request is invalid or expired")
+
+    now = ensure_utc(utcnow())
+    expires_at = _parse_iso_timestamp(str(row.get("expires_at", "") or ""))
+    if (not isinstance(expires_at, datetime)) or ensure_utc(expires_at) < now:
+        otp_section.pop(request_id, None)
+        profile["mobile_phone_otp_requests"] = otp_section
+        _save_profile(profile)
+        raise HTTPException(status_code=401, detail="OTP request is expired")
+
+    expected_phone = _normalize_phone_number(row.get("phone_number"))
+    if expected_phone != phone_number:
+        raise HTTPException(status_code=401, detail="OTP phone number does not match")
+
+    attempts = int(row.get("attempts", 0) or 0)
+    if attempts >= _MOBILE_OTP_MAX_ATTEMPTS:
+        otp_section.pop(request_id, None)
+        profile["mobile_phone_otp_requests"] = otp_section
+        _save_profile(profile)
+        raise HTTPException(status_code=429, detail="OTP attempts exceeded. Request a new code.")
+
+    expected_digest = str(row.get("otp_digest", "") or "")
+    actual_digest = _otp_hmac_digest(
+        phone_number=phone_number,
+        request_id=request_id,
+        otp_code=otp_code,
+    )
+    if (not expected_digest) or (not hmac.compare_digest(expected_digest, actual_digest)):
+        row["attempts"] = attempts + 1
+        otp_section[request_id] = row
+        profile["mobile_phone_otp_requests"] = otp_section
+        _save_profile(profile)
+        raise HTTPException(status_code=401, detail="OTP code is invalid")
+
+    otp_section.pop(request_id, None)
+    profile["mobile_phone_otp_requests"] = otp_section
+
+    phone_users = _get_scoped_profile_section(profile, "mobile_phone_users")
+    mapped = phone_users.get(phone_number, {})
+    mapped_user_id = ""
+    if isinstance(mapped, dict):
+        mapped_user_id = str(mapped.get("user_id", "") or "").strip()
+    elif isinstance(mapped, str):
+        mapped_user_id = mapped.strip()
+
+    user = _mobile_user_payload_by_id(mapped_user_id) if mapped_user_id else None
+    if user is None:
+        resolved_name = str(payload.name or "").strip() or f"Phone user {phone_number[-4:]}"
+        user = _ensure_external_identity_user(
+            email=_phone_shadow_email(phone_number),
+            name=resolved_name,
+            password_hash="mobile_phone_auth",
+        )
+        mapped_user_id = str(user.get("user_id", "") or "")
+
+    phone_users[phone_number] = {
+        "user_id": mapped_user_id,
+        "updated_at": _now_utc_iso(),
+    }
+    profile["mobile_phone_users"] = phone_users
+    _save_profile(profile)
+
+    _event(
+        "info",
+        "mobile_otp_verified",
+        user_id=str(user.get("user_id", "") or ""),
+        phone=_mask_phone_number(phone_number),
+        client_name=client_name,
+    )
+    return _issue_mobile_auth_tokens_for_user(user, client_name=client_name)
+
+
+@app.post("/v1/mobile/auth/social")
+def mobile_auth_social_login(payload: MobileSocialLoginRequest, request: Request) -> dict[str, Any]:
+    provider = str(payload.provider or "").strip().lower()
+    client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
+    verified_identity = _verify_mobile_social_identity(payload)
+    provider_user_id = str(verified_identity.get("provider_user_id", "") or "").strip()
+    if not provider_user_id:
+        raise HTTPException(status_code=401, detail="Social provider identity could not be verified")
+    verification_method = str(verified_identity.get("verification_method", "") or "").strip()
+
+    provided_email = str(payload.email or "").strip().lower()
+    if provided_email and "@" not in provided_email:
+        raise HTTPException(status_code=422, detail="email must be valid")
+    verified_email = str(verified_identity.get("email", "") or "").strip().lower()
+    verified_name = str(verified_identity.get("name", "") or "").strip()
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    identity_section = _get_scoped_profile_section(profile, "mobile_social_identities")
+    identity_key = f"{provider}:{_sanitize_identity_value(provider_user_id, max_len=72)}"
+    mapped = identity_section.get(identity_key, {})
+    mapped_user_id = ""
+    mapped_email = ""
+    if isinstance(mapped, dict):
+        mapped_user_id = str(mapped.get("user_id", "") or "").strip()
+        mapped_email = str(mapped.get("email", "") or "").strip().lower()
+
+    user = _mobile_user_payload_by_id(mapped_user_id) if mapped_user_id else None
+    if user is None:
+        email_candidate = verified_email or provided_email or mapped_email or _social_shadow_email(provider, provider_user_id)
+        user = _ensure_external_identity_user(
+            email=email_candidate,
+            name=str(payload.name or "").strip() or verified_name or provider.title(),
+            password_hash="mobile_social_auth",
+        )
+
+    identity_section[identity_key] = {
+        "provider": provider,
+        "provider_user_id": _sanitize_identity_value(provider_user_id, max_len=72),
+        "user_id": str(user.get("user_id", "") or ""),
+        "email": str(user.get("email", "") or ""),
+        "email_verified": bool(verified_identity.get("email_verified", False)),
+        "verification_method": verification_method or "token_verified",
+        "last_verified_at": _now_utc_iso(),
+        "updated_at": _now_utc_iso(),
+    }
+    profile["mobile_social_identities"] = identity_section
+    _save_profile(profile)
+
+    _event(
+        "info",
+        "mobile_social_login_success",
+        provider=provider,
+        user_id=str(user.get("user_id", "") or ""),
+        client_name=client_name,
+        verification_method=verification_method or "token_verified",
+    )
+    response = _issue_mobile_auth_tokens_for_user(user, client_name=client_name)
+    response["social_provider"] = provider
+    response["social_verification"] = verification_method or "token_verified"
+    return response
+
+
 @app.post("/v1/mobile/auth/refresh")
 def mobile_auth_refresh(payload: MobileRefreshRequest, request: Request) -> dict[str, Any]:
     refresh_token = str(payload.refresh_token or "").strip()
@@ -4945,15 +6789,25 @@ def mobile_profile(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
     defaults = _normalize_user_profile_prefs({
-        "display_name": str(user.get("name", "") or user.get("email", "") or "User"),
+        "display_name": "",
         "timezone": "Asia/Kuwait",
         "push_enabled": True,
         "email_enabled": False,
+        "location_mode": "auto",
+        "country_code": "KW",
+        "city": "",
+        "theme_mode": "system",
     })
     key = _user_profile_key(user)
     section = _get_scoped_profile_section(profile, "web_profile_prefs")
     scoped = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
-    return {"ok": True, "profile": _normalize_user_profile_prefs({**defaults, **scoped})}
+    resolved = _normalize_user_profile_prefs({**defaults, **scoped})
+    return {
+        "ok": True,
+        "profile": resolved,
+        "resolved_display_name": _resolved_user_display_name(user, resolved),
+        "resolved_location": _profile_location_summary(resolved),
+    }
 
 
 @app.post("/v1/mobile/profile")
@@ -4980,6 +6834,46 @@ def upsert_mobile_profile(payload: UserProfilePrefsRequest, request: Request) ->
     return {"ok": True, "profile": normalized}
 
 
+@app.get("/v1/mobile/islamic/overview")
+def mobile_islamic_overview(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+    overview = _mobile_islamic_overview_payload(user, profile)
+    return {"ok": True, **overview}
+
+
+@app.get("/v1/mobile/islamic/prayer-times")
+def mobile_islamic_prayer_times(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+    _, prayer_bundle, location, _ = _mobile_prayer_service_for_user(user, profile)
+    return {
+        "ok": True,
+        "prayers": prayer_bundle.get("prayers", {}) if isinstance(prayer_bundle, dict) else {},
+        "location": location,
+    }
+
+
+@app.get("/v1/mobile/islamic/next-prayer")
+def mobile_islamic_next_prayer(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+    service, _, location, _ = _mobile_prayer_service_for_user(user, profile)
+    next_prayer = service.get_next_prayer()
+    return {
+        "ok": True,
+        "next_prayer": next_prayer,
+        "location": location,
+        "led_color": service.get_prayer_led_color(str(next_prayer.get("name", "") or "")),
+    }
+
+
 @app.get("/v1/mobile/device-controls")
 def mobile_device_controls(request: Request) -> dict[str, Any]:
     user = _require_user(request)
@@ -4996,12 +6890,334 @@ def mobile_device_controls(request: Request) -> dict[str, Any]:
     return {"ok": True, "controls": _normalize_device_controls({**defaults, **scoped})}
 
 
+@app.get("/v1/mobile/bed/pairing")
+def mobile_bed_pairing_status(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+    key = _user_profile_key(user)
+    section = _get_scoped_profile_section(profile, "mobile_bed_links")
+    link_row = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
+
+    device_id = str(link_row.get("device_id", "") or "").strip()
+    if not device_id:
+        return {
+            "ok": True,
+            "paired": False,
+            "device_id": "",
+            "bed_location": "",
+            "paired_at": "",
+            "provisioning_verified": False,
+        }
+
+    status_payload: dict[str, Any] = {}
+    try:
+        from qr_code.pair_device import get_device_status
+
+        status_payload = get_device_status(device_id)
+    except Exception:
+        status_payload = {}
+
+    return {
+        "ok": True,
+        "paired": bool(status_payload.get("success", False) and status_payload.get("paired", False)),
+        "device_id": device_id,
+        "bed_location": str(
+            status_payload.get("bed_location", "")
+            or link_row.get("bed_location", "")
+            or ""
+        ),
+        "paired_at": str(
+            status_payload.get("paired_at", "")
+            or link_row.get("paired_at", "")
+            or ""
+        ),
+        "provisioning_verified": bool(link_row.get("provisioning_verified", False)),
+    }
+
+
+@app.post("/v1/mobile/bed/pair")
+def mobile_bed_pair(payload: MobileBedPairRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    device_id = _extract_device_id_from_qr_payload(
+        payload.qr_payload,
+        fallback_device_id=payload.device_id,
+    )
+    if not device_id:
+        raise HTTPException(status_code=422, detail="device_id is required in qr_payload or device_id")
+    claim_token = _extract_claim_token_from_qr_payload(
+        payload.qr_payload,
+        fallback_claim_token=payload.claim_token,
+    )
+
+    bed_location = str(payload.bed_location or "Kuwait").strip() or "Kuwait"
+    registered_device: dict[str, Any] = {}
+    try:
+        registered_device = _load_registered_qr_device(
+            device_id,
+            bed_location=bed_location,
+            auto_create=_mobile_pairing_allow_auto_register(),
+        )
+        from qr_code.pair_device import get_device_status, pair_device
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="QR pairing service unavailable") from exc
+
+    if not isinstance(registered_device, dict) or not str(registered_device.get("device_id", "")).strip():
+        raise HTTPException(status_code=404, detail="Device is not provisioned for pairing")
+    if not _pairing_claim_matches_device(registered_device, claim_token):
+        raise HTTPException(status_code=401, detail="Pairing claim token is invalid or missing")
+
+    user_id = str(user.get("user_id", "") or "").strip()
+    user_name = str(user.get("name", "") or "").strip() or _email_local_part(str(user.get("email", "") or "")) or "Mobile User"
+    pair_result = pair_device(
+        device_id=device_id,
+        user_id=user_id,
+        user_name=user_name,
+    )
+    if not bool(pair_result.get("success", False)):
+        status_payload = get_device_status(device_id)
+        current_owner = str(status_payload.get("user_id", "") or "").strip()
+        if not current_owner or current_owner != user_id:
+            raise HTTPException(status_code=409, detail=str(pair_result.get("message", "Unable to pair bed"))[:180])
+
+    status_payload = get_device_status(device_id)
+    if not bool(status_payload.get("success", False)):
+        raise HTTPException(status_code=500, detail="Pairing status could not be confirmed")
+
+    key = _user_profile_key(user)
+    links = _get_scoped_profile_section(profile, "mobile_bed_links")
+    links[key] = {
+        "device_id": device_id,
+        "bed_location": str(status_payload.get("bed_location", "") or bed_location),
+        "paired_at": str(status_payload.get("paired_at", "") or _now_utc_iso()),
+        "provisioning_verified": True,
+        "updated_at": _now_utc_iso(),
+    }
+    profile["mobile_bed_links"] = links
+    _save_profile(profile)
+
+    return {
+        "ok": True,
+        "paired": bool(status_payload.get("paired", False)),
+        "device_id": device_id,
+        "bed_location": str(status_payload.get("bed_location", "") or bed_location),
+        "paired_at": str(status_payload.get("paired_at", "") or ""),
+        "provisioning_verified": True,
+    }
+
+
+@app.post("/v1/mobile/bed/unpair")
+def mobile_bed_unpair(payload: MobileBedUnpairRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    key = _user_profile_key(user)
+    links = _get_scoped_profile_section(profile, "mobile_bed_links")
+    link_row = links.get(key, {}) if key and isinstance(links.get(key, {}), dict) else {}
+    device_id = _extract_device_id_from_qr_payload(
+        "",
+        fallback_device_id=str(payload.device_id or "").strip() or str(link_row.get("device_id", "") or ""),
+    )
+    if not device_id:
+        raise HTTPException(status_code=422, detail="No paired device found")
+
+    try:
+        from qr_code.pair_device import get_device_status, unpair_device
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="QR pairing service unavailable") from exc
+
+    status_payload = get_device_status(device_id)
+    if bool(status_payload.get("success", False)):
+        owner_id = str(status_payload.get("user_id", "") or "").strip()
+        if owner_id and owner_id != str(user.get("user_id", "") or "").strip():
+            raise HTTPException(status_code=403, detail="Cannot unpair a bed linked to another account")
+
+    result = unpair_device(device_id)
+    if not bool(result.get("success", False)):
+        raise HTTPException(status_code=404, detail=str(result.get("message", "Device not found"))[:180])
+
+    links.pop(key, None)
+    profile["mobile_bed_links"] = links
+    _save_profile(profile)
+    return {"ok": True, "paired": False, "device_id": device_id}
+
+
+@app.get("/v1/mobile/alarms")
+def mobile_alarms(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    key = _user_profile_key(user)
+    section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
+    rows = section.get(key, []) if key and isinstance(section.get(key, []), list) else []
+    timezone_name = str(_chat_profile_prefs_for_user(profile, user).get("timezone", "Asia/Kuwait") or "Asia/Kuwait")
+    alarms = _serialize_mobile_alarm_rows(rows, timezone_name=timezone_name)
+    return {"ok": True, "alarms": alarms}
+
+
+@app.post("/v1/mobile/alarms")
+def mobile_upsert_alarm(payload: MobileAlarmUpsertRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    key = _user_profile_key(user)
+    section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
+    existing_rows = section.get(key, []) if key and isinstance(section.get(key, []), list) else []
+    normalized_existing = _serialize_mobile_alarm_rows(existing_rows, timezone_name="UTC")
+
+    target_alarm_id = str(payload.alarm_id or "").strip()
+    now_iso = _now_utc_iso()
+    normalized_alarm = _normalize_mobile_alarm(
+        payload.model_dump(),
+        existing_alarm_id=target_alarm_id,
+        now_iso=now_iso,
+    )
+
+    replaced = False
+    next_rows: list[dict[str, Any]] = []
+    for row in normalized_existing:
+        if str(row.get("alarm_id", "") or "") == str(normalized_alarm.get("alarm_id", "") or ""):
+            normalized_alarm["created_at"] = str(row.get("created_at", "") or normalized_alarm.get("created_at", ""))
+            next_rows.append(normalized_alarm)
+            replaced = True
+        else:
+            next_rows.append(row)
+
+    if not replaced:
+        if len(next_rows) >= _MOBILE_ALARM_MAX_ITEMS:
+            raise HTTPException(status_code=409, detail=f"Alarm limit reached ({_MOBILE_ALARM_MAX_ITEMS})")
+        next_rows.append(normalized_alarm)
+
+    section[key] = next_rows
+    profile["mobile_alarm_schedules"] = section
+    _save_profile(profile)
+
+    timezone_name = str(_chat_profile_prefs_for_user(profile, user).get("timezone", "Asia/Kuwait") or "Asia/Kuwait")
+    alarms = _serialize_mobile_alarm_rows(next_rows, timezone_name=timezone_name)
+    target = next(
+        (row for row in alarms if str(row.get("alarm_id", "") or "") == str(normalized_alarm.get("alarm_id", "") or "")),
+        normalized_alarm,
+    )
+    return {"ok": True, "alarm": target, "alarms": alarms}
+
+
+@app.post("/v1/mobile/alarms/{alarm_id}/toggle")
+def mobile_toggle_alarm(alarm_id: str, payload: MobileAlarmToggleRequest, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    key = _user_profile_key(user)
+    section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
+    rows = section.get(key, []) if key and isinstance(section.get(key, []), list) else []
+    target_id = str(alarm_id or "").strip()
+    updated = False
+    next_rows: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        normalized = _normalize_mobile_alarm(
+            row,
+            existing_alarm_id=str(row.get("alarm_id", "") or ""),
+            now_iso=str(row.get("updated_at", "") or _now_utc_iso()),
+        )
+        if str(normalized.get("alarm_id", "") or "") == target_id:
+            normalized["enabled"] = bool(payload.enabled)
+            normalized["updated_at"] = _now_utc_iso()
+            updated = True
+        next_rows.append(normalized)
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Alarm not found")
+
+    section[key] = next_rows
+    profile["mobile_alarm_schedules"] = section
+    _save_profile(profile)
+    return {"ok": True, "alarm_id": target_id, "enabled": bool(payload.enabled)}
+
+
+@app.delete("/v1/mobile/alarms/{alarm_id}")
+def mobile_delete_alarm(alarm_id: str, request: Request) -> dict[str, Any]:
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    key = _user_profile_key(user)
+    section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
+    rows = section.get(key, []) if key and isinstance(section.get(key, []), list) else []
+    target_id = str(alarm_id or "").strip()
+
+    next_rows = [
+        row
+        for row in rows
+        if isinstance(row, dict) and str(row.get("alarm_id", "") or "").strip() != target_id
+    ]
+    if len(next_rows) == len(rows):
+        raise HTTPException(status_code=404, detail="Alarm not found")
+
+    section[key] = next_rows
+    profile["mobile_alarm_schedules"] = section
+    _save_profile(profile)
+    return {"ok": True, "deleted_alarm_id": target_id}
+
+
+@app.get("/v1/mobile/spotify/auth-url")
+def mobile_spotify_auth_url(request: Request, done_uri: str = "") -> dict[str, Any]:
+    user = _require_user(request)
+    config = _spotify_env_config(request)
+    if not _spotify_is_configured(config, require_redirect_uri=True):
+        missing = _spotify_missing_config_fields(config, require_redirect_uri=True)
+        raise HTTPException(status_code=503, detail=f"Spotify OAuth is not configured: {', '.join(missing)}")
+
+    key = _user_profile_key(user)
+    if not key:
+        raise HTTPException(status_code=400, detail="Unable to identify user Spotify key")
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    state = _spotify_create_oauth_state(
+        profile=profile,
+        user_key=key,
+        done_uri=done_uri,
+    )
+    if not state:
+        raise HTTPException(status_code=500, detail="Unable to initialize Spotify OAuth state")
+    return {"ok": True, "auth_url": _spotify_auth_url(config, state)}
+
+
 @app.get("/v1/mobile/spotify/connect")
 def mobile_spotify_connect(request: Request):
-    safe_error_redirect = "/user-dashboard?spotify=error"
-    try:
-        user = _require_user(request)
-    except HTTPException:
+    done_uri = _safe_mobile_done_uri(str(request.query_params.get("done_uri", "") or ""))
+    safe_base_redirect = done_uri or "/user-dashboard"
+    safe_error_redirect = _append_query_params(safe_base_redirect, {"spotify": "error"})
+
+    user = _mobile_user_from_query_access_token(request) or _authenticated_user(request)
+    if not isinstance(user, dict):
+        if done_uri:
+            return RedirectResponse(
+                url=_append_query_params(done_uri, {"spotify": "error", "reason": "unauthenticated"}),
+                status_code=302,
+            )
         return RedirectResponse(url="/login?role=user&next=/user-dashboard", status_code=302)
 
     config = _spotify_env_config(request)
@@ -5017,23 +7233,22 @@ def mobile_spotify_connect(request: Request):
     if not isinstance(profile, dict):
         profile = {}
 
-    states = _get_scoped_profile_section(profile, "spotify_oauth_state")
-    state = secrets.token_urlsafe(24)
-    states[key] = {
-        "state": state,
-        "created_at": _now_utc_iso(),
-    }
-    profile["spotify_oauth_state"] = states
-    _save_profile(profile)
+    state = _spotify_create_oauth_state(
+        profile=profile,
+        user_key=key,
+        done_uri=done_uri,
+    )
+    if not state:
+        return RedirectResponse(url=f"{safe_error_redirect}&reason=state_init_failed", status_code=302)
 
     return RedirectResponse(url=_spotify_auth_url(config, state), status_code=302)
 
 
 @app.get("/v1/mobile/spotify/callback")
 def mobile_spotify_callback(request: Request, code: str = "", state: str = ""):
-    safe_error_redirect = "/user-dashboard?spotify=error"
+    default_error_redirect = "/user-dashboard?spotify=error"
     if not code or not state:
-        return RedirectResponse(url=f"{safe_error_redirect}&reason=missing_code_or_state", status_code=302)
+        return RedirectResponse(url=f"{default_error_redirect}&reason=missing_code_or_state", status_code=302)
 
     profile = _safe_profile()
     if not isinstance(profile, dict):
@@ -5041,12 +7256,18 @@ def mobile_spotify_callback(request: Request, code: str = "", state: str = ""):
 
     states = _get_scoped_profile_section(profile, "spotify_oauth_state")
     matched_key = ""
+    done_uri = ""
     for candidate_key, row in states.items():
         if not isinstance(row, dict):
             continue
         if str(row.get("state", "")).strip() == state.strip():
             matched_key = str(candidate_key)
+            done_uri = _safe_mobile_done_uri(str(row.get("done_uri", "") or ""))
             break
+
+    safe_base_redirect = done_uri or "/user-dashboard"
+    safe_error_redirect = _append_query_params(safe_base_redirect, {"spotify": "error"})
+    safe_success_redirect = _append_query_params(safe_base_redirect, {"spotify": "connected"})
 
     if not matched_key:
         return RedirectResponse(url=f"{safe_error_redirect}&reason=invalid_state", status_code=302)
@@ -5075,6 +7296,11 @@ def mobile_spotify_callback(request: Request, code: str = "", state: str = ""):
                 "detail": detail[:180],
             }
         )
+        if done_uri:
+            return RedirectResponse(
+                url=_append_query_params(done_uri, {"spotify": "error", "reason": "exchange_failed"}),
+                status_code=302,
+            )
         return RedirectResponse(url=f"/user-dashboard?{redirect_qs}", status_code=302)
 
     token_map = _get_scoped_profile_section(profile, "spotify_tokens")
@@ -5093,7 +7319,7 @@ def mobile_spotify_callback(request: Request, code: str = "", state: str = ""):
     states.pop(matched_key, None)
     profile["spotify_oauth_state"] = states
     _save_profile(profile)
-    return RedirectResponse(url="/user-dashboard?spotify=connected", status_code=302)
+    return RedirectResponse(url=safe_success_redirect, status_code=302)
 
 
 @app.get("/v1/mobile/spotify/status")
@@ -5292,7 +7518,6 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
             cmd_section[key] = commands
             profile["web_device_commands"] = cmd_section
             profile_dirty = True
-
     now = utcnow()
     resolved_settings = _resolved_user_settings(profile, user)
     drift_enabled = bool(resolved_settings.get("bedtime_drift_automation_enabled", True))
@@ -5308,9 +7533,13 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
     if drift_marked:
         profile_dirty = True
     if cooldown_rows:
-        items = cooldown_rows + items
+        pinned_cooldowns: list[dict[str, Any]] = []
+        normalized_cooldowns = _normalize_timeline_items(cooldown_rows)
+        for idx, row in enumerate(normalized_cooldowns):
+            pinned_cooldowns.append(_with_min_timeline_priority(row, 98 - min(idx, 6)))
+        items = pinned_cooldowns + items
     if quiet_row:
-        items = [quiet_row] + items
+        items = [_with_min_timeline_priority(quiet_row, 99)] + items
 
     if not items:
         items = _default_user_timeline()
@@ -5965,9 +8194,15 @@ def mobile_device_command_status(command_id: str, request: Request) -> dict[str,
 
 @app.get("/v1/mobile/devices")
 def mobile_devices(request: Request) -> dict[str, Any]:
-    _require_user(request)
+    user = _require_user(request)
     profile = _safe_profile()
     hardware = profile.get("hardware", {}) if isinstance(profile, dict) else {}
+    key = _user_profile_key(user)
+    bed_links = _get_scoped_profile_section(profile, "mobile_bed_links")
+    link_row = bed_links.get(key, {}) if key and isinstance(bed_links.get(key, {}), dict) else {}
+    alarms_section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
+    alarms = alarms_section.get(key, []) if key and isinstance(alarms_section.get(key, []), list) else []
+    alarm_count = sum(1 for row in alarms if isinstance(row, dict))
 
     return {
         "firmware_version": "1.0.0",
@@ -5976,6 +8211,11 @@ def mobile_devices(request: Request) -> dict[str, Any]:
         "state_strip_pin": hardware.get("state_strip_pin", 13),
         "user_strip_led_count": hardware.get("user_strip_led_count", 120),
         "state_strip_led_count": hardware.get("state_strip_led_count", 60),
+        "paired_device_id": str(link_row.get("device_id", "") or ""),
+        "paired_at": str(link_row.get("paired_at", "") or ""),
+        "paired_bed_location": str(link_row.get("bed_location", "") or ""),
+        "provisioning_verified": bool(link_row.get("provisioning_verified", False)),
+        "alarm_count": int(alarm_count),
     }
 
 
@@ -6143,6 +8383,41 @@ def admin_audit(request: Request) -> dict[str, Any]:
             }
         )
     return {"items": items}
+
+
+@app.get("/v1/admin/billing/timeline")
+def admin_billing_timeline(
+    request: Request,
+    limit: int = 50,
+    only_failures: bool = False,
+    user_query: str = "",
+    status_query: str = "",
+) -> dict[str, Any]:
+    _require_admin(request)
+    rows = store.list_payment_events_admin(
+        limit=limit,
+        only_failures=only_failures,
+        user_filter=user_query,
+        status_filter=status_query,
+    )
+    failures = sum(1 for row in rows if bool(row.get("is_failure")))
+    successes = sum(1 for row in rows if not bool(row.get("is_failure")))
+    latest_at = str(rows[0].get("created_at", "") or "") if rows else ""
+    provider_mix: dict[str, int] = {}
+    for row in rows:
+        key = str(row.get("payment_provider", "") or "unknown").strip().lower() or "unknown"
+        provider_mix[key] = int(provider_mix.get(key, 0)) + 1
+    return {
+        "ok": True,
+        "summary": {
+            "total_events": len(rows),
+            "failure_events": failures,
+            "success_events": successes,
+            "latest_event_at": latest_at,
+            "provider_mix": provider_mix,
+        },
+        "items": rows,
+    }
 
 
 @app.get("/v1/admin/user-dashboard")
