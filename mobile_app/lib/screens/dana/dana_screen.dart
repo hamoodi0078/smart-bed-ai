@@ -12,7 +12,6 @@ class DanaScreen extends StatefulWidget {
 
 class _DanaScreenState extends State<DanaScreen> {
   String _selectedPersonality = 'guide';
-  int _bottomNavIndex = 0;
 
   static const List<_PersonalityOption> _options = [
     _PersonalityOption(
@@ -139,27 +138,7 @@ class _DanaScreenState extends State<DanaScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: AppColors.cardBg,
-        selectedItemColor: AppColors.softWhite.withValues(alpha: 0.75),
-        unselectedItemColor: AppColors.softWhite.withValues(alpha: 0.75),
-        currentIndex: _bottomNavIndex,
-        onTap: (index) {
-          setState(() {
-            _bottomNavIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.nightlight_round), label: 'Wind-Down'),
-          BottomNavigationBarItem(icon: Icon(Icons.mosque_rounded), label: 'Islamic'),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: 'Report'),
-        ],
-      ),
-    );
   }
-
   Widget _buildTopBar() {
     return Row(
       children: [

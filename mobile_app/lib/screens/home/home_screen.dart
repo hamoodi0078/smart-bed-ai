@@ -11,7 +11,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
   bool _isLoading = true;
   Map<String, dynamic> _bedStatus = <String, dynamic>{};
 
@@ -75,26 +74,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: AppColors.cardBg,
-        selectedItemColor: AppColors.accent,
-        unselectedItemColor: AppColors.softWhite.withValues(alpha: 0.65),
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.nightlight_round), label: 'Wind-Down'),
-          BottomNavigationBarItem(icon: Icon(Icons.mosque_rounded), label: 'Islamic'),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: 'Report'),
-        ],
-      ),
-    );
-  }
+ 
+ 
 
   Widget _buildTopBar() {
     return Row(
