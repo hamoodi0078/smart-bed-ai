@@ -1,0 +1,59 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+    "-q",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks integration tests",
+    "e2e: marks end-to-end tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = [
+    "ai",
+    "api",
+    "automations",
+    "commands",
+    "constants",
+    "core",
+    "database",
+    "health",
+    "integrations",
+    "notifications",
+    "scenes",
+    "subscriptions",
+    "Storage",
+]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    ".venv/*",
+    ".venv311/*",
+    "mobile_app/*",
+    "runtime_data/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+precision = 2
+fail_under = 50
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.",
+    "raise NotImplementedError",
+    "pass",
+    "except ImportError",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"

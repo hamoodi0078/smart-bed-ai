@@ -138,6 +138,7 @@ class _DanaScreenState extends State<DanaScreen> {
           ),
         ),
       ),
+    );
   }
   Widget _buildTopBar() {
     return Row(

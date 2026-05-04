@@ -72,12 +72,19 @@ def detect_implicit_intent(text: str) -> dict:
     """Infer likely control intent from conversational phrasing.
 
     Returns a resolver-like payload with optional partner follow-up line.
+    Patterns are evaluated in descending confidence order so the most
+    specific match wins when multiple patterns match the same input.
     """
     normalized = _normalize(text)
     if not normalized:
         return {}
 
-    for item in _IMPLICIT_INTENT_PATTERNS:
+    sorted_patterns = sorted(
+        _IMPLICIT_INTENT_PATTERNS,
+        key=lambda item: float(item.get("confidence", 0.0)),
+        reverse=True,
+    )
+    for item in sorted_patterns:
         for pattern in item.get("patterns", ()):
             if re.search(pattern, normalized):
                 return {

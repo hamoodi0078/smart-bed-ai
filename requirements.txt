@@ -1,13 +1,63 @@
-requests>=2.31.0
+# ── Core web framework ──────────────────────────────────────────────
 fastapi>=0.110.0
-qrcode[pil]>=7.4.2
 uvicorn>=0.29.0
-SpeechRecognition>=3.10.0
-tzdata>=2024.1
-faster-whisper>=1.0.3
-deepgram-sdk>=3.7.0
-bcrypt>=4.1.3
-prometheus-client>=0.20.0
+requests>=2.31.0
+httpx>=0.27.0          # Async HTTP client — non-blocking inside FastAPI handlers
+
+# ── Database ────────────────────────────────────────────────────────
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.9
+alembic>=1.13.0
+redis>=5.0.0           # Pub/sub for multi-device sync + notification queue
+aiofiles>=23.2.0       # Async file I/O for Storage/io.py
+
+# ── Auth & security ─────────────────────────────────────────────────
+bcrypt>=4.1.3
 python-dotenv>=1.0.1
+python-jose[cryptography]>=3.3.0   # RS256 JWT signing
+
+# ── Config ──────────────────────────────────────────────────────────
+pydantic-settings>=2.3.0           # Typed env-var config (replaces untyped config.py)
+
+# ── Logging ─────────────────────────────────────────────────────────
+loguru>=0.7.0                      # Structured logging across all AI modules
+
+# ── Retry & resilience ──────────────────────────────────────────────
+tenacity>=8.3.0                    # Retry with backoff (replaces custom circuit breaker)
+
+# ── Scheduling ──────────────────────────────────────────────────────
+APScheduler>=3.10.0                # Cron-based scheduler (replaces manual hour/min windows)
+
+# ── Task queue ──────────────────────────────────────────────────────
+celery>=5.4.0                      # Background tasks: notifications, report generation
+
+# ── Analytics & AI ──────────────────────────────────────────────────
+pandas>=2.2.0                      # Sleep trend analysis, weekly report aggregations
+numpy>=1.26.0                      # Math for restlessness scores, sleep stage ratios
+scikit-learn>=1.4.0                # Sleep anomaly detection, pattern clustering
+sentence-transformers>=3.0.0       # Embed messages/memories for semantic search
+chromadb>=0.5.0                    # Vector store for long-term memory (replaces 400-item JSON)
+
+# ── Voice / AI ──────────────────────────────────────────────────────
+SpeechRecognition>=3.10.0
+faster-whisper>=1.0.3
+deepgram-sdk>=3.7.0
+
+# ── API rate limiting ────────────────────────────────────────────────
+slowapi>=0.1.9                     # Battle-tested FastAPI rate limiter
+
+# ── Observability ───────────────────────────────────────────────────
+prometheus-client>=0.20.0
+opentelemetry-sdk>=1.24.0                          # Distributed tracing (spans)
+opentelemetry-instrumentation-fastapi>=0.45b0      # FastAPI auto-instrumentation
+
+# ── Utilities ───────────────────────────────────────────────────────
+qrcode[pil]>=7.4.2
+tzdata>=2024.1
+
+# ── Monitoring (optional) ───────────────────────────────────────────
+psutil>=5.9.0
+
+# ── Dev / test ──────────────────────────────────────────────────────
+pytest-asyncio>=0.23.0             # Async test support for FastAPI endpoints
+freezegun>=1.4.0                   # Freeze time in automation trigger tests

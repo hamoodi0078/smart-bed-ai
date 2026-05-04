@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class SmartBedPalette {
   SmartBedPalette._();
@@ -59,14 +60,9 @@ ThemeData buildSmartBedTheme({Brightness brightness = Brightness.dark}) {
     colorScheme: scheme,
     scaffoldBackgroundColor: SmartBedPalette.scaffold(brightness),
     canvasColor: SmartBedPalette.scaffold(brightness),
-    fontFamilyFallback: const <String>[
-      'Poppins',
-      'Segoe UI',
-      'Roboto',
-      'Helvetica Neue',
-      'Arial',
-      'Noto Color Emoji',
-    ],
+    textTheme: GoogleFonts.poppinsTextTheme(
+      ThemeData(brightness: brightness).textTheme,
+    ),
   );
 
   TextStyle? headline(TextStyle? style) => style?.copyWith(

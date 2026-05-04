@@ -1,10 +1,13 @@
 from .connection import DatabaseConnection
 from .models import (
+    AppVersion,
     Base,
     Bed,
     BetaCohortMember,
     BetaMetricsSnapshot,
     Event,
+    FeatureFlag,
+    FirmwareVersion,
     FirstThreeNightsProgress,
     MobileAuthSession,
     MobileCommandFeedback,
@@ -13,13 +16,16 @@ from .models import (
     SceneRecord,
     SleepSession,
     User,
+    UserFeatureOverride,
 )
 from .repositories import (
     BetaProgressRepository,
     EventRepository,
+    FeatureFlagRepository,
     MobileAuthRepository,
     MobileCommandRepository,
     SleepSessionRepository,
+    UpdateRepository,
     UserRepository,
 )
 
@@ -37,6 +43,10 @@ __all__ = [
     "NightlySummaryFeedbackProgress",
     "BetaMetricsSnapshot",
     "BetaCohortMember",
+    "AppVersion",
+    "FirmwareVersion",
+    "FeatureFlag",
+    "UserFeatureOverride",
     "DatabaseConnection",
     "UserRepository",
     "BetaProgressRepository",
@@ -44,4 +54,6 @@ __all__ = [
     "MobileAuthRepository",
     "MobileCommandRepository",
     "SleepSessionRepository",
+    "UpdateRepository",
+    "FeatureFlagRepository",
 ]

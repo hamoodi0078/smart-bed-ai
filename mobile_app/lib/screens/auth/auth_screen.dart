@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
@@ -53,7 +54,7 @@ class _AuthScreenState extends State<AuthScreen> {
           () => _errorMessage = (result['message'] ?? 'Something went wrong').toString(),
         );
       } else {
-        Navigator.pushReplacementNamed(context, '/home');
+        context.go('/dashboard');
       }
     }
   }

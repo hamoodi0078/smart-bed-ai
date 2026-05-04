@@ -97,7 +97,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--base-url",
-        default="http://127.0.0.1:8001",
+        default="http://127.0.0.1:8000",
         help="Base URL for mobile smoke flow.",
     )
     parser.add_argument(

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import logging
 import os
 from contextlib import contextmanager
 from typing import Optional
 
-import requests
+from loguru import logger as _module_log
+
+from core.http_client import http
 
 from database.connection import DatabaseConnection
 from database.repositories import EventRepository, SleepSessionRepository, UserRepository
@@ -38,7 +39,7 @@ class EmailService:
         self.api_key = str(api_key or os.getenv("SENDGRID_API_KEY", "")).strip()
         self.from_email = str(from_email or os.getenv("EMAIL_FROM", "")).strip()
         self.db = db or DatabaseConnection()
-        self.logger = logging.getLogger(__name__)
+        self.logger = _module_log
         if not self.api_key:
             raise ValueError("SENDGRID_API_KEY is required")
         if not self.from_email:
@@ -56,23 +57,23 @@ class EmailService:
             "Content-Type": "application/json",
         }
         try:
-            response = requests.post(
+            response = http.post(
                 self.SENDGRID_SEND_ENDPOINT,
                 headers=headers,
                 json=payload,
                 timeout=15,
             )
         except Exception as exc:
-            self.logger.warning("SendGrid request failed: %s", exc)
+            self.logger.warning("SendGrid request failed: {}", exc)
             return False
 
         if 200 <= int(response.status_code) < 300:
             return True
 
         self.logger.warning(
-            "SendGrid rejected email status=%s body=%s",
+            "SendGrid rejected email status={} body={}",
             response.status_code,
-            response.text,
+            response.text[:200],
         )
         return False
 

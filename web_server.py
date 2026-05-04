@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
+from contextlib import asynccontextmanager, contextmanager
 from copy import deepcopy
 import json
 import logging
@@ -46,13 +43,14 @@ from automations.registry import (
 )
 from ai.conversation_engine import ConversationEngine
 from ai.emotion_router import detect_emotion_state
-from ai.long_term_memory import LongTermMemoryStore
+from ai.long_term_memory import DBLongTermMemoryStore, LongTermMemoryStore
 from ai.sleep_intelligence import SleepIntelligenceEngine
 from ai.voice_circuit_breaker import write_voice_circuit_reset_signal
 from commands.undo_manager import UndoManager
 from config import LONG_TERM_MEMORY_PATH, RUNTIME_DATA_DIR, USER_PROFILE_PATH, settings
 from core.errors import (
     APIError,
+    BedError,
     DEVICE_OFFLINE,
     INVALID_SCENE_CONFIG,
     INTERNAL_ERROR,
@@ -61,6 +59,7 @@ from core.errors import (
     TRIAL_ALREADY_USED,
     UNAUTHORIZED,
     VALIDATION_ERROR,
+    bed_error_to_response,
     error_response,
 )
 from core.structured_logging import emit_json_log
@@ -80,6 +79,22 @@ scene_store = SceneStore()
 undo_manager = UndoManager()
 _CHAT_ENGINE_LOCK = threading.RLock()
 _CHAT_ENGINES: dict[str, ConversationEngine] = {}
+# Serialises all profile read-modify-write cycles to prevent concurrent-write clobber.
+_PROFILE_RW_LOCK = threading.RLock()
+
+
+@contextmanager
+def _profile_rw():
+    """Context manager that holds the profile RW lock for a full read-modify-write cycle.
+
+    Usage::
+        with _profile_rw():
+            profile = _safe_profile()
+            profile["section"][key] = value
+            _save_profile(profile)
+    """
+    with _PROFILE_RW_LOCK:
+        yield
 _DB_CONNECTION: Any | None = None
 _DB_CONNECTION_URL = ""
 _DB_USER_REPOSITORY: Any | None = None
@@ -90,9 +105,17 @@ _DB_SLEEP_SESSION_REPOSITORY: Any | None = None
 _DB_COMMAND_REPOSITORY: Any | None = None
 _DB_MOBILE_AUTH_REPOSITORY: Any | None = None
 _BILLING_SERVICE: Any | None = None
+_DB_UPDATE_REPOSITORY: Any | None = None
+_DB_FEATURE_FLAG_REPOSITORY: Any | None = None
 _SLEEP_ENGINE = SleepIntelligenceEngine()
 
-_SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "password_hash"}
+_SENSITIVE_EXACT_KEYS = {
+    "access_token", "refresh_token", "password_hash", "password",
+    "api_key", "secret", "client_secret", "private_key", "otp_code",
+    "authorization", "x-api-key", "token", "id_token", "session_token",
+    "stripe_secret", "paypal_secret", "sendgrid_api_key", "deepgram_api_key",
+}
+_SENSITIVE_PARTIAL_KEYS = ("secret", "password", "token", "api_key", "private_key", "credential")
 _MAX_CHAT_ENGINES = 200
 _DEVICE_STALE_WINDOW_SECONDS = 180
 _TRACE_ID_HEADER = "X-Trace-Id"
@@ -112,29 +135,14 @@ _METRICS_ERROR_COUNT = Counter(
     "Total HTTP error responses from the Smart Bed API",
     ["method", "path", "status_code"],
 )
-REQUEST_COUNT = Counter(
-    "http_requests_total",
-    "Total HTTP requests",
-    ["method", "endpoint", "status_code"],
-)
-REQUEST_LATENCY = Histogram(
-    "http_request_duration_seconds",
-    "HTTP request latency in seconds",
-    ["endpoint"],
-)
-ERROR_COUNT = Counter(
-    "http_errors_total",
-    "Total HTTP errors",
-    ["endpoint", "error_code"],
-)
-
-
-_cors_origins_raw = str(settings.web_allowed_origins_raw or "http://127.0.0.1:8001,http://localhost:8001")
+_cors_origins_raw = str(settings.web_allowed_origins_raw or "http://127.0.0.1:8000,http://localhost:8000")
 ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 ALLOWED_ORIGIN_REGEX = str(settings.web_allowed_origin_regex or "").strip() or None
-logger = logging.getLogger("web_runtime")
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+# Authoritative server hostname used by _enforce_same_origin to avoid trusting the client Host header.
+# Set SERVER_HOSTNAME in .env for production (e.g. "api.danah.io").
+_SERVER_HOSTNAME = str(os.getenv("SERVER_HOSTNAME", "") or "").strip().lower() or None
+from core.logger import logger, setup_logging
+setup_logging()
 
 TELEMETRY = {
     "auth_user_login_success": 0,
@@ -150,25 +158,51 @@ TELEMETRY = {
     "same_origin_denied": 0,
 }
 
-app = FastAPI(title="Dana Abuhalifa Web Runtime", version="1.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.on_event("startup")
-async def _log_cors_config() -> None:
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
     logger.info(
         "CORS configured allow_origins=%s allow_origin_regex=%s",
         ALLOWED_ORIGINS,
         ALLOWED_ORIGIN_REGEX,
     )
+    try:
+        from api.service_registry import initialize_services
+        initialize_services(app)
+    except Exception as exc:
+        logger.warning("Automation service init error (non-fatal): %s", exc)
+    yield
+
+
+app = FastAPI(title="Danah Smart Bed API", version="1.0.0", lifespan=_lifespan)
+
+from api.automation_routes import router as automation_router
+app.include_router(automation_router)
+
+from api.middleware.rate_limiter import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
+
+_cors_credentials = bool(ALLOWED_ORIGINS) and "*" not in ALLOWED_ORIGINS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
+    allow_credentials=_cors_credentials,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Trace-ID", "X-Request-ID"],
+)
+
+
+@app.exception_handler(BedError)
+async def bed_error_handler(request: Request, exc: BedError) -> JSONResponse:
+    trace_id = getattr(request.state, "trace_id", "")
+    logger.warning("[BedError] %s: %s (trace=%s)", type(exc).__name__, exc.message, trace_id)
+    return bed_error_to_response(exc, trace_id=trace_id)
+
+
+@app.exception_handler(APIError)
+async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
+    trace_id = getattr(request.state, "trace_id", "")
+    return error_response(exc.code, exc.message, trace_id=trace_id, retry_after=exc.retry_after)
 
 
 @app.middleware("http")
@@ -182,18 +216,10 @@ async def trace_id_middleware(request: Request, call_next):
     method = str(request.method or "GET")
     path = str(request.url.path or "/")
     status_key = str(status_code)
-    REQUEST_COUNT.labels(
-        method=method,
-        endpoint=path,
-        status_code=str(status_code)
-    ).inc()
-    REQUEST_LATENCY.labels(endpoint=path).observe(elapsed)
-
     _METRICS_REQUEST_COUNT.labels(method=method, path=path, status_code=status_key).inc()
     _METRICS_REQUEST_LATENCY.labels(method=method, path=path).observe(elapsed)
     if status_code >= 400:
         _METRICS_ERROR_COUNT.labels(method=method, path=path, status_code=status_key).inc()
-        ERROR_COUNT.labels(endpoint=path, error_code=str(status_code)).inc()
 
     response.headers[_TRACE_ID_HEADER] = trace_id
     try:
@@ -215,12 +241,12 @@ async def trace_id_middleware(request: Request, call_next):
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=4096)
 
 
 class CommandRequest(BaseModel):
-    text: str
-    source: str = "web"
+    text: str = Field(min_length=1, max_length=4096)
+    source: str = Field(default="web", max_length=32)
 
 
 class BedStateV2State(BaseModel):
@@ -241,56 +267,56 @@ class BedStateV2Response(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    email: str
-    password: str
-    name: str = ""
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=8, max_length=256)
+    name: str = Field(default="", max_length=256)
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
 
 
 class UserSettingsRequest(BaseModel):
-    response_style: str = "balanced"
-    engagement_level: str = "high"
-    wind_down_minutes: int = 45
+    response_style: str = Field(default="balanced", max_length=64)
+    engagement_level: str = Field(default="high", max_length=64)
+    wind_down_minutes: int = Field(default=45, ge=0, le=480)
     partner_mode_enabled: bool = False
     bedtime_drift_automation_enabled: bool = True
-    quiet_hours_override_limit_minutes: int = 120
+    quiet_hours_override_limit_minutes: int = Field(default=120, ge=0, le=480)
     weekly_insight_enabled: bool = True
 
 
 class AdminActionRequest(BaseModel):
-    action: str
+    action: str = Field(min_length=1, max_length=64)
 
 
 class BetaCohortEnrollRequest(BaseModel):
-    user_id: str = ""
-    email: str = ""
-    cohort_key: str = "kuwait_beta"
-    country_code: str = "KW"
+    user_id: str = Field(default="", max_length=128)
+    email: str = Field(default="", max_length=254)
+    cohort_key: str = Field(default="kuwait_beta", max_length=64)
+    country_code: str = Field(default="KW", max_length=8)
     status: Literal["candidate", "invited", "active", "paused", "graduated", "inactive"] = "active"
-    source: str = "admin_manual"
-    notes: str = ""
+    source: str = Field(default="admin_manual", max_length=64)
+    notes: str = Field(default="", max_length=2048)
 
 
 class UserRoutineRequest(BaseModel):
-    bedtime: str = "22:30"
-    wake: str = "07:00"
+    bedtime: str = Field(default="22:30", max_length=16)
+    wake: str = Field(default="07:00", max_length=16)
     weekends: bool = True
 
 
 class UserProfilePrefsRequest(BaseModel):
-    display_name: str = ""
-    timezone: str = "Asia/Kuwait"
+    display_name: str = Field(default="", max_length=256)
+    timezone: str = Field(default="Asia/Kuwait", max_length=64)
     push_enabled: bool = True
     email_enabled: bool = False
     location_mode: Literal["auto", "manual"] = "auto"
-    country_code: str = ""
-    city: str = ""
-    latitude: float | None = None
-    longitude: float | None = None
+    country_code: str = Field(default="", max_length=8)
+    city: str = Field(default="", max_length=128)
+    latitude: float | None = Field(default=None, ge=-90.0, le=90.0)
+    longitude: float | None = Field(default=None, ge=-180.0, le=180.0)
     theme_mode: Literal["system", "dark", "light"] = "system"
 
 
@@ -298,108 +324,166 @@ class UserDeviceControlRequest(BaseModel):
     lights_on: bool = False
     audio_on: bool = False
     alarm_on: bool = True
-    light_level: int = 65
+    light_level: int = Field(default=65, ge=0, le=100)
 
 
 class UserActionRequest(BaseModel):
-    action: str
+    action: str = Field(min_length=1, max_length=128)
 
 
 class UserDeviceCommandRequest(BaseModel):
-    action: str
+    action: str = Field(min_length=1, max_length=128)
 
 
 class SceneSelectionRequest(BaseModel):
-    scene_key: str
+    scene_key: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9_\-]+$")
+
+
+class PublishAppVersionRequest(BaseModel):
+    platform: str = Field(default="all", max_length=32)
+    version_string: str = Field(min_length=1, max_length=32)
+    build_number: int = Field(default=0, ge=0)
+    changelog: list[str] = Field(default_factory=list, max_length=100)
+    is_required: bool = False
+    rollout_percent: int = Field(default=100, ge=0, le=100)
+    min_supported_version: str = Field(default="", max_length=32)
+    store_url_ios: str = Field(default="", max_length=2048)
+    store_url_android: str = Field(default="", max_length=2048)
+
+
+class PublishFirmwareVersionRequest(BaseModel):
+    version_string: str = Field(min_length=1, max_length=32)
+    changelog: list[str] = Field(default_factory=list, max_length=100)
+    download_url: str = Field(default="", max_length=2048)
+    is_required: bool = False
+    rollout_percent: int = Field(default=100, ge=0, le=100)
+    target_device_ids: list[str] = Field(default_factory=list, max_length=1000)
+
+
+class RegisterPushTokenRequest(BaseModel):
+    expo_token: str = Field(min_length=1, max_length=512)
+    platform: str = Field(default="android", max_length=32)
+
+
+class PatchVersionRequest(BaseModel):
+    rollout_percent: int | None = None
+    is_required: bool | None = None
+    is_active: bool | None = None
+
+
+class UpsertFeatureFlagRequest(BaseModel):
+    flag_key: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9_\-]+$")
+    display_name: str = Field(default="", max_length=256)
+    description: str = Field(default="", max_length=2048)
+    enabled_globally: bool = False
+    enabled_for_plans: list[str] = Field(default_factory=list, max_length=20)
+    rollout_percent: int = Field(default=0, ge=0, le=100)
+
+
+class PatchFeatureFlagRequest(BaseModel):
+    enabled_globally: bool | None = None
+    enabled_for_plans: list[str] | None = None
+    rollout_percent: int | None = Field(default=None, ge=0, le=100)
+
+
+class SetUserFeatureOverrideRequest(BaseModel):
+    flag_key: str = Field(min_length=1, max_length=128)
+    override_value: bool
+    reason: str = Field(default="", max_length=512)
+
+
+class PatchAdminUserRequest(BaseModel):
+    subscription_status: str | None = Field(default=None, max_length=32)
+    trial_end_date: str | None = Field(default=None, max_length=32)
 
 
 class SceneComposeRequest(BaseModel):
-    name: str = ""
+    name: str = Field(default="", max_length=256)
     light: dict[str, Any] | None = None
     audio: dict[str, Any] | None = None
     premium: bool = False
-    category: str = ""
-    tags: list[str] = Field(default_factory=list)
+    category: str = Field(default="", max_length=64)
+    tags: list[str] = Field(default_factory=list, max_length=20)
 
 
 class TrialStartRequest(BaseModel):
-    user_id: str = ""
+    user_id: str = Field(default="", max_length=128)
 
 
 class UndoActionRequest(BaseModel):
-    user_id: str = ""
+    user_id: str = Field(default="", max_length=128)
 
 
 class SpotifyPlaybackRequest(BaseModel):
-    action: str
-    device_id: str = ""
-    playlist_uri: str = ""
-    volume_percent: int = 50
+    action: str = Field(min_length=1, max_length=64)
+    device_id: str = Field(default="", max_length=128)
+    playlist_uri: str = Field(default="", max_length=512)
+    volume_percent: int = Field(default=50, ge=0, le=100)
 
 
 class MobileRegisterRequest(BaseModel):
-    email: str
-    password: str
-    name: str = ""
-    client_name: str = "flutter_app"
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=8, max_length=256)
+    name: str = Field(default="", max_length=256)
+    client_name: str = Field(default="flutter_app", max_length=64)
 
 
 class MobileLoginRequest(BaseModel):
-    email: str
-    password: str
-    client_name: str = "flutter_app"
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
+    client_name: str = Field(default="flutter_app", max_length=64)
 
 
 class MobileOtpRequestRequest(BaseModel):
-    phone_number: str
-    client_name: str = "flutter_app"
+    phone_number: str = Field(min_length=7, max_length=32)
+    client_name: str = Field(default="flutter_app", max_length=64)
 
 
 class MobileOtpVerifyRequest(BaseModel):
-    request_id: str
-    phone_number: str
-    otp_code: str
-    name: str = ""
-    client_name: str = "flutter_app"
+    request_id: str = Field(min_length=1, max_length=128)
+    phone_number: str = Field(min_length=7, max_length=32)
+    otp_code: str = Field(min_length=4, max_length=8)
+    name: str = Field(default="", max_length=256)
+    client_name: str = Field(default="flutter_app", max_length=64)
 
 
 class MobileSocialLoginRequest(BaseModel):
     provider: Literal["google", "apple", "facebook"]
-    provider_user_id: str = ""
-    provider_access_token: str = ""
-    provider_id_token: str = ""
-    provider_auth_code: str = ""
-    email: str = ""
-    name: str = ""
-    client_name: str = "flutter_app"
+    provider_user_id: str = Field(default="", max_length=256)
+    provider_access_token: str = Field(default="", max_length=4096)
+    provider_id_token: str = Field(default="", max_length=4096)
+    provider_auth_code: str = Field(default="", max_length=2048)
+    email: str = Field(default="", max_length=254)
+    name: str = Field(default="", max_length=256)
+    client_name: str = Field(default="flutter_app", max_length=64)
 
 
 class MobileRefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = Field(min_length=1, max_length=2048)
 
 
 class MobileLogoutRequest(BaseModel):
-    refresh_token: str = ""
+    refresh_token: str = Field(default="", max_length=2048)
 
 
 class MobileBedPairRequest(BaseModel):
-    qr_payload: str = ""
-    device_id: str = ""
-    claim_token: str = ""
-    bed_location: str = "Kuwait"
+    qr_payload: str = Field(default="", max_length=2048)
+    device_id: str = Field(default="", max_length=128)
+    claim_token: str = Field(default="", max_length=512)
+    bed_location: str = Field(default="Kuwait", max_length=128)
 
 
 class MobileBedUnpairRequest(BaseModel):
-    device_id: str = ""
+    device_id: str = Field(default="", max_length=128)
 
 
 class MobileAlarmUpsertRequest(BaseModel):
-    alarm_id: str = ""
-    time: str = "07:00"
-    days: list[int] = Field(default_factory=list)
+    alarm_id: str = Field(default="", max_length=128)
+    time: str = Field(default="07:00", max_length=16)
+    days: list[int] = Field(default_factory=list, max_length=7)
     enabled: bool = True
-    label: str = ""
-    sound: str = "default"
+    label: str = Field(default="", max_length=256)
+    sound: str = Field(default="default", max_length=128)
     vibrate: bool = True
 
 
@@ -410,31 +494,31 @@ class MobileAlarmToggleRequest(BaseModel):
 class MobileSubscriptionCheckoutRequest(BaseModel):
     tier: Literal["standard", "pro"] = "standard"
     interval: Literal["monthly", "yearly"] = "monthly"
-    return_url: str = ""
-    cancel_url: str = ""
+    return_url: str = Field(default="", max_length=2048)
+    cancel_url: str = Field(default="", max_length=2048)
 
 
 class MobileSubscriptionCaptureRequest(BaseModel):
-    session_id: str
-    payer_id: str = ""
-    provider_order_id: str = ""
-    provider_subscription_id: str = ""
+    session_id: str = Field(min_length=1, max_length=256)
+    payer_id: str = Field(default="", max_length=256)
+    provider_order_id: str = Field(default="", max_length=256)
+    provider_subscription_id: str = Field(default="", max_length=256)
 
 
 class MobileSubscriptionCancelRequest(BaseModel):
-    session_id: str
+    session_id: str = Field(min_length=1, max_length=256)
 
 
 class MobileSubscriptionActionRequest(BaseModel):
-    reason: str = ""
+    reason: str = Field(default="", max_length=512)
 
 
 class BillingWebhookRequest(BaseModel):
-    event_type: str
-    session_id: str = ""
-    user_id: str = ""
-    tier: str = ""
-    interval: str = "monthly"
+    event_type: str = Field(min_length=1, max_length=128)
+    session_id: str = Field(default="", max_length=256)
+    user_id: str = Field(default="", max_length=128)
+    tier: str = Field(default="", max_length=32)
+    interval: str = Field(default="monthly", max_length=32)
     raw: dict[str, Any] = Field(default_factory=dict)
     resource: dict[str, Any] = Field(default_factory=dict)
 
@@ -456,7 +540,7 @@ class NightlySummaryFeedbackRequest(BaseModel):
 
 class DeviceCommandFeedbackRequest(BaseModel):
     vote: Literal["helpful", "not_helpful"]
-    note: str = ""
+    note: str = Field(default="", max_length=1024)
 
 
 def _safe_profile() -> dict[str, Any]:
@@ -645,6 +729,11 @@ def _device_health_status(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def _save_profile(payload: dict[str, Any]):
+    with _PROFILE_RW_LOCK:
+        _save_profile_unlocked(payload)
+
+
+def _save_profile_unlocked(payload: dict[str, Any]):
     try:
         atomic_write_json(PROFILE_PATH, payload if isinstance(payload, dict) else {})
     except Exception as exc:
@@ -1049,7 +1138,7 @@ def _normalize_device_controls(payload: dict[str, Any] | None) -> dict[str, Any]
     }
 
 
-_MOBILE_OTP_TTL_SECONDS = 10 * 60
+_MOBILE_OTP_TTL_SECONDS = int(os.environ.get("OTP_TTL_SECONDS", str(10 * 60)))
 _MOBILE_OTP_MAX_ATTEMPTS = 5
 _MOBILE_ALARM_MAX_ITEMS = 12
 
@@ -1322,26 +1411,7 @@ def _safe_epoch_seconds(value: Any) -> int:
         return 0
 
 
-def _decode_jwt_payload_unverified(token: str) -> dict[str, Any]:
-    raw = str(token or "").strip()
-    if not raw or "." not in raw:
-        return {}
-    parts = raw.split(".")
-    if len(parts) < 2:
-        return {}
-    payload_part = str(parts[1] or "").strip()
-    if not payload_part:
-        return {}
-    padding = "=" * (-len(payload_part) % 4)
-    try:
-        decoded = base64.urlsafe_b64decode(f"{payload_part}{padding}".encode("ascii"))
-    except (ValueError, binascii.Error):
-        return {}
-    try:
-        parsed = json.loads(decoded.decode("utf-8", errors="replace"))
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+from auth.jwt_handler import decode_unverified as _decode_jwt_payload_unverified  # noqa: E402
 
 
 def _verify_google_social_identity(*, access_token: str = "", id_token: str = "") -> dict[str, Any]:
@@ -1619,8 +1689,8 @@ def _ensure_external_identity_user(*, email: str, name: str, password_hash: str 
     if normalized_name and not str(getattr(db_user, "full_name", "") or "").strip():
         try:
             db_user = repo.update_user(str(getattr(db_user, "id", "") or ""), full_name=normalized_name)
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.warning("update_user full_name failed user_id=%s err=%s", getattr(db_user, "id", "?"), _exc)
 
     payload = _db_user_to_mobile_user_payload(db_user)
     _ensure_legacy_store_user_shadow(
@@ -1879,9 +1949,14 @@ def _sanitize_user_key(value: str) -> str:
     return (safe or "guest")[:80]
 
 
-def _memory_store_for_user(user_key: str) -> LongTermMemoryStore:
+def _memory_store_for_user(user_key: str):
+    """Return a DB-backed memory store if DB is available, else fall back to JSON."""
     safe_key = _sanitize_user_key(user_key)
-    return LongTermMemoryStore(path=str(WEB_MEMORY_DIR / f"{safe_key}.json"))
+    try:
+        conn = _database_connection()
+        return DBLongTermMemoryStore(user_id=safe_key, db_connection=conn)
+    except Exception:
+        return LongTermMemoryStore(path=str(WEB_MEMORY_DIR / f"{safe_key}.json"))
 
 
 def _chat_engine_for_user(user_key: str) -> ConversationEngine:
@@ -2309,6 +2384,23 @@ def _quiet_hours_status_timeline_item(profile: dict[str, Any], user: dict[str, A
     return None
 
 
+_AUTOMATION_FRIENDLY_NAMES: dict[str, str] = {
+    "sleep_time_suggestion": "Dana reminded you to prepare for sleep",
+    "work_and_plan_10pm": "Dana prompted evening work review",
+    "morning_wake_scene": "Dana activated your sunrise wake scene",
+    "fajr_gentle_light": "Dana set gentle lights for Fajr prayer",
+    "bedtime_drift_alert": "Dana noticed your bedtime is drifting",
+    "hydration_prebed_reminder": "Dana reminded you to hydrate before bed",
+    "circadian_evening_transition": "Dana shifted LEDs to evening mode",
+    "stress_evening_checkin": "Dana offered breathing help for stress",
+    "calendar_evening_brief": "Dana briefed you on tomorrow's schedule",
+    "nap_suggestion": "Dana suggested a recovery nap",
+    "weekly_health_report": "Dana generated your weekly health report",
+    "hot_night_comfort": "Dana activated cool lighting for the heat",
+    "rainy_night_comfort": "Dana set cozy warm scene for the rain",
+}
+
+
 def _automation_cooldown_timeline_items(now_utc: datetime | None = None) -> list[dict[str, Any]]:
     registry = AutomationRegistry(state_path=AUTOMATION_STATE_PATH)
     for automation in build_default_automations():
@@ -2317,21 +2409,22 @@ def _automation_cooldown_timeline_items(now_utc: datetime | None = None) -> list
     statuses = registry.cooldown_status(now_utc=now_utc)
     rows: list[dict[str, Any]] = []
     for row in statuses:
-        automation_name = str(row.get("name", "automation") or "automation").replace("_", " ")
+        raw_name = str(row.get("name", "automation") or "automation")
+        friendly = _AUTOMATION_FRIENDLY_NAMES.get(raw_name, raw_name.replace("_", " ").title())
         remaining = max(0, int(row.get("next_run_in_minutes", 0) or 0))
         if remaining > 0:
             rows.append(
                 {
                     "time": f"in {remaining} min",
-                    "event": f"{automation_name}: next run available in {remaining} min",
+                    "event": f"{friendly} · next: in {remaining} min",
                     "status": "cooldown",
                 }
             )
         else:
             rows.append(
                 {
-                    "time": "Anytime",
-                    "event": f"{automation_name}: available now",
+                    "time": "Now",
+                    "event": f"{friendly} · ready",
                     "status": "ready",
                 }
             )
@@ -2521,8 +2614,8 @@ def _persist_mobile_timeline_item(user_id: str, item: dict[str, Any], trace_id: 
                     trace_id=trace,
                 )
                 return
-            except Exception:
-                pass
+            except Exception as _retry_exc:
+                logger.warning("timeline_item retry failed user_id=%s err=%s", user_key, _retry_exc)
         emit_json_log(
             logger,
             level="warning",
@@ -4484,7 +4577,7 @@ def _is_sensitive_key(key: str) -> bool:
         return False
     if normalized in _SENSITIVE_EXACT_KEYS:
         return True
-    return "oauth" in normalized and "token" in normalized
+    return any(partial in normalized for partial in _SENSITIVE_PARTIAL_KEYS)
 
 
 def _redact_sensitive_payload(value: Any) -> Any:
@@ -4626,8 +4719,8 @@ def _generate_actor_reply(actor: dict[str, Any], message: str) -> tuple[str, boo
             emotion_state=emotion_state,
             personality=personality,
         )
-    except Exception:
-        pass
+    except Exception as _mem_exc:
+        logger.warning("memory_store.record_turn failed user_id=%s err=%s", str(actor.get("user_id", "")), _mem_exc)
 
     _event(
         "info",
@@ -4668,7 +4761,8 @@ def _enforce_same_origin(request: Request):
     origin = (request.headers.get("origin", "") or "").strip()
     if not origin:
         return
-    host = (request.headers.get("host", "") or "").strip().lower()
+    # Prefer the authoritative server hostname over the client-supplied Host header.
+    host = _SERVER_HOSTNAME or (request.headers.get("host", "") or "").strip().lower()
     if not host:
         raise HTTPException(status_code=403, detail="Origin validation failed")
     parsed = urlparse(origin)
@@ -4789,6 +4883,24 @@ def _require_admin(request: Request) -> dict[str, Any]:
     return admin
 
 
+def _require_premium_plan(request: Request) -> dict[str, Any]:
+    """Require an authenticated user with an active premium or trial subscription."""
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "").strip()
+    if user_id:
+        status_payload = _subscription_status_payload(user_id)
+        sub_status = str(status_payload.get("subscription_status", "free") or "free").lower()
+        trial_active = bool(status_payload.get("trial_active", False))
+        if sub_status not in ("premium", "pro", "standard") and not trial_active:
+            _bump("guard_premium_denied")
+            _event("warning", "premium_guard_denied", user_id=user_id, path=request.url.path)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Premium subscription required for this feature.",
+            )
+    return user
+
+
 def _database_connection():
     global _DB_CONNECTION
     global _DB_CONNECTION_URL
@@ -4800,6 +4912,8 @@ def _database_connection():
     global _DB_COMMAND_REPOSITORY
     global _DB_MOBILE_AUTH_REPOSITORY
     global _BILLING_SERVICE
+    global _DB_UPDATE_REPOSITORY
+    global _DB_FEATURE_FLAG_REPOSITORY
 
     env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
     if (_DB_CONNECTION is None) or (_DB_CONNECTION_URL != env_url):
@@ -4817,6 +4931,8 @@ def _database_connection():
         _DB_COMMAND_REPOSITORY = None
         _DB_MOBILE_AUTH_REPOSITORY = None
         _BILLING_SERVICE = None
+        _DB_UPDATE_REPOSITORY = None
+        _DB_FEATURE_FLAG_REPOSITORY = None
     return _DB_CONNECTION
 
 
@@ -4872,6 +4988,22 @@ def _db_mobile_auth_repository():
 
         _DB_MOBILE_AUTH_REPOSITORY = MobileAuthRepository(db=_database_connection())
     return _DB_MOBILE_AUTH_REPOSITORY
+
+
+def _db_update_repository():
+    global _DB_UPDATE_REPOSITORY
+    if _DB_UPDATE_REPOSITORY is None:
+        from database import UpdateRepository
+        _DB_UPDATE_REPOSITORY = UpdateRepository(db=_database_connection())
+    return _DB_UPDATE_REPOSITORY
+
+
+def _db_feature_flag_repository():
+    global _DB_FEATURE_FLAG_REPOSITORY
+    if _DB_FEATURE_FLAG_REPOSITORY is None:
+        from database import FeatureFlagRepository
+        _DB_FEATURE_FLAG_REPOSITORY = FeatureFlagRepository(db=_database_connection())
+    return _DB_FEATURE_FLAG_REPOSITORY
 
 
 def _billing_service() -> BillingService:
@@ -5094,6 +5226,35 @@ def healthz() -> dict[str, Any]:
     return {"ok": True, "service": "web_runtime"}
 
 
+@app.get("/healthz/detailed")
+def healthz_detailed() -> dict[str, Any]:
+    checks: dict[str, Any] = {"service": "web_runtime"}
+
+    try:
+        from database.connection import DatabaseConnection
+        db_conn = DatabaseConnection()
+        checks["database"] = {"ok": db_conn.health_check(), "version": db_conn.schema_version()}
+    except Exception as exc:
+        checks["database"] = {"ok": False, "error": type(exc).__name__}
+
+    try:
+        import shutil
+        disk = shutil.disk_usage("/")
+        checks["disk"] = {
+            "total_gb": round(disk.total / (1024 ** 3), 2),
+            "free_gb": round(disk.free / (1024 ** 3), 2),
+            "used_pct": round((disk.used / disk.total) * 100, 1),
+        }
+    except Exception:
+        checks["disk"] = {"ok": False}
+
+    checks["deepgram_configured"] = bool(str(settings.deepgram_api_key or "").strip())
+
+    all_ok = checks.get("database", {}).get("ok", False)
+    checks["ok"] = all_ok
+    return checks
+
+
 @app.get("/metrics")
 def metrics() -> Response:
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
@@ -5134,10 +5295,8 @@ def bed_state_bridge(request: Request) -> dict[str, Any]:
 
 @app.get("/v1/device/status")
 def device_status(request: Request) -> dict[str, Any]:
-    """
-    Returns simple device status for UI indicator dot.
-    Green = online, Yellow = stale, Red = offline
-    """
+    """Returns device status indicator: Green = online, Yellow = stale, Red = offline."""
+    _require_user(request)
     trace_id_raw = getattr(request.state, "trace_id", "")
     trace_id = str(trace_id_raw).strip() or "no-trace"
     now = utcnow()
@@ -5271,6 +5430,20 @@ def admin_billing(request: Request):
     )
 
 
+@app.get("/admin")
+def admin_v2(request: Request):
+    if not _cookie_admin(request):
+        return RedirectResponse(url="/login?role=admin&next=/admin", status_code=302)
+    return FileResponse(
+        WEB_DIR / "admin.html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
 @app.get("/assets/{asset_name}")
 def asset_file(asset_name: str) -> FileResponse:
     safe_name = Path(asset_name).name
@@ -5392,6 +5565,35 @@ def auth_logout(response: Response, request: Request) -> dict[str, Any]:
     return {"ok": True}
 
 
+@app.post("/v1/auth/revoke-all-sessions")
+def auth_revoke_all_sessions(response: Response, request: Request) -> dict[str, Any]:
+    """Invalidate every active session for the current user across both auth systems.
+    Use this after a password change or when a device is lost.
+    """
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Unable to identify user for session revocation")
+
+    legacy_revoked = store.revoke_all_sessions_for_user(user_id)
+    try:
+        mobile_revoked = _db_mobile_auth_repository().revoke_all_tokens_for_user(user_id)
+    except Exception as _exc:
+        logger.warning("mobile revoke_all_tokens_for_user failed user_id=%s err=%s", user_id, _exc)
+        mobile_revoked = 0
+
+    _clear_session_cookies(response)
+    _event(
+        "info",
+        "revoke_all_sessions",
+        user_id=user_id,
+        legacy_revoked=legacy_revoked,
+        mobile_revoked=mobile_revoked,
+    )
+    return {"ok": True, "legacy_revoked": legacy_revoked, "mobile_revoked": mobile_revoked}
+
+
 @app.post("/v1/auth/delete-data")
 def auth_delete_data(response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
@@ -5400,12 +5602,12 @@ def auth_delete_data(response: Response, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user_token = str(request.cookies.get("sb_user_token", "") or "").strip()
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
-    profile_removed = _purge_profile_user_data(profile, user)
-    _save_profile(profile)
+    with _profile_rw():
+        profile = _safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        profile_removed = _purge_profile_user_data(profile, user)
+        _save_profile(profile)
     deleted = store.delete_user_data(user_id=str(user.get("user_id", "")))
     if user_token:
         store.revoke_session(user_token)
@@ -5450,6 +5652,37 @@ def admin_observability(request: Request) -> dict[str, Any]:
         "ok": True,
         "telemetry": dict(TELEMETRY),
         "allowed_origins": ALLOWED_ORIGINS,
+    }
+
+
+@app.get("/v1/admin/diagnostics")
+def admin_diagnostics(request: Request) -> dict[str, Any]:
+    """Live snapshot of module-level global state for ops visibility."""
+    _require_admin(request)
+    with _CHAT_ENGINE_LOCK:
+        chat_engines_count = len(_CHAT_ENGINES)
+        chat_engine_keys = list(_CHAT_ENGINES.keys())[:20]
+    undo_info = {}
+    try:
+        undo_info = {
+            "pending_count": len(getattr(undo_manager, "_store", {})),
+        }
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "chat_engines": {
+            "count": chat_engines_count,
+            "max": _MAX_CHAT_ENGINES,
+            "sample_keys": chat_engine_keys,
+        },
+        "profile_rw_lock": {
+            "locked": _PROFILE_RW_LOCK.locked() if hasattr(_PROFILE_RW_LOCK, "locked") else "n/a",
+        },
+        "undo_manager": undo_info,
+        "db_connection_active": _DB_CONNECTION is not None,
+        "telemetry_keys": list(TELEMETRY.keys()),
+        "uptime_ts": _now_utc_iso(),
     }
 
 
@@ -5547,10 +5780,14 @@ def mobile_scenes(request: Request) -> dict[str, Any]:
 
 
 @app.get("/v1/scenes/templates")
-def scene_templates(premium_only: bool = False) -> dict[str, Any]:
+def scene_templates(request: Request, premium_only: bool = False) -> dict[str, Any]:
+    user = _authenticated_user(request)
     templates = scene_store.get_templates_for_api()
     if premium_only:
         templates = [row for row in templates if bool(row.get("premium", False))]
+    # Hide premium templates from unauthenticated callers or free-plan users.
+    if user is None:
+        templates = [row for row in templates if not bool(row.get("premium", False))]
     return {
         "ok": True,
         "templates": templates,
@@ -5559,9 +5796,11 @@ def scene_templates(premium_only: bool = False) -> dict[str, Any]:
 
 
 @app.get("/v1/sleep/overview")
-def sleep_overview() -> dict[str, Any]:
+async def sleep_overview(request: Request) -> dict[str, Any]:
+    import asyncio
+    _require_user(request)
     now_utc = utcnow().replace(microsecond=0)
-    readiness_score = _sleep_readiness_score(now_utc)
+    readiness_score = await asyncio.to_thread(_sleep_readiness_score, now_utc)
     return {
         "ok": True,
         "readiness_score": readiness_score,
@@ -5577,6 +5816,7 @@ def sleep_overview() -> dict[str, Any]:
 @app.post("/v1/scenes/compose")
 def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
+    _require_premium_plan(request)
     trace_id = _request_trace_id(request)
 
     required_fields = {
@@ -5651,18 +5891,9 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
 @app.post("/v1/actions/undo")
 def undo_last_action(payload: UndoActionRequest, request: Request):
     _enforce_same_origin(request)
+    user = _require_user(request)
     trace_id = _request_trace_id(request)
-    user_id = str(payload.user_id or "").strip()
-    if not user_id:
-        return JSONResponse(
-            status_code=400,
-            content=_error_envelope(
-                trace_id=trace_id,
-                code=VALIDATION_ERROR,
-                message="User ID is required.",
-            ),
-            headers={_TRACE_ID_HEADER: trace_id},
-        )
+    user_id = _user_profile_key(user)
 
     action = undo_manager.pop_undo(user_id)
     if not isinstance(action, dict):
@@ -5708,8 +5939,9 @@ def undo_last_action(payload: UndoActionRequest, request: Request):
 
 
 @app.get("/v1/actions/undo/status")
-def undo_action_status(user_id: str = "") -> dict[str, Any]:
-    key = str(user_id or "").strip()
+def undo_action_status(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    key = _user_profile_key(user)
     action = undo_manager.get_undoable_action(key) if key else None
     if not isinstance(action, dict):
         return {
@@ -5951,8 +6183,8 @@ def _capture_mobile_checkout(
     if str(updated_checkout.get("status", "") or "").strip().lower() == "completed":
         try:
             _db_user_repository().update_subscription(user_id=user_id, status="premium")
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.warning("update_subscription premium failed user_id=%s err=%s", user_id, _exc)
     return {
         **_mobile_subscription_status_response(user_id),
         "checkout": updated_checkout,
@@ -5960,9 +6192,26 @@ def _capture_mobile_checkout(
 
 
 @app.get("/v1/mobile/subscription/status")
-def mobile_subscription_status(request: Request) -> dict[str, Any]:
+async def mobile_subscription_status(request: Request) -> dict[str, Any]:
+    import asyncio
     user = _require_user(request)
-    return _mobile_subscription_status_response(str(user.get("user_id", "") or ""))
+    return await asyncio.to_thread(_mobile_subscription_status_response, str(user.get("user_id", "") or ""))
+
+
+@app.get("/v1/mobile/plan")
+def mobile_plan(request: Request) -> dict[str, Any]:
+    user = _require_user(request)
+    status = _mobile_subscription_status_response(str(user.get("user_id", "") or ""))
+    tier = str(status.get("plan_tier", "") or "").strip().lower()
+    if tier == "standard":
+        tier = "premium"
+    if not tier:
+        tier = "free"
+    return {
+        "ok": True,
+        "plan": tier,
+        "subscription": status,
+    }
 
 
 @app.get("/v1/mobile/subscription/history")
@@ -6064,8 +6313,8 @@ def mobile_subscription_pause(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         _db_user_repository().update_subscription(user_id=user_id, status="premium")
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.warning("update_subscription premium (pause) failed user_id=%s err=%s", user_id, _exc)
     return {
         **_mobile_subscription_status_response(user_id),
         "message": "Subscription paused.",
@@ -6089,8 +6338,8 @@ def mobile_subscription_cancel_active(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         _db_user_repository().update_subscription(user_id=user_id, status="free")
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.warning("update_subscription free (cancel) failed user_id=%s err=%s", user_id, _exc)
     return {
         **_mobile_subscription_status_response(user_id),
         "message": "Subscription cancelled.",
@@ -6198,8 +6447,8 @@ async def billing_paypal_webhook(request: Request) -> dict[str, Any]:
         }:
             try:
                 _db_user_repository().update_subscription(user_id=result.user_id, status="premium")
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.warning("webhook update_subscription premium failed user_id=%s err=%s", result.user_id, _exc)
         elif normalized_event in {
             "billing.subscription.cancelled",
             "billing.subscription.expired",
@@ -6208,8 +6457,8 @@ async def billing_paypal_webhook(request: Request) -> dict[str, Any]:
         }:
             try:
                 _db_user_repository().update_subscription(user_id=result.user_id, status="free")
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.warning("webhook update_subscription free failed user_id=%s err=%s", result.user_id, _exc)
     return {
         **_mobile_subscription_status_response(result.user_id),
         "verified": result.verified,
@@ -6224,9 +6473,10 @@ async def billing_paypal_webhook(request: Request) -> dict[str, Any]:
 
 
 @app.get("/v1/mobile/settings")
-def mobile_settings(request: Request) -> dict[str, Any]:
+async def mobile_settings(request: Request) -> dict[str, Any]:
+    import asyncio
     user = _require_user(request)
-    profile = _safe_profile()
+    profile = await asyncio.to_thread(_safe_profile)
     if not isinstance(profile, dict):
         profile = {}
     resolved = _resolved_user_settings(profile, user)
@@ -6237,22 +6487,22 @@ def mobile_settings(request: Request) -> dict[str, Any]:
 def upsert_mobile_settings(payload: UserSettingsRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
-    settings_map = profile.get("web_settings", {})
-    if not isinstance(settings_map, dict):
-        settings_map = {}
-
     key = str(user.get("user_id", "")).strip() or str(user.get("email", "")).strip().lower()
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user settings key")
 
-    normalized = _normalize_user_settings(payload.model_dump())
-    settings_map[key] = normalized
-    profile["web_settings"] = settings_map
-    _save_profile(profile)
+    with _profile_rw():
+        profile = _safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        settings_map = profile.get("web_settings", {})
+        if not isinstance(settings_map, dict):
+            settings_map = {}
+        normalized = _normalize_user_settings(payload.model_dump())
+        settings_map[key] = normalized
+        profile["web_settings"] = settings_map
+        _save_profile(profile)
+
     _event("info", "user_settings_saved", user_id=str(user.get("user_id", "")), key=key)
     return {"ok": True, "settings": normalized}
 
@@ -6561,74 +6811,76 @@ def mobile_auth_verify_otp(payload: MobileOtpVerifyRequest, request: Request) ->
     if len(otp_code) < 4:
         raise HTTPException(status_code=422, detail="otp_code must be at least 4 digits")
 
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
+    user: dict[str, Any] | None = None
+    with _profile_rw():
+        profile = _safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
 
-    otp_section = _get_scoped_profile_section(profile, "mobile_phone_otp_requests")
-    row = otp_section.get(request_id, {}) if isinstance(otp_section.get(request_id, {}), dict) else {}
-    if not row:
-        raise HTTPException(status_code=401, detail="OTP request is invalid or expired")
+        otp_section = _get_scoped_profile_section(profile, "mobile_phone_otp_requests")
+        row = otp_section.get(request_id, {}) if isinstance(otp_section.get(request_id, {}), dict) else {}
+        if not row:
+            raise HTTPException(status_code=401, detail="OTP request is invalid or expired")
 
-    now = ensure_utc(utcnow())
-    expires_at = _parse_iso_timestamp(str(row.get("expires_at", "") or ""))
-    if (not isinstance(expires_at, datetime)) or ensure_utc(expires_at) < now:
-        otp_section.pop(request_id, None)
-        profile["mobile_phone_otp_requests"] = otp_section
-        _save_profile(profile)
-        raise HTTPException(status_code=401, detail="OTP request is expired")
+        now = ensure_utc(utcnow())
+        expires_at = _parse_iso_timestamp(str(row.get("expires_at", "") or ""))
+        if (not isinstance(expires_at, datetime)) or ensure_utc(expires_at) < now:
+            otp_section.pop(request_id, None)
+            profile["mobile_phone_otp_requests"] = otp_section
+            _save_profile(profile)
+            raise HTTPException(status_code=401, detail="OTP request is expired")
 
-    expected_phone = _normalize_phone_number(row.get("phone_number"))
-    if expected_phone != phone_number:
-        raise HTTPException(status_code=401, detail="OTP phone number does not match")
+        expected_phone = _normalize_phone_number(row.get("phone_number"))
+        if expected_phone != phone_number:
+            raise HTTPException(status_code=401, detail="OTP phone number does not match")
 
-    attempts = int(row.get("attempts", 0) or 0)
-    if attempts >= _MOBILE_OTP_MAX_ATTEMPTS:
-        otp_section.pop(request_id, None)
-        profile["mobile_phone_otp_requests"] = otp_section
-        _save_profile(profile)
-        raise HTTPException(status_code=429, detail="OTP attempts exceeded. Request a new code.")
+        attempts = int(row.get("attempts", 0) or 0)
+        if attempts >= _MOBILE_OTP_MAX_ATTEMPTS:
+            otp_section.pop(request_id, None)
+            profile["mobile_phone_otp_requests"] = otp_section
+            _save_profile(profile)
+            raise HTTPException(status_code=429, detail="OTP attempts exceeded. Request a new code.")
 
-    expected_digest = str(row.get("otp_digest", "") or "")
-    actual_digest = _otp_hmac_digest(
-        phone_number=phone_number,
-        request_id=request_id,
-        otp_code=otp_code,
-    )
-    if (not expected_digest) or (not hmac.compare_digest(expected_digest, actual_digest)):
-        row["attempts"] = attempts + 1
-        otp_section[request_id] = row
-        profile["mobile_phone_otp_requests"] = otp_section
-        _save_profile(profile)
-        raise HTTPException(status_code=401, detail="OTP code is invalid")
-
-    otp_section.pop(request_id, None)
-    profile["mobile_phone_otp_requests"] = otp_section
-
-    phone_users = _get_scoped_profile_section(profile, "mobile_phone_users")
-    mapped = phone_users.get(phone_number, {})
-    mapped_user_id = ""
-    if isinstance(mapped, dict):
-        mapped_user_id = str(mapped.get("user_id", "") or "").strip()
-    elif isinstance(mapped, str):
-        mapped_user_id = mapped.strip()
-
-    user = _mobile_user_payload_by_id(mapped_user_id) if mapped_user_id else None
-    if user is None:
-        resolved_name = str(payload.name or "").strip() or f"Phone user {phone_number[-4:]}"
-        user = _ensure_external_identity_user(
-            email=_phone_shadow_email(phone_number),
-            name=resolved_name,
-            password_hash="mobile_phone_auth",
+        expected_digest = str(row.get("otp_digest", "") or "")
+        actual_digest = _otp_hmac_digest(
+            phone_number=phone_number,
+            request_id=request_id,
+            otp_code=otp_code,
         )
-        mapped_user_id = str(user.get("user_id", "") or "")
+        if (not expected_digest) or (not hmac.compare_digest(expected_digest, actual_digest)):
+            row["attempts"] = attempts + 1
+            otp_section[request_id] = row
+            profile["mobile_phone_otp_requests"] = otp_section
+            _save_profile(profile)
+            raise HTTPException(status_code=401, detail="OTP code is invalid")
 
-    phone_users[phone_number] = {
-        "user_id": mapped_user_id,
-        "updated_at": _now_utc_iso(),
-    }
-    profile["mobile_phone_users"] = phone_users
-    _save_profile(profile)
+        otp_section.pop(request_id, None)
+        profile["mobile_phone_otp_requests"] = otp_section
+
+        phone_users = _get_scoped_profile_section(profile, "mobile_phone_users")
+        mapped = phone_users.get(phone_number, {})
+        mapped_user_id = ""
+        if isinstance(mapped, dict):
+            mapped_user_id = str(mapped.get("user_id", "") or "").strip()
+        elif isinstance(mapped, str):
+            mapped_user_id = mapped.strip()
+
+        user = _mobile_user_payload_by_id(mapped_user_id) if mapped_user_id else None
+        if user is None:
+            resolved_name = str(payload.name or "").strip() or f"Phone user {phone_number[-4:]}"
+            user = _ensure_external_identity_user(
+                email=_phone_shadow_email(phone_number),
+                name=resolved_name,
+                password_hash="mobile_phone_auth",
+            )
+            mapped_user_id = str(user.get("user_id", "") or "")
+
+        phone_users[phone_number] = {
+            "user_id": mapped_user_id,
+            "updated_at": _now_utc_iso(),
+        }
+        profile["mobile_phone_users"] = phone_users
+        _save_profile(profile)
 
     _event(
         "info",
@@ -6713,6 +6965,7 @@ def mobile_auth_refresh(payload: MobileRefreshRequest, request: Request) -> dict
     tokens = _db_mobile_auth_repository().refresh_tokens(refresh_token)
     if not isinstance(tokens, dict) or not tokens:
         # Compatibility path for older sessions issued before DB-backed mobile auth.
+        _log("warning", "mobile_token_refresh_db_miss", reason="token_not_found_or_expired_in_db")
         tokens = store.refresh_mobile_access_token(refresh_token)
     if not isinstance(tokens, dict) or not tokens:
         raise HTTPException(status_code=401, detail="Refresh token is invalid or expired")
@@ -6753,9 +7006,10 @@ def mobile_auth_me(request: Request) -> dict[str, Any]:
 
 
 @app.get("/v1/mobile/routine")
-def mobile_routine(request: Request) -> dict[str, Any]:
+async def mobile_routine(request: Request) -> dict[str, Any]:
+    import asyncio
     user = _require_user(request)
-    profile = _safe_profile()
+    profile = await asyncio.to_thread(_safe_profile)
     defaults = _normalize_user_routine({"bedtime": "22:30", "wake": "07:00", "weekends": True})
     key = _user_profile_key(user)
     section = _get_scoped_profile_section(profile, "web_routines")
@@ -6763,31 +7017,72 @@ def mobile_routine(request: Request) -> dict[str, Any]:
     return {"ok": True, "routine": _normalize_user_routine({**defaults, **scoped})}
 
 
+@app.post("/v1/mobile/push-token")
+def register_push_token(payload: RegisterPushTokenRequest, request: Request) -> dict[str, Any]:
+    """Store the user's Expo push token so the backend can send notifications."""
+    _enforce_same_origin(request)
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or user.get("email", "")).strip()
+    token = str(payload.expo_token or "").strip()
+    platform = str(payload.platform or "android").strip().lower()
+    if not token:
+        raise HTTPException(status_code=400, detail="expo_token is required")
+
+    # Persist in DB
+    try:
+        from database.models import UserPushToken
+        from sqlalchemy import select
+        conn = _database_connection()
+        with conn.get_session() as session:
+            existing = session.execute(
+                select(UserPushToken).where(UserPushToken.user_id == user_id)
+            ).scalar_one_or_none()
+            if existing is None:
+                session.add(UserPushToken(user_id=user_id, expo_token=token, platform=platform))
+            else:
+                existing.expo_token = token
+                existing.platform = platform
+    except Exception as exc:
+        logger.warning("push-token DB write failed: %s", exc)
+
+    # Also persist in the JSON file used by ExpoPushSender (for backwards compat)
+    try:
+        from notifications.expo_sender import ExpoPushSender
+        ExpoPushSender().register_token(user_id=user_id, expo_token=token, platform=platform)
+    except Exception as exc:
+        logger.warning("push-token JSON write failed: %s", exc)
+
+    _event("info", "push_token_registered", user_id=user_id, platform=platform)
+    return {"ok": True, "registered": True}
+
+
 @app.post("/v1/mobile/routine")
 def upsert_mobile_routine(payload: UserRoutineRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
     key = _user_profile_key(user)
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user routine key")
 
-    section = _get_scoped_profile_section(profile, "web_routines")
-    normalized = _normalize_user_routine(payload.model_dump())
-    section[key] = normalized
-    profile["web_routines"] = section
-    _save_profile(profile)
+    with _profile_rw():
+        profile = _safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        section = _get_scoped_profile_section(profile, "web_routines")
+        normalized = _normalize_user_routine(payload.model_dump())
+        section[key] = normalized
+        profile["web_routines"] = section
+        _save_profile(profile)
+
     _event("info", "user_routine_saved", user_id=str(user.get("user_id", "")), key=key)
     return {"ok": True, "routine": normalized}
 
 
 @app.get("/v1/mobile/profile")
-def mobile_profile(request: Request) -> dict[str, Any]:
+async def mobile_profile(request: Request) -> dict[str, Any]:
+    import asyncio
     user = _require_user(request)
-    profile = _safe_profile()
+    profile = await asyncio.to_thread(_safe_profile)
     defaults = _normalize_user_profile_prefs({
         "display_name": "",
         "timezone": "Asia/Kuwait",
@@ -6814,29 +7109,30 @@ def mobile_profile(request: Request) -> dict[str, Any]:
 def upsert_mobile_profile(payload: UserProfilePrefsRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
     key = _user_profile_key(user)
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user profile key")
 
-    section = _get_scoped_profile_section(profile, "web_profile_prefs")
-    normalized = _normalize_user_profile_prefs(payload.model_dump())
-    section[key] = normalized
-    profile["web_profile_prefs"] = section
-    prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
-    prefs["timezone"] = str(normalized.get("timezone", "UTC") or "UTC").strip() or "UTC"
-    profile["preferences"] = prefs
-    _save_profile(profile)
+    with _profile_rw():
+        profile = _safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        section = _get_scoped_profile_section(profile, "web_profile_prefs")
+        normalized = _normalize_user_profile_prefs(payload.model_dump())
+        section[key] = normalized
+        profile["web_profile_prefs"] = section
+        prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+        prefs["timezone"] = str(normalized.get("timezone", "UTC") or "UTC").strip() or "UTC"
+        profile["preferences"] = prefs
+        _save_profile(profile)
+
     _event("info", "user_profile_saved", user_id=str(user.get("user_id", "")), key=key)
     return {"ok": True, "profile": normalized}
 
 
 @app.get("/v1/mobile/islamic/overview")
 def mobile_islamic_overview(request: Request) -> dict[str, Any]:
-    user = _require_user(request)
+    user = _require_premium_plan(request)
     profile = _safe_profile()
     if not isinstance(profile, dict):
         profile = {}
@@ -6846,7 +7142,7 @@ def mobile_islamic_overview(request: Request) -> dict[str, Any]:
 
 @app.get("/v1/mobile/islamic/prayer-times")
 def mobile_islamic_prayer_times(request: Request) -> dict[str, Any]:
-    user = _require_user(request)
+    user = _require_premium_plan(request)
     profile = _safe_profile()
     if not isinstance(profile, dict):
         profile = {}
@@ -6860,7 +7156,7 @@ def mobile_islamic_prayer_times(request: Request) -> dict[str, Any]:
 
 @app.get("/v1/mobile/islamic/next-prayer")
 def mobile_islamic_next_prayer(request: Request) -> dict[str, Any]:
-    user = _require_user(request)
+    user = _require_premium_plan(request)
     profile = _safe_profile()
     if not isinstance(profile, dict):
         profile = {}
@@ -7119,36 +7415,38 @@ def mobile_upsert_alarm(payload: MobileAlarmUpsertRequest, request: Request) -> 
 def mobile_toggle_alarm(alarm_id: str, payload: MobileAlarmToggleRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
     key = _user_profile_key(user)
-    section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
-    rows = section.get(key, []) if key and isinstance(section.get(key, []), list) else []
     target_id = str(alarm_id or "").strip()
-    updated = False
-    next_rows: list[dict[str, Any]] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        normalized = _normalize_mobile_alarm(
-            row,
-            existing_alarm_id=str(row.get("alarm_id", "") or ""),
-            now_iso=str(row.get("updated_at", "") or _now_utc_iso()),
-        )
-        if str(normalized.get("alarm_id", "") or "") == target_id:
-            normalized["enabled"] = bool(payload.enabled)
-            normalized["updated_at"] = _now_utc_iso()
-            updated = True
-        next_rows.append(normalized)
 
-    if not updated:
-        raise HTTPException(status_code=404, detail="Alarm not found")
+    with _profile_rw():
+        profile = _safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
+        rows = section.get(key, []) if key and isinstance(section.get(key, []), list) else []
+        updated = False
+        next_rows: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            normalized = _normalize_mobile_alarm(
+                row,
+                existing_alarm_id=str(row.get("alarm_id", "") or ""),
+                now_iso=str(row.get("updated_at", "") or _now_utc_iso()),
+            )
+            if str(normalized.get("alarm_id", "") or "") == target_id:
+                normalized["enabled"] = bool(payload.enabled)
+                normalized["updated_at"] = _now_utc_iso()
+                updated = True
+            next_rows.append(normalized)
 
-    section[key] = next_rows
-    profile["mobile_alarm_schedules"] = section
-    _save_profile(profile)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Alarm not found")
+
+        section[key] = next_rows
+        profile["mobile_alarm_schedules"] = section
+        _save_profile(profile)
+
     return {"ok": True, "alarm_id": target_id, "enabled": bool(payload.enabled)}
 
 
@@ -7156,26 +7454,26 @@ def mobile_toggle_alarm(alarm_id: str, payload: MobileAlarmToggleRequest, reques
 def mobile_delete_alarm(alarm_id: str, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
     key = _user_profile_key(user)
-    section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
-    rows = section.get(key, []) if key and isinstance(section.get(key, []), list) else []
     target_id = str(alarm_id or "").strip()
 
-    next_rows = [
-        row
-        for row in rows
-        if isinstance(row, dict) and str(row.get("alarm_id", "") or "").strip() != target_id
-    ]
-    if len(next_rows) == len(rows):
-        raise HTTPException(status_code=404, detail="Alarm not found")
+    with _profile_rw():
+        profile = _safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
+        rows = section.get(key, []) if key and isinstance(section.get(key, []), list) else []
+        next_rows = [
+            row
+            for row in rows
+            if isinstance(row, dict) and str(row.get("alarm_id", "") or "").strip() != target_id
+        ]
+        if len(next_rows) == len(rows):
+            raise HTTPException(status_code=404, detail="Alarm not found")
+        section[key] = next_rows
+        profile["mobile_alarm_schedules"] = section
+        _save_profile(profile)
 
-    section[key] = next_rows
-    profile["mobile_alarm_schedules"] = section
-    _save_profile(profile)
     return {"ok": True, "deleted_alarm_id": target_id}
 
 
@@ -7356,14 +7654,14 @@ def mobile_spotify_disconnect(request: Request) -> dict[str, Any]:
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user Spotify key")
 
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
-    token_map = _get_scoped_profile_section(profile, "spotify_tokens")
-    token_map.pop(key, None)
-    profile["spotify_tokens"] = token_map
-    _save_profile(profile)
+    with _profile_rw():
+        profile = _safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        token_map = _get_scoped_profile_section(profile, "spotify_tokens")
+        token_map.pop(key, None)
+        profile["spotify_tokens"] = token_map
+        _save_profile(profile)
     return {"ok": True}
 
 
@@ -7465,19 +7763,20 @@ def mobile_spotify_playback(payload: SpotifyPlaybackRequest, request: Request) -
 def upsert_mobile_device_controls(payload: UserDeviceControlRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
     key = _user_profile_key(user)
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user device control key")
 
-    section = _get_scoped_profile_section(profile, "web_device_controls")
-    normalized = _normalize_device_controls(payload.model_dump())
-    section[key] = normalized
-    profile["web_device_controls"] = section
-    _save_profile(profile)
+    with _profile_rw():
+        profile = _safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        section = _get_scoped_profile_section(profile, "web_device_controls")
+        normalized = _normalize_device_controls(payload.model_dump())
+        section[key] = normalized
+        profile["web_device_controls"] = section
+        _save_profile(profile)
+
     _event("info", "user_device_controls_saved", user_id=str(user.get("user_id", "")), key=key)
     return {"ok": True, "controls": normalized}
 
@@ -7552,29 +7851,27 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
 @app.get("/v1/mobile/first-3-nights")
 def mobile_first_3_nights(request: Request) -> dict[str, Any]:
     user = _require_user(request)
-    profile = _safe_profile()
     key = _user_profile_key(user)
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user checklist key")
 
-    commands, changed = _progress_user_commands(
-        profile,
-        key,
-        user_id=str(user.get("user_id", "") or key),
-    )
-    profile_dirty = False
-    if changed:
-        cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
-        cmd_section[key] = commands
-        profile["web_device_commands"] = cmd_section
-        if commands:
-            _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
-        profile_dirty = True
+    with _profile_rw():
+        profile = _safe_profile()
+        commands, changed = _progress_user_commands(
+            profile,
+            key,
+            user_id=str(user.get("user_id", "") or key),
+        )
+        if changed:
+            cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
+            cmd_section[key] = commands
+            profile["web_device_commands"] = cmd_section
+            if commands:
+                _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
+            _save_profile(profile)
 
-    checklist, _ = _sync_first_3_nights_state(profile, user, commands=commands)
+        checklist, _ = _sync_first_3_nights_state(profile, user, commands=commands)
 
-    if profile_dirty:
-        _save_profile(profile)
     return {"ok": True, "checklist": checklist}
 
 
@@ -8646,8 +8943,374 @@ def admin_voice_circuit_breaker_reset(request: Request) -> dict[str, Any]:
     }
 
 
+# ── Update Manager routes ──────────────────────────────────────────────────────
+
+@app.get("/v1/admin/versions")
+def admin_list_versions(request: Request) -> dict[str, Any]:
+    _require_admin(request)
+    app_versions = _db_update_repository().list_app_versions(limit=100)
+    firmware_versions = _db_update_repository().list_firmware_versions(limit=100)
+    return {"ok": True, "app_versions": app_versions, "firmware_versions": firmware_versions}
+
+
+@app.post("/v1/admin/versions/app")
+def admin_publish_app_version(payload: PublishAppVersionRequest, request: Request) -> dict[str, Any]:
+    admin = _require_admin(request)
+    role = str(admin.get("role", "viewer") or "viewer")
+    if role == "viewer":
+        raise HTTPException(status_code=403, detail="editor or owner role required")
+    result = _db_update_repository().create_app_version(
+        platform=payload.platform,
+        version_string=payload.version_string,
+        build_number=payload.build_number,
+        changelog=payload.changelog,
+        is_required=payload.is_required,
+        rollout_percent=payload.rollout_percent,
+        min_supported_version=payload.min_supported_version or None,
+        store_url_ios=payload.store_url_ios or None,
+        store_url_android=payload.store_url_android or None,
+        published_by=str(admin.get("email", "") or admin.get("user_id", "")),
+    )
+    store.add_admin_audit_log(
+        actor_user_id=str(admin.get("user_id", "")),
+        actor_role=role,
+        action="publish_app_version",
+        resource="app_versions",
+        details={"version": payload.version_string, "platform": payload.platform},
+    )
+    return {"ok": True, "version": result}
+
+
+@app.post("/v1/admin/versions/firmware")
+def admin_publish_firmware_version(payload: PublishFirmwareVersionRequest, request: Request) -> dict[str, Any]:
+    admin = _require_admin(request)
+    role = str(admin.get("role", "viewer") or "viewer")
+    if role == "viewer":
+        raise HTTPException(status_code=403, detail="editor or owner role required")
+    result = _db_update_repository().create_firmware_version(
+        version_string=payload.version_string,
+        changelog=payload.changelog,
+        download_url=payload.download_url,
+        is_required=payload.is_required,
+        rollout_percent=payload.rollout_percent,
+        target_device_ids=payload.target_device_ids,
+        published_by=str(admin.get("email", "") or admin.get("user_id", "")),
+    )
+    store.add_admin_audit_log(
+        actor_user_id=str(admin.get("user_id", "")),
+        actor_role=role,
+        action="publish_firmware_version",
+        resource="firmware_versions",
+        details={"version": payload.version_string},
+    )
+    return {"ok": True, "version": result}
+
+
+@app.patch("/v1/admin/versions/{version_id}")
+def admin_patch_version(version_id: str, payload: PatchVersionRequest, request: Request) -> dict[str, Any]:
+    admin = _require_admin(request)
+    role = str(admin.get("role", "viewer") or "viewer")
+    if role == "viewer":
+        raise HTTPException(status_code=403, detail="editor or owner role required")
+    fields: dict[str, Any] = {}
+    if payload.rollout_percent is not None:
+        fields["rollout_percent"] = max(0, min(100, int(payload.rollout_percent)))
+    if payload.is_required is not None:
+        fields["is_required"] = bool(payload.is_required)
+    if payload.is_active is not None:
+        fields["is_active"] = bool(payload.is_active)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = _db_update_repository().update_app_version(version_id, **fields)
+    if result is None:
+        result = _db_update_repository().update_firmware_version(version_id, **fields)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    store.add_admin_audit_log(
+        actor_user_id=str(admin.get("user_id", "")),
+        actor_role=role,
+        action="patch_version",
+        resource=f"version:{version_id}",
+        details=fields,
+    )
+    return {"ok": True, "version": result}
+
+
+# ── Feature Flag routes ────────────────────────────────────────────────────────
+
+@app.get("/v1/admin/feature-flags")
+def admin_list_feature_flags(request: Request) -> dict[str, Any]:
+    _require_admin(request)
+    flags = _db_feature_flag_repository().list_flags()
+    return {"ok": True, "flags": flags}
+
+
+@app.post("/v1/admin/feature-flags")
+def admin_upsert_feature_flag(payload: UpsertFeatureFlagRequest, request: Request) -> dict[str, Any]:
+    admin = _require_admin(request)
+    role = str(admin.get("role", "viewer") or "viewer")
+    if role == "viewer":
+        raise HTTPException(status_code=403, detail="editor or owner role required")
+    result = _db_feature_flag_repository().upsert_flag(
+        flag_key=payload.flag_key,
+        display_name=payload.display_name,
+        description=payload.description,
+        enabled_globally=payload.enabled_globally,
+        enabled_for_plans=payload.enabled_for_plans,
+        rollout_percent=payload.rollout_percent,
+        updated_by=str(admin.get("email", "") or admin.get("user_id", "")),
+    )
+    store.add_admin_audit_log(
+        actor_user_id=str(admin.get("user_id", "")),
+        actor_role=role,
+        action="upsert_feature_flag",
+        resource=f"flag:{payload.flag_key}",
+        details={"enabled_globally": payload.enabled_globally, "rollout_percent": payload.rollout_percent},
+    )
+    return {"ok": True, "flag": result}
+
+
+@app.patch("/v1/admin/feature-flags/{flag_key}")
+def admin_patch_feature_flag(flag_key: str, payload: PatchFeatureFlagRequest, request: Request) -> dict[str, Any]:
+    admin = _require_admin(request)
+    role = str(admin.get("role", "viewer") or "viewer")
+    if role == "viewer":
+        raise HTTPException(status_code=403, detail="editor or owner role required")
+    existing = _db_feature_flag_repository().get_flag(flag_key)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Feature flag not found")
+    result = _db_feature_flag_repository().upsert_flag(
+        flag_key=flag_key,
+        display_name=existing["display_name"],
+        description=existing["description"],
+        enabled_globally=payload.enabled_globally if payload.enabled_globally is not None else existing["enabled_globally"],
+        enabled_for_plans=payload.enabled_for_plans if payload.enabled_for_plans is not None else existing["enabled_for_plans"],
+        rollout_percent=payload.rollout_percent if payload.rollout_percent is not None else existing["rollout_percent"],
+        updated_by=str(admin.get("email", "") or admin.get("user_id", "")),
+    )
+    store.add_admin_audit_log(
+        actor_user_id=str(admin.get("user_id", "")),
+        actor_role=role,
+        action="patch_feature_flag",
+        resource=f"flag:{flag_key}",
+        details={k: v for k, v in payload.model_dump().items() if v is not None},
+    )
+    return {"ok": True, "flag": result}
+
+
+# ── User feature override routes ───────────────────────────────────────────────
+
+@app.get("/v1/admin/users/{user_id}/features")
+def admin_get_user_features(user_id: str, request: Request) -> dict[str, Any]:
+    _require_admin(request)
+    flags = _db_feature_flag_repository().list_flags()
+    overrides = {o["flag_key"]: o for o in _db_feature_flag_repository().list_user_overrides(user_id)}
+    merged = []
+    for f in flags:
+        key = f["flag_key"]
+        override = overrides.get(key)
+        merged.append({**f, "override": override})
+    return {"ok": True, "user_id": user_id, "flags": merged}
+
+
+@app.post("/v1/admin/users/{user_id}/features")
+def admin_set_user_feature(user_id: str, payload: SetUserFeatureOverrideRequest, request: Request) -> dict[str, Any]:
+    admin = _require_admin(request)
+    role = str(admin.get("role", "viewer") or "viewer")
+    if role == "viewer":
+        raise HTTPException(status_code=403, detail="editor or owner role required")
+    result = _db_feature_flag_repository().set_user_override(
+        user_id=user_id,
+        flag_key=payload.flag_key,
+        override_value=payload.override_value,
+        reason=payload.reason,
+        set_by=str(admin.get("email", "") or admin.get("user_id", "")),
+    )
+    store.add_admin_audit_log(
+        actor_user_id=str(admin.get("user_id", "")),
+        actor_role=role,
+        action="set_user_feature_override",
+        resource=f"user:{user_id}:flag:{payload.flag_key}",
+        details={"override_value": payload.override_value, "reason": payload.reason},
+    )
+    return {"ok": True, "override": result}
+
+
+@app.delete("/v1/admin/users/{user_id}/features/{flag_key}")
+def admin_delete_user_feature(user_id: str, flag_key: str, request: Request) -> dict[str, Any]:
+    admin = _require_admin(request)
+    role = str(admin.get("role", "viewer") or "viewer")
+    if role == "viewer":
+        raise HTTPException(status_code=403, detail="editor or owner role required")
+    deleted = _db_feature_flag_repository().delete_user_override(user_id=user_id, flag_key=flag_key)
+    return {"ok": True, "deleted": deleted}
+
+
+# ── Admin user management routes ───────────────────────────────────────────────
+
+@app.get("/v1/admin/users")
+def admin_list_users(
+    request: Request,
+    search: str = "",
+    status: str = "",
+    page: int = 1,
+    limit: int = 25,
+) -> dict[str, Any]:
+    _require_admin(request)
+    safe_limit = max(1, min(int(limit or 25), 100))
+    safe_page = max(1, int(page or 1))
+    all_users = store.list_all_users()
+    filtered = []
+    search_lower = str(search or "").strip().lower()
+    status_lower = str(status or "").strip().lower()
+    for u in all_users:
+        if not isinstance(u, dict):
+            continue
+        if search_lower:
+            haystack = (str(u.get("email", "")) + " " + str(u.get("name", "") or u.get("full_name", ""))).lower()
+            if search_lower not in haystack:
+                continue
+        if status_lower:
+            if str(u.get("subscription_status", "free") or "free").lower() != status_lower:
+                continue
+        filtered.append(u)
+    total = len(filtered)
+    start = (safe_page - 1) * safe_limit
+    page_items = filtered[start: start + safe_limit]
+    items = []
+    for u in page_items:
+        uid = str(u.get("user_id", "") or u.get("id", "") or "")
+        items.append({
+            "user_id": uid,
+            "email": str(u.get("email", "") or ""),
+            "name": str(u.get("name", "") or u.get("full_name", "") or ""),
+            "subscription_status": str(u.get("subscription_status", "free") or "free"),
+            "created_at": str(u.get("created_at", "") or ""),
+            "trial_end_date": str(u.get("trial_end_date", "") or ""),
+        })
+    return {
+        "ok": True,
+        "total": total,
+        "page": safe_page,
+        "limit": safe_limit,
+        "pages": max(1, math.ceil(total / safe_limit)),
+        "items": items,
+    }
+
+
+@app.get("/v1/admin/users/{user_id}/detail")
+def admin_get_user_detail(user_id: str, request: Request) -> dict[str, Any]:
+    _require_admin(request)
+    u = store.get_user(user_id)
+    if not isinstance(u, dict):
+        raise HTTPException(status_code=404, detail="User not found")
+    overrides = _db_feature_flag_repository().list_user_overrides(user_id)
+    return {
+        "ok": True,
+        "user": {
+            "user_id": str(u.get("user_id", "") or u.get("id", "")),
+            "email": str(u.get("email", "") or ""),
+            "name": str(u.get("name", "") or u.get("full_name", "") or ""),
+            "subscription_status": str(u.get("subscription_status", "free") or "free"),
+            "trial_start_date": str(u.get("trial_start_date", "") or ""),
+            "trial_end_date": str(u.get("trial_end_date", "") or ""),
+            "created_at": str(u.get("created_at", "") or ""),
+            "locale": str(u.get("locale", "en") or "en"),
+            "timezone": str(u.get("timezone", "") or ""),
+        },
+        "feature_overrides": overrides,
+    }
+
+
+@app.patch("/v1/admin/users/{user_id}")
+def admin_patch_user(user_id: str, payload: PatchAdminUserRequest, request: Request) -> dict[str, Any]:
+    admin = _require_admin(request)
+    role = str(admin.get("role", "viewer") or "viewer")
+    if role == "viewer":
+        raise HTTPException(status_code=403, detail="editor or owner role required")
+    u = store.get_user(user_id)
+    if not isinstance(u, dict):
+        raise HTTPException(status_code=404, detail="User not found")
+    changes: dict[str, Any] = {}
+    if payload.subscription_status is not None:
+        valid_statuses = {"free", "trial", "active", "cancelled", "past_due"}
+        s = str(payload.subscription_status).strip().lower()
+        if s not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+        changes["subscription_status"] = s
+    if payload.trial_end_date is not None:
+        changes["trial_end_date"] = str(payload.trial_end_date).strip()
+    if not changes:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    store.update_user(user_id, **changes)
+    store.add_admin_audit_log(
+        actor_user_id=str(admin.get("user_id", "")),
+        actor_role=role,
+        action="patch_user",
+        resource=f"user:{user_id}",
+        details=changes,
+    )
+    return {"ok": True, "user_id": user_id, "changes": changes}
+
+
+# ── Device/Client version-check routes ────────────────────────────────────────
+
+@app.get("/v1/mobile/version-check")
+def mobile_version_check(request: Request, platform: str = "android") -> dict[str, Any]:
+    user = _mobile_user(request)
+    safe_platform = str(platform or "android").strip().lower()
+    active = _db_update_repository().get_active_app_version(safe_platform)
+    if active is None:
+        return {"ok": True, "update_available": False}
+    uid = str(user.get("user_id", "") or "")
+    rollout = int(active.get("rollout_percent", 100) or 100)
+    if rollout < 100 and uid:
+        bucket = int(hashlib.md5(f"{uid}app_update".encode()).hexdigest(), 16) % 100
+        if bucket >= rollout:
+            return {"ok": True, "update_available": False}
+    store_url = active.get("store_url_ios") if safe_platform == "ios" else active.get("store_url_android")
+    return {
+        "ok": True,
+        "update_available": True,
+        "version": active["version_string"],
+        "build_number": active["build_number"],
+        "changelog": active["changelog"],
+        "is_required": active["is_required"],
+        "store_url": store_url or "",
+    }
+
+
+@app.get("/v1/device/firmware-check")
+def device_firmware_check(
+    request: Request,
+    device_id: str = "",
+    current_version: str = "",
+) -> dict[str, Any]:
+    safe_device_id = str(device_id or "").strip()
+    safe_current = str(current_version or "").strip()
+    active = _db_update_repository().get_active_firmware_version(device_id=safe_device_id)
+    if active is None:
+        return {"ok": True, "update_available": False}
+    if safe_current and safe_current == active["version_string"]:
+        return {"ok": True, "update_available": False, "current_version": safe_current}
+    rollout = int(active.get("rollout_percent", 100) or 100)
+    if rollout < 100 and safe_device_id:
+        bucket = int(hashlib.md5(f"{safe_device_id}fw".encode()).hexdigest(), 16) % 100
+        if bucket >= rollout:
+            return {"ok": True, "update_available": False}
+    return {
+        "ok": True,
+        "update_available": True,
+        "version": active["version_string"],
+        "download_url": active["download_url"],
+        "changelog": active["changelog"],
+        "is_required": active["is_required"],
+    }
+
+
 @app.post("/v1/ai/chat")
-def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
+async def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
+    import asyncio
     _enforce_same_origin(request)
     actor = _authenticated_actor(request)
     if not actor:
@@ -8660,7 +9323,7 @@ def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
     if not message:
         return {"reply": "Please type a message so I can help."}
 
-    reply, _ = _generate_actor_reply(actor, message)
+    reply, _ = await asyncio.to_thread(_generate_actor_reply, actor, message)
     return {"reply": reply}
 
 

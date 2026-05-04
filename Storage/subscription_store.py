@@ -1,5 +1,8 @@
 import hashlib
 import hmac
+import json
+import logging
+import os
 import threading
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -10,6 +13,81 @@ from typing import Dict, Optional
 from config import SUBSCRIPTION_DB_PATH
 from Storage.io import atomic_write_json, locked_read_json
 from time_utils import from_iso, to_iso, utcnow
+
+_log = logging.getLogger("storage.subscription_store")
+
+# ---------------------------------------------------------------------------
+# Optional Redis session cache
+# ---------------------------------------------------------------------------
+_redis_client = None
+_redis_init_attempted = False
+_redis_lock = threading.Lock()
+
+_SESSION_TTL_SECONDS = 7 * 24 * 3600  # 7 days
+
+
+def _get_redis():
+    """Return a Redis client if REDIS_URL is configured, else None."""
+    global _redis_client, _redis_init_attempted
+    if _redis_init_attempted:
+        return _redis_client
+    with _redis_lock:
+        if _redis_init_attempted:
+            return _redis_client
+        _redis_init_attempted = True
+        redis_url = str(os.environ.get("REDIS_URL", "") or "").strip()
+        if not redis_url:
+            return None
+        try:
+            import redis as redis_lib
+            client = redis_lib.from_url(redis_url, decode_responses=True, socket_timeout=2)
+            client.ping()
+            _redis_client = client
+            _log.info("Redis session cache connected: %s", redis_url.split("@")[-1])
+        except Exception as exc:
+            _log.warning("Redis unavailable, falling back to JSON sessions: %s", exc)
+            _redis_client = None
+    return _redis_client
+
+
+def _redis_session_key(token: str) -> str:
+    return f"sb:session:{token}"
+
+
+def _redis_set_session(token: str, session_data: dict, ttl: int = _SESSION_TTL_SECONDS) -> bool:
+    rc = _get_redis()
+    if rc is None:
+        return False
+    try:
+        rc.setex(_redis_session_key(token), ttl, json.dumps(session_data))
+        return True
+    except Exception as exc:
+        _log.warning("Redis set_session failed: %s", exc)
+        return False
+
+
+def _redis_get_session(token: str) -> dict | None:
+    rc = _get_redis()
+    if rc is None:
+        return None
+    try:
+        raw = rc.get(_redis_session_key(token))
+        if raw is None:
+            return None
+        return json.loads(raw)
+    except Exception as exc:
+        _log.warning("Redis get_session failed: %s", exc)
+        return None
+
+
+def _redis_del_session(token: str) -> None:
+    rc = _get_redis()
+    if rc is None:
+        return
+    try:
+        rc.delete(_redis_session_key(token))
+    except Exception as exc:
+        _log.warning("Redis del_session failed: %s", exc)
 
 try:
     import bcrypt
@@ -181,6 +259,54 @@ class SubscriptionStore:
         with self._io_lock:
             self.db, _ = self._normalize_db(self.db)
             atomic_write_json(self.db_path, self.db)
+        self._sync_subscriptions_to_db()
+
+    def _sync_subscriptions_to_db(self) -> None:
+        """Mirror active subscription rows to the SQL database for durability.
+
+        This is a best-effort write — failures are logged but never raised so
+        that the primary JSON store continues to work in all environments.
+        """
+        try:
+            import os
+            env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
+            if not env_url:
+                return
+            from database.connection import DatabaseConnection
+            from database.models import SubscriptionRecord
+            from sqlalchemy import select
+            conn = DatabaseConnection(database_url=env_url)
+            subscriptions = list(self.db.get("subscriptions", []))
+            if not subscriptions:
+                return
+            with conn.get_session() as session:
+                for sub in subscriptions:
+                    if not isinstance(sub, dict):
+                        continue
+                    uid = str(sub.get("user_id", "") or "").strip()
+                    if not uid:
+                        continue
+                    existing = session.execute(
+                        select(SubscriptionRecord).where(SubscriptionRecord.user_id == uid)
+                    ).scalar_one_or_none()
+                    if existing is None:
+                        existing = SubscriptionRecord(user_id=uid)
+                        session.add(existing)
+                    existing.tier = str(sub.get("tier", "free") or "free")[:20]
+                    existing.status = str(sub.get("status", "active") or "active")[:20]
+                    existing.interval = str(sub.get("interval", "monthly") or "monthly")[:20]
+                    existing.payment_provider = str(sub.get("payment_provider", "none") or "none")[:40]
+                    existing.price_kwd = float(sub.get("price_kwd", 0.0) or 0.0)
+                    existing.provider_subscription_id = str(sub.get("provider_subscription_id", "") or "")[:255]
+                    existing.provider_plan_id = str(sub.get("provider_plan_id", "") or "")[:255]
+                    existing.provider_status = str(sub.get("provider_status", "") or "")[:60]
+                    existing.next_renewal_at = str(sub.get("next_renewal_at", "") or "")[:40]
+                    existing.grace_end_at = str(sub.get("grace_end_at", "") or "")[:40]
+                    existing.started_at = str(sub.get("started_at", "") or "")[:40]
+                    existing.last_payment_at = str(sub.get("last_payment_at", "") or "")[:40]
+                    existing.cancelled_at = str(sub.get("cancelled_at", "") or "")[:40]
+        except Exception:
+            _log.debug("Subscription DB sync skipped (non-critical)", exc_info=True)
 
     @staticmethod
     def _is_legacy_sha256_hash(password_hash: str) -> bool:
@@ -346,16 +472,23 @@ class SubscriptionStore:
 
     def issue_user_token(self, user_id: str, ttl_hours: int = 24 * 7) -> dict:
         token = token_urlsafe(32)
+        now_iso = self._now_iso()
         expires_at = to_iso((self._utc_now() + timedelta(hours=ttl_hours)).replace(microsecond=0))
-        self.db["user_sessions"][token] = {
+        session_data = {
             "user_id": user_id,
+            "issued_at": now_iso,
             "expires_at": expires_at,
         }
+        self.db["user_sessions"][token] = session_data
         self.save()
+        _redis_set_session(token, session_data, ttl=int(ttl_hours * 3600))
         return {"access_token": token, "expires_at": expires_at}
 
     def validate_user_token(self, token: str) -> Optional[dict]:
-        sess = self.db.get("user_sessions", {}).get(token)
+        # Try Redis cache first (faster, avoids JSON file read).
+        sess = _redis_get_session(token)
+        if sess is None:
+            sess = self.db.get("user_sessions", {}).get(token)
         if not sess:
             return None
         expires_at = self._parse_datetime_utc(sess.get("expires_at", ""))
@@ -365,6 +498,12 @@ class SubscriptionStore:
             return None
         user = self.get_user(sess.get("user_id", ""))
         if isinstance(user, dict):
+            # Check cross-revocation: reject if token was issued before last revoke-all.
+            revoked_all_at = self._parse_datetime_utc(str(user.get("sessions_revoked_all_at", "") or ""))
+            if revoked_all_at is not None:
+                issued_at = self._parse_datetime_utc(str(sess.get("issued_at", "") or ""))
+                if issued_at is None or issued_at <= revoked_all_at:
+                    return None
             return user
         # Compatibility path: some callers issue a valid session for a DB-backed
         # user that is not mirrored in the legacy JSON "users" list.
@@ -372,6 +511,33 @@ class SubscriptionStore:
         if not user_id:
             return None
         return {"user_id": user_id}
+
+    def revoke_all_sessions_for_user(self, user_id: str) -> int:
+        """Revoke all active sessions for a user across all session dicts.
+        Also stamps sessions_revoked_all_at on the user record so future
+        session validations reject any token issued before this moment.
+        """
+        uid = str(user_id or "").strip()
+        if not uid:
+            return 0
+        revoked = 0
+        now_iso = self._now_iso()
+        for bucket in ("user_sessions", "mobile_sessions", "mobile_refresh_sessions",
+                       "admin_sessions", "device_sessions", "device_refresh_sessions"):
+            sessions = self.db.get(bucket, {})
+            to_del = [tok for tok, sess in sessions.items()
+                      if isinstance(sess, dict) and sess.get("user_id") == uid]
+            for tok in to_del:
+                del sessions[tok]
+                _redis_del_session(tok)
+                revoked += 1
+        # Stamp the user record so token re-use from other systems is also blocked.
+        for u in self.db.get("users", []):
+            if isinstance(u, dict) and str(u.get("user_id", "") or "") == uid:
+                u["sessions_revoked_all_at"] = now_iso
+                break
+        self.save()  # always save to persist the revocation timestamp
+        return revoked
 
     def revoke_session(self, token: str) -> bool:
         token_key = str(token or "").strip()
@@ -392,6 +558,7 @@ class SubscriptionStore:
             removed = True
         if removed:
             self.save()
+        _redis_del_session(token_key)
         return removed
 
     def provision_device(self, device_id: str, claim_code: str, model: str = "", factory_secret: str = "") -> dict:

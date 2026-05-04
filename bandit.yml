@@ -1,0 +1,11 @@
+skips:
+  - B101  # assert used (fine in tests)
+  - B311  # random not for crypto (we use secrets for crypto)
+
+exclude_dirs:
+  - tests
+  - .venv
+  - .venv311
+  - mobile_app
+  - __pycache__
+  - runtime_data

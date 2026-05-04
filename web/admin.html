@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Danah — Admin</title>
+  <style>
+    :root {
+      --bg: #f8f2e9;
+      --card: rgba(255,251,245,0.92);
+      --line: rgba(164,132,86,0.25);
+      --text: #2b2012;
+      --muted: #7d6648;
+      --brand: #efd7ad;
+      --brand-strong: #c79a55;
+      --good: #4a8d5f;
+      --warn: #c08939;
+      --bad: #b44f4f;
+      --shadow: 0 8px 24px rgba(109,80,39,0.12);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{background:linear-gradient(180deg,#fff7ea 0%,#f8f2e9 50%,#f3e9db 100%);color:var(--text);font-family:"Avenir Next","Segoe UI Variable","Trebuchet MS",sans-serif;min-height:100%}
+    .layout{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+    /* Sidebar */
+    .sidebar{border-right:1px solid var(--line);background:linear-gradient(168deg,rgba(255,251,243,.97),rgba(246,235,217,.97));padding:20px 14px;position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+    .brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+    .brand-dot{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--brand-strong),#e8c07a);flex-shrink:0}
+    .brand h1{font-size:15px;font-weight:700;color:var(--text)}
+    .brand p{font-size:11px;color:var(--muted)}
+    .nav-title{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 8px 4px}
+    .nav-link{display:block;width:100%;text-align:left;background:none;border:none;padding:8px 12px;border-radius:8px;font-size:13px;color:var(--muted);cursor:pointer;transition:background .15s,color .15s}
+    .nav-link:hover{background:rgba(199,154,85,.12);color:var(--text)}
+    .nav-link.active{background:rgba(199,154,85,.22);color:var(--text);font-weight:600}
+    .spacer{flex:1}
+    .logout-btn{width:100%;padding:8px 12px;background:none;border:1px solid var(--line);border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;text-align:left}
+    .logout-btn:hover{border-color:var(--bad);color:var(--bad)}
+    /* Main */
+    .main{padding:28px 32px;min-height:100vh;overflow-x:hidden}
+    .topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px}
+    .topbar h2{font-size:22px;font-weight:700}
+    .topbar p{font-size:13px;color:var(--muted);margin-top:3px}
+    .topbar-right{display:flex;align-items:center;gap:8px}
+    .pill{background:var(--brand);color:var(--text);font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px}
+    /* Cards */
+    .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow)}
+    .card .metric{font-size:28px;font-weight:700;margin:6px 0 4px}
+    .card .label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+    .card .sub{font-size:12px;color:var(--muted)}
+    /* Table */
+    .table-wrap{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:24px}
+    .table-header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
+    .table-header h3{font-size:14px;font-weight:700}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{text-align:left;padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--line)}
+    td{padding:11px 16px;border-bottom:1px solid rgba(164,132,86,.1);color:var(--text)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(239,215,173,.15)}
+    /* Badges */
+    .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+    .badge-good{background:rgba(74,141,95,.15);color:var(--good)}
+    .badge-warn{background:rgba(192,137,57,.15);color:var(--warn)}
+    .badge-bad{background:rgba(180,79,79,.15);color:var(--bad)}
+    .badge-muted{background:rgba(164,132,86,.12);color:var(--muted)}
+    /* Buttons */
+    .btn{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:opacity .15s}
+    .btn-primary{background:var(--brand-strong);color:#fff}
+    .btn-primary:hover{opacity:.88}
+    .btn-sm{padding:4px 10px;font-size:12px;border-radius:6px}
+    .btn-outline{background:none;border:1px solid var(--line);color:var(--text)}
+    .btn-outline:hover{border-color:var(--brand-strong);color:var(--brand-strong)}
+    .btn-danger{background:none;border:1px solid var(--bad);color:var(--bad)}
+    .btn-danger:hover{background:var(--bad);color:#fff}
+    /* Controls */
+    .controls{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+    input[type=text],input[type=number],select,textarea{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text);outline:none;font-family:inherit}
+    input[type=text]:focus,input[type=number]:focus,select:focus,textarea:focus{border-color:var(--brand-strong)}
+    textarea{resize:vertical;width:100%}
+    label{font-size:13px;color:var(--muted);font-weight:600}
+    .form-row{margin-bottom:14px}
+    .form-row label{display:block;margin-bottom:5px}
+    .form-row input,.form-row select,.form-row textarea{width:100%}
+    .toggle{display:flex;align-items:center;gap:8px;cursor:pointer}
+    .toggle input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--brand-strong)}
+    /* Tabs */
+    .tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:0}
+    .tab{padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:none;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+    .tab.active{color:var(--brand-strong);border-bottom-color:var(--brand-strong)}
+    /* Modal */
+    .modal-bg{display:none;position:fixed;inset:0;background:rgba(43,32,18,.45);z-index:100;align-items:center;justify-content:center}
+    .modal-bg.open{display:flex}
+    .modal{background:var(--bg);border:1px solid var(--line);border-radius:18px;padding:28px;width:480px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(43,32,18,.18)}
+    .modal h3{font-size:17px;font-weight:700;margin-bottom:20px}
+    .modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+    /* Toast */
+    #toast{position:fixed;bottom:24px;right:24px;background:#2b2012;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;opacity:0;transition:opacity .25s;z-index:200;pointer-events:none}
+    #toast.show{opacity:1}
+    /* Range slider */
+    input[type=range]{accent-color:var(--brand-strong);width:100%}
+    .range-row{display:flex;align-items:center;gap:12px}
+    .range-row input[type=range]{flex:1}
+    .range-val{font-size:13px;font-weight:700;color:var(--brand-strong);min-width:36px}
+    /* Pagination */
+    .pagination{display:flex;align-items:center;gap:8px;margin-top:12px}
+    .pagination button{padding:5px 12px;border-radius:6px;font-size:12px;border:1px solid var(--line);background:var(--card);cursor:pointer}
+    .pagination button:disabled{opacity:.4;cursor:default}
+    .pagination span{font-size:12px;color:var(--muted)}
+    /* Empty state */
+    .empty{padding:40px;text-align:center;color:var(--muted);font-size:14px}
+    @media(max-width:900px){.grid-4{grid-template-columns:1fr 1fr}.grid-2{grid-template-columns:1fr}.layout{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <div>
+        <h1>Danah Admin</h1>
+        <p id="admin-role-label">Production Console</p>
+      </div>
+    </div>
+    <div class="nav-title">Dashboard</div>
+    <button class="nav-link active" data-page="overview">Overview</button>
+    <div class="nav-title">Product</div>
+    <button class="nav-link" data-page="updates">Update Manager</button>
+    <button class="nav-link" data-page="features">Feature Flags</button>
+    <div class="nav-title">Users</div>
+    <button class="nav-link" data-page="users">User Management</button>
+    <div class="nav-title">Finance</div>
+    <button class="nav-link" data-page="billing">Billing</button>
+    <div class="nav-title">Ops</div>
+    <button class="nav-link" data-page="audit">Audit Log</button>
+    <button class="nav-link" data-page="fleet">Fleet</button>
+    <button class="nav-link" data-page="incidents">Incidents</button>
+    <div class="nav-title">Beta</div>
+    <button class="nav-link" data-page="beta">Beta Cohort</button>
+    <div class="spacer"></div>
+    <button class="logout-btn" id="logout-btn">Sign out</button>
+  </aside>
+
+  <main class="main" id="main-content">
+    <!-- Content injected by JS -->
+  </main>
+</div>
+
+<!-- Publish App Version Modal -->
+<div class="modal-bg" id="modal-app-version">
+  <div class="modal">
+    <h3>Publish App Version</h3>
+    <div class="form-row"><label>Platform</label><select id="av-platform"><option value="all">All</option><option value="android">Android</option><option value="ios">iOS</option></select></div>
+    <div class="form-row"><label>Version (e.g. 1.3.0)</label><input type="text" id="av-version" placeholder="1.3.0" /></div>
+    <div class="form-row"><label>Build Number</label><input type="number" id="av-build" value="1" min="0" /></div>
+    <div class="form-row"><label>Changelog (one item per line)</label><textarea id="av-changelog" rows="4" placeholder="- Fixed alarm sync&#10;- Improved sleep score"></textarea></div>
+    <div class="form-row"><label>Store URL — iOS</label><input type="text" id="av-url-ios" placeholder="https://apps.apple.com/…" /></div>
+    <div class="form-row"><label>Store URL — Android</label><input type="text" id="av-url-android" placeholder="https://play.google.com/…" /></div>
+    <div class="form-row range-row"><label style="width:140px">Rollout %</label><input type="range" id="av-rollout" min="0" max="100" value="100" oninput="document.getElementById('av-rollout-val').textContent=this.value+'%'"><span class="range-val" id="av-rollout-val">100%</span></div>
+    <div class="form-row"><label class="toggle"><input type="checkbox" id="av-required" /> Force update (blocks old versions)</label></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-app-version')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAppVersion()">Publish</button>
+    </div>
+  </div>
+</div>
+
+<!-- Publish Firmware Modal -->
+<div class="modal-bg" id="modal-firmware">
+  <div class="modal">
+    <h3>Publish Firmware Version</h3>
+    <div class="form-row"><label>Version (e.g. 2.1.0)</label><input type="text" id="fw-version" placeholder="2.1.0" /></div>
+    <div class="form-row"><label>Download URL</label><input type="text" id="fw-url" placeholder="https://your-server.com/firmware/v2.1.0.zip" /></div>
+    <div class="form-row"><label>Changelog (one item per line)</label><textarea id="fw-changelog" rows="4" placeholder="- Fixed pressure sensor&#10;- Improved LED timing"></textarea></div>
+    <div class="form-row"><label>Target Device IDs (comma-separated, blank = all)</label><input type="text" id="fw-targets" placeholder="device-001, device-002" /></div>
+    <div class="form-row range-row"><label style="width:140px">Rollout %</label><input type="range" id="fw-rollout" min="0" max="100" value="100" oninput="document.getElementById('fw-rollout-val').textContent=this.value+'%'"><span class="range-val" id="fw-rollout-val">100%</span></div>
+    <div class="form-row"><label class="toggle"><input type="checkbox" id="fw-required" /> Force update</label></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-firmware')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitFirmware()">Publish</button>
+    </div>
+  </div>
+</div>
+
+<!-- Feature Flag Modal -->
+<div class="modal-bg" id="modal-flag">
+  <div class="modal">
+    <h3 id="modal-flag-title">New Feature Flag</h3>
+    <div class="form-row"><label>Flag Key (snake_case)</label><input type="text" id="flag-key" placeholder="islamic_mode" /></div>
+    <div class="form-row"><label>Display Name</label><input type="text" id="flag-name" placeholder="Islamic Mode" /></div>
+    <div class="form-row"><label>Description</label><textarea id="flag-desc" rows="2" placeholder="Enables prayer times, Ramadan features…"></textarea></div>
+    <div class="form-row"><label class="toggle"><input type="checkbox" id="flag-global" /> Enabled globally (for all users)</label></div>
+    <div class="form-row"><label>Enabled for Plans (comma-separated)</label><input type="text" id="flag-plans" placeholder="standard, pro" /></div>
+    <div class="form-row range-row"><label style="width:140px">Rollout %</label><input type="range" id="flag-rollout" min="0" max="100" value="0" oninput="document.getElementById('flag-rollout-val').textContent=this.value+'%'"><span class="range-val" id="flag-rollout-val">0%</span></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-flag')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitFlag()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Feature Override Modal -->
+<div class="modal-bg" id="modal-user-flag">
+  <div class="modal">
+    <h3>Override Feature for User</h3>
+    <p id="modal-uf-user" style="font-size:13px;color:var(--muted);margin-bottom:16px"></p>
+    <div class="form-row"><label>Feature Flag</label><select id="uf-flag-key"></select></div>
+    <div class="form-row"><label class="toggle"><input type="checkbox" id="uf-value" checked /> Enable this feature for the user</label></div>
+    <div class="form-row"><label>Reason</label><input type="text" id="uf-reason" placeholder="Beta tester, support exception…" /></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-user-flag')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitUserFlag()">Save Override</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let currentPage = 'overview';
+let usersPage = 1;
+let usersSearch = '';
+let usersStatus = '';
+let selectedUserId = '';
+let allFlags = [];
+let activeTab = {};
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+document.querySelectorAll('.nav-link[data-page]').forEach(btn => {
+  btn.addEventListener('click', () => navigate(btn.dataset.page));
+});
+
+function navigate(page) {
+  currentPage = page;
+  document.querySelectorAll('.nav-link').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  render();
+}
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  await fetch('/v1/admin/auth/login', {method:'DELETE',credentials:'include'}).catch(()=>{});
+  await fetch('/v1/auth/logout', {method:'POST',credentials:'include'}).catch(()=>{});
+  location.href = '/login?role=admin';
+});
+
+// ── API helpers ──────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = { method, credentials: 'include', headers: {} };
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch(path, opts);
+  if (r.status === 401) { location.href = '/login?role=admin'; throw new Error('unauth'); }
+  return r.json();
+}
+const get = p => api('GET', p);
+const post = (p,b) => api('POST', p, b);
+const patch = (p,b) => api('PATCH', p, b);
+const del = (p) => api('DELETE', p);
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, good=true) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = good ? '#2b5c3a' : '#7a2020';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── Modal helpers ────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-bg').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+
+// ── Render router ────────────────────────────────────────────────────────────
+async function render() {
+  const main = document.getElementById('main-content');
+  main.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    if (currentPage === 'overview') await renderOverview();
+    else if (currentPage === 'updates') await renderUpdates();
+    else if (currentPage === 'features') await renderFeatures();
+    else if (currentPage === 'users') await renderUsers();
+    else if (currentPage === 'billing') await renderBilling();
+    else if (currentPage === 'audit') await renderAudit();
+    else if (currentPage === 'fleet') await renderFleet();
+    else if (currentPage === 'incidents') await renderIncidents();
+    else if (currentPage === 'beta') await renderBeta();
+  } catch(e) {
+    main.innerHTML = `<div class="empty">Failed to load: ${e.message}</div>`;
+  }
+}
+
+// ── Overview ─────────────────────────────────────────────────────────────────
+async function renderOverview() {
+  const [ov, rt] = await Promise.all([get('/v1/admin/overview'), get('/v1/admin/runtime')]);
+  const stats = ov.stats || {};
+  const main = document.getElementById('main-content');
+  main.innerHTML = `
+    <div class="topbar"><div><h2>Overview</h2><p>Fleet health, usage, and system status</p></div><div class="topbar-right"><span class="pill" id="admin-role-pill">Admin</span></div></div>
+    <div class="grid-4">
+      <div class="card"><div class="label">Users</div><div class="metric">${fmt(stats.total_users||ov.registered_users||0)}</div><div class="sub">Registered accounts</div></div>
+      <div class="card"><div class="label">Active Subs</div><div class="metric">${fmt(stats.active_subscriptions||ov.active_subscriptions||0)}</div><div class="sub">Paying + trial</div></div>
+      <div class="card"><div class="label">Devices</div><div class="metric">${fmt(stats.total_beds||ov.active_beds||0)}</div><div class="sub">Registered beds</div></div>
+      <div class="card"><div class="label">Incidents</div><div class="metric" style="color:var(--warn)">${fmt(stats.open_incidents||ov.open_incidents||0)}</div><div class="sub">Open issues</div></div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><div class="label">Chat Requests (session)</div><div class="metric">${fmt(rt.chat_requests||0)}</div></div>
+      <div class="card"><div class="label">Guard Denials</div><div class="metric" style="color:var(--warn)">${fmt(rt.guard_user_denied||0)}</div></div>
+    </div>
+  `;
+  // Load admin identity
+  get('/v1/admin/auth/me').then(me => {
+    document.getElementById('admin-role-pill').textContent = `Role: ${me.role||'admin'}`;
+    document.getElementById('admin-role-label').textContent = `${me.email||'admin'}`;
+  }).catch(()=>{});
+}
+
+// ── Updates ──────────────────────────────────────────────────────────────────
+async function renderUpdates() {
+  const data = await get('/v1/admin/versions');
+  const tab = activeTab['updates'] || 'app';
+  const main = document.getElementById('main-content');
+  main.innerHTML = `
+    <div class="topbar">
+      <div><h2>Update Manager</h2><p>Publish app and firmware versions, control rollout</p></div>
+      <div class="topbar-right" id="updates-actions"></div>
+    </div>
+    <div class="tabs">
+      <button class="tab ${tab==='app'?'active':''}" onclick="switchTab('updates','app')">App Versions</button>
+      <button class="tab ${tab==='firmware'?'active':''}" onclick="switchTab('updates','firmware')">Firmware Versions</button>
+    </div>
+    <div id="updates-content"></div>
+  `;
+  renderUpdateTab(data, tab);
+}
+
+function renderUpdateTab(data, tab) {
+  const actionsEl = document.getElementById('updates-actions');
+  const contentEl = document.getElementById('updates-content');
+  if (tab === 'app') {
+    actionsEl.innerHTML = `<button class="btn btn-primary" onclick="openModal('modal-app-version')">+ Publish App Version</button>`;
+    const rows = (data.app_versions||[]);
+    contentEl.innerHTML = `
+      <div class="table-wrap">
+        <table><thead><tr><th>Platform</th><th>Version</th><th>Build</th><th>Required</th><th>Rollout</th><th>Status</th><th>Published</th><th></th></tr></thead>
+        <tbody>${rows.length ? rows.map(v=>`
+          <tr>
+            <td>${v.platform}</td>
+            <td><strong>${v.version_string}</strong></td>
+            <td>${v.build_number}</td>
+            <td>${v.is_required?'<span class="badge badge-warn">REQUIRED</span>':'<span class="badge badge-muted">optional</span>'}</td>
+            <td>${v.rollout_percent}%</td>
+            <td>${v.is_active?'<span class="badge badge-good">Active</span>':'<span class="badge badge-muted">Inactive</span>'}</td>
+            <td class="muted">${shortDate(v.created_at)}</td>
+            <td><button class="btn btn-sm btn-outline" onclick="deactivateVersion('${v.id}')">Deactivate</button></td>
+          </tr>`).join('') : '<tr><td colspan="8"><div class="empty">No app versions published yet</div></td></tr>'}</tbody>
+      </table></div>`;
+  } else {
+    actionsEl.innerHTML = `<button class="btn btn-primary" onclick="openModal('modal-firmware')">+ Publish Firmware</button>`;
+    const rows = (data.firmware_versions||[]);
+    contentEl.innerHTML = `
+      <div class="table-wrap">
+        <table><thead><tr><th>Version</th><th>Required</th><th>Rollout</th><th>Download URL</th><th>Targets</th><th>Status</th><th>Published</th><th></th></tr></thead>
+        <tbody>${rows.length ? rows.map(v=>`
+          <tr>
+            <td><strong>${v.version_string}</strong></td>
+            <td>${v.is_required?'<span class="badge badge-warn">REQUIRED</span>':'<span class="badge badge-muted">optional</span>'}</td>
+            <td>${v.rollout_percent}%</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="${v.download_url}" target="_blank">${v.download_url||'—'}</a></td>
+            <td>${(v.target_device_ids||[]).length ? v.target_device_ids.join(', ') : 'All devices'}</td>
+            <td>${v.is_active?'<span class="badge badge-good">Active</span>':'<span class="badge badge-muted">Inactive</span>'}</td>
+            <td class="muted">${shortDate(v.created_at)}</td>
+            <td><button class="btn btn-sm btn-outline" onclick="deactivateVersion('${v.id}')">Deactivate</button></td>
+          </tr>`).join('') : '<tr><td colspan="8"><div class="empty">No firmware versions published yet</div></td></tr>'}</tbody>
+      </table></div>`;
+  }
+}
+
+function switchTab(page, tab) {
+  activeTab[page] = tab;
+  if (page === 'updates') renderUpdates();
+  else if (page === 'features') renderFeatures();
+}
+
+async function deactivateVersion(id) {
+  if (!confirm('Deactivate this version?')) return;
+  const r = await patch(`/v1/admin/versions/${id}`, {is_active: false});
+  if (r.ok) { toast('Version deactivated'); renderUpdates(); } else toast('Failed', false);
+}
+
+async function submitAppVersion() {
+  const changelog = document.getElementById('av-changelog').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const body = {
+    platform: document.getElementById('av-platform').value,
+    version_string: document.getElementById('av-version').value.trim(),
+    build_number: parseInt(document.getElementById('av-build').value)||0,
+    changelog,
+    is_required: document.getElementById('av-required').checked,
+    rollout_percent: parseInt(document.getElementById('av-rollout').value)||100,
+    store_url_ios: document.getElementById('av-url-ios').value.trim(),
+    store_url_android: document.getElementById('av-url-android').value.trim(),
+  };
+  if (!body.version_string) { toast('Version string required', false); return; }
+  const r = await post('/v1/admin/versions/app', body);
+  if (r.ok) { toast(`App v${body.version_string} published!`); closeModal('modal-app-version'); renderUpdates(); }
+  else toast(r.detail||'Failed', false);
+}
+
+async function submitFirmware() {
+  const changelog = document.getElementById('fw-changelog').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const targets = document.getElementById('fw-targets').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const body = {
+    version_string: document.getElementById('fw-version').value.trim(),
+    download_url: document.getElementById('fw-url').value.trim(),
+    changelog,
+    is_required: document.getElementById('fw-required').checked,
+    rollout_percent: parseInt(document.getElementById('fw-rollout').value)||100,
+    target_device_ids: targets,
+  };
+  if (!body.version_string) { toast('Version string required', false); return; }
+  const r = await post('/v1/admin/versions/firmware', body);
+  if (r.ok) { toast(`Firmware v${body.version_string} published!`); closeModal('modal-firmware'); renderUpdates(); }
+  else toast(r.detail||'Failed', false);
+}
+
+// ── Feature Flags ────────────────────────────────────────────────────────────
+async function renderFeatures() {
+  const data = await get('/v1/admin/feature-flags');
+  allFlags = data.flags || [];
+  const main = document.getElementById('main-content');
+  main.innerHTML = `
+    <div class="topbar">
+      <div><h2>Feature Flags</h2><p>Control feature rollout, per-plan access, and per-user overrides</p></div>
+      <div class="topbar-right"><button class="btn btn-primary" onclick="openNewFlagModal()">+ New Flag</button></div>
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Flag Key</th><th>Display Name</th><th>Global</th><th>Plans</th><th>Rollout</th><th>Updated</th><th></th></tr></thead>
+      <tbody>${allFlags.length ? allFlags.map(f=>`
+        <tr>
+          <td><code style="font-size:12px;background:rgba(164,132,86,.1);padding:2px 6px;border-radius:4px">${f.flag_key}</code></td>
+          <td>${f.display_name||'—'}</td>
+          <td>${f.enabled_globally?'<span class="badge badge-good">ON</span>':'<span class="badge badge-muted">off</span>'}</td>
+          <td>${(f.enabled_for_plans||[]).length ? f.enabled_for_plans.join(', ') : '—'}</td>
+          <td>${f.rollout_percent}%</td>
+          <td class="muted">${shortDate(f.updated_at)}</td>
+          <td><button class="btn btn-sm btn-outline" onclick="openEditFlagModal(${JSON.stringify(f).replace(/"/g,'&quot;')})">Edit</button></td>
+        </tr>`).join('') : '<tr><td colspan="7"><div class="empty">No feature flags yet</div></td></tr>'}</tbody>
+      </table></div>`;
+}
+
+function openNewFlagModal() {
+  document.getElementById('modal-flag-title').textContent = 'New Feature Flag';
+  document.getElementById('flag-key').value = '';
+  document.getElementById('flag-key').disabled = false;
+  document.getElementById('flag-name').value = '';
+  document.getElementById('flag-desc').value = '';
+  document.getElementById('flag-global').checked = false;
+  document.getElementById('flag-plans').value = '';
+  document.getElementById('flag-rollout').value = 0;
+  document.getElementById('flag-rollout-val').textContent = '0%';
+  openModal('modal-flag');
+}
+
+function openEditFlagModal(f) {
+  document.getElementById('modal-flag-title').textContent = 'Edit Feature Flag';
+  document.getElementById('flag-key').value = f.flag_key;
+  document.getElementById('flag-key').disabled = true;
+  document.getElementById('flag-name').value = f.display_name||'';
+  document.getElementById('flag-desc').value = f.description||'';
+  document.getElementById('flag-global').checked = !!f.enabled_globally;
+  document.getElementById('flag-plans').value = (f.enabled_for_plans||[]).join(', ');
+  const rp = f.rollout_percent||0;
+  document.getElementById('flag-rollout').value = rp;
+  document.getElementById('flag-rollout-val').textContent = rp+'%';
+  openModal('modal-flag');
+}
+
+async function submitFlag() {
+  const key = document.getElementById('flag-key').value.trim().toLowerCase().replace(/\s+/g,'_');
+  if (!key) { toast('Flag key required', false); return; }
+  const plans = document.getElementById('flag-plans').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const body = {
+    flag_key: key,
+    display_name: document.getElementById('flag-name').value.trim(),
+    description: document.getElementById('flag-desc').value.trim(),
+    enabled_globally: document.getElementById('flag-global').checked,
+    enabled_for_plans: plans,
+    rollout_percent: parseInt(document.getElementById('flag-rollout').value)||0,
+  };
+  const r = await post('/v1/admin/feature-flags', body);
+  if (r.ok) { toast('Feature flag saved'); closeModal('modal-flag'); renderFeatures(); }
+  else toast(r.detail||'Failed', false);
+}
+
+// ── Users ────────────────────────────────────────────────────────────────────
+async function renderUsers() {
+  const data = await get(`/v1/admin/users?page=${usersPage}&limit=25&search=${encodeURIComponent(usersSearch)}&status=${usersStatus}`);
+  const items = data.items || [];
+  const main = document.getElementById('main-content');
+  main.innerHTML = `
+    <div class="topbar"><div><h2>User Management</h2><p>Search, inspect, and manage user accounts</p></div></div>
+    <div class="controls">
+      <input type="text" id="users-search" placeholder="Search email or name…" value="${usersSearch}" style="width:260px" />
+      <select id="users-status">
+        <option value="">All statuses</option>
+        <option value="free" ${usersStatus==='free'?'selected':''}>Free</option>
+        <option value="trial" ${usersStatus==='trial'?'selected':''}>Trial</option>
+        <option value="active" ${usersStatus==='active'?'selected':''}>Active</option>
+        <option value="cancelled" ${usersStatus==='cancelled'?'selected':''}>Cancelled</option>
+      </select>
+      <button class="btn btn-outline" onclick="applyUsersFilter()">Search</button>
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Name</th><th>Email</th><th>Plan</th><th>Trial End</th><th>Joined</th><th></th></tr></thead>
+      <tbody>${items.length ? items.map(u=>`
+        <tr>
+          <td>${u.name||'—'}</td>
+          <td>${u.email}</td>
+          <td>${planBadge(u.subscription_status)}</td>
+          <td class="muted">${u.trial_end_date ? shortDate(u.trial_end_date) : '—'}</td>
+          <td class="muted">${shortDate(u.created_at)}</td>
+          <td style="display:flex;gap:6px">
+            <button class="btn btn-sm btn-outline" onclick="viewUser('${u.user_id}','${escHtml(u.email)}')">View</button>
+            <button class="btn btn-sm btn-outline" onclick="openUserFlagModal('${u.user_id}','${escHtml(u.email)}')">Flags</button>
+          </td>
+        </tr>`).join('') : '<tr><td colspan="6"><div class="empty">No users found</div></td></tr>'}</tbody>
+      </table></div>
+    <div class="pagination">
+      <button onclick="changeUsersPage(${usersPage-1})" ${usersPage<=1?'disabled':''}>← Prev</button>
+      <span>Page ${data.page||1} of ${data.pages||1} (${data.total||0} users)</span>
+      <button onclick="changeUsersPage(${usersPage+1})" ${usersPage>=(data.pages||1)?'disabled':''}>Next →</button>
+    </div>`;
+  document.getElementById('users-search').addEventListener('keydown', e => { if(e.key==='Enter') applyUsersFilter(); });
+}
+
+function applyUsersFilter() {
+  usersSearch = document.getElementById('users-search').value;
+  usersStatus = document.getElementById('users-status').value;
+  usersPage = 1;
+  renderUsers();
+}
+
+function changeUsersPage(p) { usersPage = p; renderUsers(); }
+
+async function viewUser(uid, email) {
+  const data = await get(`/v1/admin/users/${uid}/detail`);
+  const u = data.user || {};
+  const overrides = data.feature_overrides || [];
+  const html = `
+    <div class="topbar"><div><h2 style="cursor:pointer" onclick="navigate('users')">← Users</h2></div><div class="topbar-right"><button class="btn btn-primary btn-sm" onclick="openUserFlagModal('${uid}','${escHtml(email)}')">+ Feature Override</button></div></div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="label">Profile</div>
+        <p style="margin-top:12px"><strong>${u.name||'—'}</strong></p>
+        <p class="sub">${u.email}</p>
+        <p class="sub" style="margin-top:6px">TZ: ${u.timezone||'—'} · Locale: ${u.locale||'—'}</p>
+        <p class="sub">Joined: ${shortDate(u.created_at)}</p>
+      </div>
+      <div class="card">
+        <div class="label">Subscription</div>
+        <div style="margin-top:12px">${planBadge(u.subscription_status)}</div>
+        <p class="sub" style="margin-top:8px">Trial end: ${u.trial_end_date ? shortDate(u.trial_end_date) : '—'}</p>
+        <div style="margin-top:14px;display:flex;gap:8px">
+          <button class="btn btn-sm btn-outline" onclick="setUserPlan('${uid}','active')">→ Activate</button>
+          <button class="btn btn-sm btn-outline" onclick="extendTrial('${uid}')">Extend Trial</button>
+          <button class="btn btn-sm btn-danger" onclick="setUserPlan('${uid}','cancelled')">Cancel</button>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-header"><h3>Feature Overrides</h3></div>
+      <table><thead><tr><th>Flag Key</th><th>Value</th><th>Reason</th><th>Set By</th><th>Set At</th><th></th></tr></thead>
+      <tbody>${overrides.length ? overrides.map(o=>`
+        <tr>
+          <td><code style="font-size:12px">${o.flag_key}</code></td>
+          <td>${o.override_value?'<span class="badge badge-good">ON</span>':'<span class="badge badge-bad">OFF</span>'}</td>
+          <td>${o.reason||'—'}</td>
+          <td class="muted">${o.set_by||'—'}</td>
+          <td class="muted">${shortDate(o.set_at)}</td>
+          <td><button class="btn btn-sm btn-danger" onclick="deleteUserFlag('${uid}','${o.flag_key}')">Remove</button></td>
+        </tr>`).join('') : '<tr><td colspan="6"><div class="empty">No overrides set</div></td></tr>'}</tbody>
+      </table></div>`;
+  document.getElementById('main-content').innerHTML = html;
+  selectedUserId = uid;
+}
+
+async function setUserPlan(uid, status) {
+  if (!confirm(`Set subscription to "${status}"?`)) return;
+  const r = await patch(`/v1/admin/users/${uid}`, {subscription_status: status});
+  if (r.ok) { toast('Updated'); renderUsers(); } else toast(r.detail||'Failed', false);
+}
+
+async function extendTrial(uid) {
+  const days = prompt('Extend trial by how many days?', '7');
+  if (!days) return;
+  const d = new Date(); d.setDate(d.getDate() + parseInt(days));
+  const r = await patch(`/v1/admin/users/${uid}`, {trial_end_date: d.toISOString().split('T')[0]});
+  if (r.ok) { toast(`Trial extended ${days} days`); } else toast(r.detail||'Failed', false);
+}
+
+async function openUserFlagModal(uid, email) {
+  selectedUserId = uid;
+  document.getElementById('modal-uf-user').textContent = `User: ${email} (${uid})`;
+  const sel = document.getElementById('uf-flag-key');
+  sel.innerHTML = allFlags.length ? allFlags.map(f=>`<option value="${f.flag_key}">${f.flag_key} — ${f.display_name||f.flag_key}</option>`).join('') : '<option value="">No flags defined</option>';
+  if (!allFlags.length) {
+    const d = await get('/v1/admin/feature-flags');
+    allFlags = d.flags||[];
+    sel.innerHTML = allFlags.map(f=>`<option value="${f.flag_key}">${f.flag_key}</option>`).join('');
+  }
+  openModal('modal-user-flag');
+}
+
+async function submitUserFlag() {
+  if (!selectedUserId) return;
+  const body = {
+    flag_key: document.getElementById('uf-flag-key').value,
+    override_value: document.getElementById('uf-value').checked,
+    reason: document.getElementById('uf-reason').value.trim(),
+  };
+  const r = await post(`/v1/admin/users/${selectedUserId}/features`, body);
+  if (r.ok) { toast('Override saved'); closeModal('modal-user-flag'); }
+  else toast(r.detail||'Failed', false);
+}
+
+async function deleteUserFlag(uid, flagKey) {
+  if (!confirm(`Remove override for "${flagKey}"?`)) return;
+  const r = await del(`/v1/admin/users/${uid}/features/${flagKey}`);
+  if (r.ok) { toast('Override removed'); viewUser(uid, ''); }
+  else toast('Failed', false);
+}
+
+// ── Billing ──────────────────────────────────────────────────────────────────
+async function renderBilling() {
+  const data = await get('/v1/admin/billing/timeline?limit=50');
+  const s = data.summary || {};
+  const items = data.items || [];
+  const main = document.getElementById('main-content');
+  main.innerHTML = `
+    <div class="topbar"><div><h2>Billing</h2><p>Payment events and subscription revenue</p></div></div>
+    <div class="grid-4">
+      <div class="card"><div class="label">Total Events</div><div class="metric">${fmt(s.total_events||0)}</div></div>
+      <div class="card"><div class="label">Successful</div><div class="metric" style="color:var(--good)">${fmt(s.success_events||0)}</div></div>
+      <div class="card"><div class="label">Failed</div><div class="metric" style="color:var(--bad)">${fmt(s.failure_events||0)}</div></div>
+      <div class="card"><div class="label">Providers</div><div class="metric" style="font-size:16px">${Object.entries(s.provider_mix||{}).map(([k,v])=>`${k}: ${v}`).join(', ')||'—'}</div></div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-header"><h3>Recent Payment Events</h3></div>
+      <table><thead><tr><th>Event</th><th>User</th><th>Provider</th><th>Amount</th><th>Status</th><th>Time</th></tr></thead>
+      <tbody>${items.length ? items.slice(0,40).map(ev=>`
+        <tr>
+          <td>${ev.event_type||ev.type||'—'}</td>
+          <td class="muted">${ev.user_id||'—'}</td>
+          <td>${ev.payment_provider||'—'}</td>
+          <td>${ev.amount ? '$'+ev.amount : '—'}</td>
+          <td>${ev.is_failure?'<span class="badge badge-bad">Failed</span>':'<span class="badge badge-good">OK</span>'}</td>
+          <td class="muted">${shortDate(ev.created_at)}</td>
+        </tr>`).join('') : '<tr><td colspan="6"><div class="empty">No payment events</div></td></tr>'}</tbody>
+      </table></div>`;
+}
+
+// ── Audit ────────────────────────────────────────────────────────────────────
+async function renderAudit() {
+  const data = await get('/v1/admin/audit');
+  const items = data.items || [];
+  const main = document.getElementById('main-content');
+  main.innerHTML = `
+    <div class="topbar"><div><h2>Audit Log</h2><p>All admin actions with actor, resource, and timestamp</p></div></div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Actor</th><th>Action</th><th>Resource</th><th>Time</th></tr></thead>
+      <tbody>${items.length ? items.map(i=>`
+        <tr>
+          <td>${i.actor||'—'}</td>
+          <td><code style="font-size:12px">${i.action||'—'}</code></td>
+          <td class="muted">${i.resource||'—'}</td>
+          <td class="muted">${i.time||'—'}</td>
+        </tr>`).join('') : '<tr><td colspan="4"><div class="empty">No audit events recorded yet</div></td></tr>'}</tbody>
+      </table></div>`;
+}
+
+// ── Fleet ────────────────────────────────────────────────────────────────────
+async function renderFleet() {
+  const data = await get('/v1/admin/fleet');
+  const devices = data.devices || data.fleet || [];
+  const main = document.getElementById('main-content');
+  const statusBadge = s => {
+    const m = {active:'badge-good', available:'badge-muted', replaced:'badge-bad', offline:'badge-warn'};
+    return `<span class="badge ${m[s]||'badge-muted'}">${s||'unknown'}</span>`;
+  };
+  main.innerHTML = `
+    <div class="topbar">
+      <div><h2>Fleet</h2><p>All registered bed devices</p></div>
+      <div class="topbar-right"><span class="pill">${devices.length} devices</span></div>
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Device ID</th><th>Model</th><th>Status</th><th>Owner</th><th>Last Seen</th><th>Linked At</th></tr></thead>
+      <tbody>${devices.length ? devices.map(d => `
+        <tr>
+          <td><code style="font-size:11px">${d.device_id||'—'}</code></td>
+          <td>${d.model||'—'}</td>
+          <td>${statusBadge(d.status)}</td>
+          <td class="muted" style="font-size:11px">${d.current_user_id||'—'}</td>
+          <td class="muted">${shortDate(d.last_seen_at)}</td>
+          <td class="muted">${shortDate(d.linked_at)}</td>
+        </tr>`).join('') : '<tr><td colspan="6"><div class="empty">No devices registered</div></td></tr>'}
+      </tbody></table>
+    </div>`;
+}
+
+// ── Incidents ─────────────────────────────────────────────────────────────────
+async function renderIncidents() {
+  const data = await get('/v1/admin/incidents');
+  const items = data.incidents || data || [];
+  const main = document.getElementById('main-content');
+  const sevBadge = s => {
+    const m = {high:'badge-bad', medium:'badge-warn', low:'badge-muted'};
+    return `<span class="badge ${m[s]||'badge-muted'}">${s||'low'}</span>`;
+  };
+  const statBadge = s => `<span class="badge ${s==='open'?'badge-warn':'badge-good'}">${s||'open'}</span>`;
+  main.innerHTML = `
+    <div class="topbar"><div><h2>Incidents</h2><p>Open billing, device, and OTA issues</p></div></div>
+    <div class="table-wrap">
+      <table><thead><tr><th>ID</th><th>Type</th><th>Severity</th><th>Status</th><th>Title</th><th>Time</th></tr></thead>
+      <tbody>${items.length ? items.map(i => `
+        <tr>
+          <td><code style="font-size:11px">${(i.incident_id||'').slice(0,16)}</code></td>
+          <td>${i.type||'—'}</td>
+          <td>${sevBadge(i.severity)}</td>
+          <td>${statBadge(i.status)}</td>
+          <td>${i.title||'—'}</td>
+          <td class="muted">${shortDate(i.created_at)}</td>
+        </tr>`).join('') : '<tr><td colspan="6"><div class="empty">No incidents — all clear</div></td></tr>'}
+      </tbody></table>
+    </div>`;
+}
+
+// ── Beta Cohort ───────────────────────────────────────────────────────────────
+async function renderBeta() {
+  const [gate, cohort] = await Promise.all([
+    get('/v1/admin/mobile/beta-acceptance'),
+    get('/v1/admin/mobile/beta-cohort'),
+  ]);
+  const members = cohort.members || [];
+  const main = document.getElementById('main-content');
+  const gateColor = gate.ready_to_graduate ? 'var(--good)' : 'var(--warn)';
+  const gateLabel = gate.ready_to_graduate ? '✅ Ready to graduate' : '⏳ Not yet ready';
+  main.innerHTML = `
+    <div class="topbar">
+      <div><h2>Beta Cohort</h2><p>Day-45 gate and tester management</p></div>
+      <div class="topbar-right">
+        <button class="btn-primary" onclick="enrollBeta()">+ Enroll Tester</button>
+      </div>
+    </div>
+    <div class="grid-4" style="margin-bottom:20px">
+      <div class="card"><div class="label">Total Testers</div><div class="metric">${fmt(gate.total_testers||members.length||0)}</div></div>
+      <div class="card"><div class="label">Active</div><div class="metric">${fmt(gate.active_testers||0)}</div></div>
+      <div class="card"><div class="label">Day-45 Gate</div><div class="metric" style="font-size:16px;color:${gateColor}">${gateLabel}</div></div>
+      <div class="card"><div class="label">Cohort</div><div class="metric" style="font-size:16px">${cohort.cohort_key||'kuwait_beta'}</div></div>
+    </div>
+    ${gate.quality_gate_line ? `<div class="card" style="margin-bottom:20px;padding:14px 18px"><p style="font-size:13px;color:var(--muted)">${gate.quality_gate_line}</p></div>` : ''}
+    <div class="table-wrap">
+      <table><thead><tr><th>User ID</th><th>Country</th><th>Status</th><th>Source</th><th>Notes</th><th>Enrolled</th></tr></thead>
+      <tbody>${members.length ? members.map(m => `
+        <tr>
+          <td><code style="font-size:11px">${(m.user_id||'').slice(0,20)}</code></td>
+          <td>${m.country_code||'—'}</td>
+          <td><span class="badge ${m.status==='active'?'badge-good':'badge-muted'}">${m.status||'active'}</span></td>
+          <td class="muted">${m.source||'—'}</td>
+          <td class="muted">${m.notes||'—'}</td>
+          <td class="muted">${shortDate(m.created_at)}</td>
+        </tr>`).join('') : '<tr><td colspan="6"><div class="empty">No testers enrolled yet</div></td></tr>'}
+      </tbody></table>
+    </div>`;
+}
+
+async function enrollBeta() {
+  const userId = prompt('User ID to enroll:');
+  if (!userId) return;
+  const countryCode = prompt('Country code (e.g. KW):', 'KW') || 'KW';
+  try {
+    await post('/v1/admin/mobile/beta-cohort/enroll', {
+      user_id: userId, country_code: countryCode, cohort_key: 'kuwait_beta',
+      status: 'active', source: 'admin_manual'
+    });
+    toast('Tester enrolled');
+    render();
+  } catch(e) { toast('Enroll failed: ' + e.message, false); }
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function fmt(n) { return Number(n).toLocaleString(); }
+function shortDate(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}); }
+  catch { return String(s).slice(0,10); }
+}
+function planBadge(status) {
+  const map = {active:'badge-good',trial:'badge-warn',free:'badge-muted',cancelled:'badge-bad',past_due:'badge-bad'};
+  return `<span class="badge ${map[status]||'badge-muted'}">${status||'free'}</span>`;
+}
+function escHtml(s) { return String(s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>

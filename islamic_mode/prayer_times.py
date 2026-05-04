@@ -3,8 +3,15 @@ from __future__ import annotations
 import datetime
 import json
 import os
+from typing import Optional
 
 import requests
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
+from config import settings
+from islamic_mode.geolocation import GeolocationService
+from loguru import logger
+from Storage.io import async_read_json_simple, async_write_json_simple
 
 
 class PrayerTimesService:
@@ -14,21 +21,132 @@ class PrayerTimesService:
 
     def __init__(
         self,
-        city: str = "Kuwait City",
-        country: str = "Kuwait",
-        method: int = 8,
-        latitude: float | None = None,
-        longitude: float | None = None,
+        city: Optional[str] = None,
+        country: Optional[str] = None,
+        method: Optional[int] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
         date: str = "",
+        auto_detect_location: Optional[bool] = None,
     ):
-        self.city = city
-        self.country = country
-        self.method = method
-        self.latitude = latitude
-        self.longitude = longitude
+        """
+        Initialize PrayerTimesService with location settings.
+        
+        If auto_detect_location is True, will attempt to detect location from IP.
+        Otherwise uses provided parameters or falls back to config settings.
+        """
+        # Use config defaults if not provided
+        self.auto_detect = auto_detect_location if auto_detect_location is not None else settings.islamic_prayer_auto_location
+        self.method = method if method is not None else settings.islamic_prayer_method
         self.date = str(date or "").strip()
-        self.timeout_seconds = int(os.getenv("ISLAMIC_MODE_PRAYER_TIMEOUT", "12"))
-        self.cache_path = os.getenv("ISLAMIC_MODE_PRAYER_CACHE", "").strip()
+        self.timeout_seconds = settings.islamic_prayer_timeout_seconds
+        self.cache_path = settings.islamic_prayer_cache_path
+        
+        # Location setup
+        self._setup_location(city, country, latitude, longitude)
+
+    def _setup_location(
+        self,
+        city: Optional[str],
+        country: Optional[str],
+        latitude: Optional[float],
+        longitude: Optional[float]
+    ) -> None:
+        """Setup location with auto-detection if enabled."""
+        if self.auto_detect:
+            logger.info("Auto-detecting location for prayer times...")
+            geo_service = GeolocationService(timeout_seconds=self.timeout_seconds)
+            
+            # Parse config lat/lon if set
+            config_lat = None
+            config_lon = None
+            if settings.islamic_prayer_latitude and settings.islamic_prayer_longitude:
+                try:
+                    config_lat = float(settings.islamic_prayer_latitude)
+                    config_lon = float(settings.islamic_prayer_longitude)
+                except ValueError:
+                    pass
+            
+            location = geo_service.get_location_with_fallback(
+                default_city=settings.islamic_prayer_city,
+                default_country=settings.islamic_prayer_country,
+                default_latitude=config_lat,
+                default_longitude=config_lon
+            )
+            
+            self.city = location.get("city", settings.islamic_prayer_city)
+            self.country = location.get("country", settings.islamic_prayer_country)
+            self.latitude = location.get("latitude")
+            self.longitude = location.get("longitude")
+            
+            if location.get("auto_detected"):
+                detected_at = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+                logger.info(
+                    "IP geolocation auto-detection fired at=%s city=%s country=%s lat=%s lon=%s",
+                    detected_at, self.city, self.country, self.latitude, self.longitude,
+                )
+                self._location_auto_detected_at = detected_at
+            else:
+                logger.info("Using default/config location: city=%s country=%s", self.city, self.country)
+        else:
+            # Use provided params or config defaults
+            self.city = city if city is not None else settings.islamic_prayer_city
+            self.country = country if country is not None else settings.islamic_prayer_country
+            
+            # Handle latitude/longitude
+            if latitude is not None and longitude is not None:
+                self.latitude = latitude
+                self.longitude = longitude
+            else:
+                # Try to parse from config
+                try:
+                    if settings.islamic_prayer_latitude and settings.islamic_prayer_longitude:
+                        self.latitude = float(settings.islamic_prayer_latitude)
+                        self.longitude = float(settings.islamic_prayer_longitude)
+                    else:
+                        self.latitude = None
+                        self.longitude = None
+                except ValueError:
+                    self.latitude = None
+                    self.longitude = None
+
+    def update_location(
+        self,
+        city: Optional[str] = None,
+        country: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None
+    ) -> None:
+        """Update location dynamically."""
+        if city is not None:
+            self.city = city
+        if country is not None:
+            self.country = country
+        if latitude is not None:
+            self.latitude = latitude
+        if longitude is not None:
+            self.longitude = longitude
+        
+        logger.info(f"Prayer times location updated: {self.city}, {self.country}")
+
+    def refresh_auto_location(self) -> bool:
+        """Re-detect location if auto-detection is enabled. Returns True if successful."""
+        if not self.auto_detect:
+            return False
+        
+        geo_service = GeolocationService(timeout_seconds=self.timeout_seconds)
+        location = geo_service.get_location_from_ip()
+        
+        if location:
+            self.city = location.get("city", self.city)
+            self.country = location.get("country", self.country)
+            self.latitude = location.get("latitude")
+            self.longitude = location.get("longitude")
+            logger.info(f"Location refreshed: {self.city}, {self.country}")
+            return True
+        
+        logger.warning("Failed to refresh location")
+        return False
 
     @staticmethod
     def _normalize_time(value: str) -> str:
@@ -66,6 +184,32 @@ class PrayerTimesService:
             return {}
         return cached if isinstance(cached, dict) else {}
 
+    async def async_load_cache(self) -> dict:
+        """Async version of _read_cache — use from async route handlers."""
+        if not self.cache_path:
+            return {}
+        return await async_read_json_simple(self.cache_path)
+
+    async def async_save_cache(self, payload: dict) -> None:
+        """Async version of _write_cache — use from async route handlers."""
+        if not self.cache_path:
+            return
+        await async_write_json_simple(self.cache_path, payload)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(requests.RequestException),
+        reraise=True,
+        before_sleep=lambda rs: logger.debug(
+            "Prayer times API retry attempt {}/3", rs.attempt_number
+        ),
+    )
+    def _get_with_retry(self, url: str, params: dict) -> requests.Response:
+        response = requests.get(url, params=params, timeout=self.timeout_seconds)
+        response.raise_for_status()
+        return response
+
     def _request_payload(self) -> dict:
         params = {"method": self.method}
         if self.date:
@@ -82,8 +226,7 @@ class PrayerTimesService:
 
         payload: dict = {}
         try:
-            response = requests.get(url, params=params, timeout=self.timeout_seconds)
-            response.raise_for_status()
+            response = self._get_with_retry(url, params)
             payload = response.json()
             if isinstance(payload, dict):
                 self._write_cache(payload)
@@ -173,3 +316,15 @@ class PrayerTimesService:
             "isha": "#7B68EE",
         }
         return colors.get(str(prayer_name or "").strip().lower(), "#FFFFFF")
+
+    def get_current_location(self) -> dict:
+        """Get current location settings."""
+        return {
+            "city": self.city,
+            "country": self.country,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "method": self.method,
+            "auto_detect": self.auto_detect,
+            "using_coordinates": self.latitude is not None and self.longitude is not None
+        }

@@ -70,6 +70,39 @@ def get_sleep_hadith() -> dict:
     return hadith_service.get_sleep_hadith()
 
 
+@router.get("/hadith/books")
+def get_available_hadith_books() -> dict:
+    """Get list of available hadith books."""
+    return {
+        "books": [
+            {"key": "bukhari", "name": "Sahih Bukhari", "hadiths": "~7,500"},
+            {"key": "muslim", "name": "Sahih Muslim", "hadiths": "~7,000"},
+            {"key": "abudawud", "name": "Abu Dawood", "hadiths": "~5,200"},
+            {"key": "tirmidhi", "name": "Al-Tirmidhi", "hadiths": "~3,900"},
+            {"key": "nasai", "name": "Al-Nasai", "hadiths": "~5,700"},
+            {"key": "ibnmajah", "name": "Ibn Majah", "hadiths": "~4,300"}
+        ],
+        "total_books": 6,
+        "total_hadiths": "~33,000+"
+    }
+
+
+@router.get("/hadith/info")
+def get_hadith_service_info() -> dict:
+    """Get information about the hadith service and current status."""
+    cache_path = hadith_service._get_daily_cache_path()
+    cached = hadith_service._read_cache(cache_path)
+    
+    return {
+        "primary_source": "hadithapi.com",
+        "fallback_sources": ["random-hadith-generator", "local_collection"],
+        "available_books": list(hadith_service.BOOKS.keys()),
+        "cache_enabled": True,
+        "today_cached": cached is not None,
+        "today_source": cached.get("api_source") if cached else None
+    }
+
+
 @router.get("/calendar")
 def get_islamic_calendar() -> dict:
     hijri = calendar_service.get_hijri_date()
@@ -79,7 +112,40 @@ def get_islamic_calendar() -> dict:
 
 @router.get("/sunnah-tips")
 def get_sunnah_tip() -> dict:
-    return {"tip": sunnah_tips_service.get_tip_of_night()}
+    return {
+        "tip": sunnah_tips_service.get_tip_of_night(),
+        "total_tips": sunnah_tips_service.get_tips_count()
+    }
+
+
+@router.get("/sunnah-tips/category/{category}")
+def get_sunnah_tips_by_category(category: str) -> dict:
+    """
+    Get sunnah tips by category.
+    
+    Categories: posture, quran, dua, timing, spiritual, physical, family, special
+    """
+    tips = sunnah_tips_service.get_tip_by_category(category)
+    return {
+        "category": category,
+        "tips": tips,
+        "count": len(tips)
+    }
+
+
+@router.get("/sunnah-tips/all")
+def get_all_sunnah_tips() -> dict:
+    """Get all sunnah sleep tips."""
+    return {
+        "tips": sunnah_tips_service.get_all_tips(),
+        "total": sunnah_tips_service.get_tips_count()
+    }
+
+
+@router.get("/sunnah-tips/random")
+def get_random_sunnah_tip() -> dict:
+    """Get a random sunnah tip."""
+    return {"tip": sunnah_tips_service.get_random_tip()}
 
 
 @router.get("/ramadan/status")
@@ -100,3 +166,52 @@ def get_dana_prayer_message(prayer_name: str) -> dict:
     minutes_until = _minutes_until_prayer(prayer_name)
     message = dana_voice.get_prayer_approaching_message(prayer_name.title(), minutes_until)
     return {"message": message}
+
+
+@router.get("/location")
+def get_prayer_location() -> dict:
+    """Get current location settings for prayer times."""
+    return prayer_service.get_current_location()
+
+
+@router.post("/location/update")
+def update_prayer_location(
+    city: str = None,
+    country: str = None,
+    latitude: float = None,
+    longitude: float = None
+) -> dict:
+    """Update prayer times location dynamically."""
+    prayer_service.update_location(
+        city=city,
+        country=country,
+        latitude=latitude,
+        longitude=longitude
+    )
+    return {
+        "success": True,
+        "message": "Prayer times location updated",
+        "location": prayer_service.get_current_location()
+    }
+
+
+@router.post("/location/refresh")
+def refresh_prayer_location() -> dict:
+    """Refresh location using auto-detection if enabled."""
+    success = prayer_service.refresh_auto_location()
+    return {
+        "success": success,
+        "message": "Location refreshed" if success else "Auto-detection not enabled or failed",
+        "location": prayer_service.get_current_location()
+    }
+
+
+@router.get("/prayer-times/detailed")
+def get_prayer_times_detailed() -> dict:
+    """Get prayer times with full location and metadata."""
+    bundle = prayer_service.get_today_prayer_bundle()
+    return {
+        "prayers": bundle.get("prayers", {}),
+        "location": bundle.get("location", {}),
+        "next_prayer": prayer_service.get_next_prayer()
+    }

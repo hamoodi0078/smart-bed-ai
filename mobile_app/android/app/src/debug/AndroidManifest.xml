@@ -4,4 +4,6 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Allow cleartext (HTTP) traffic in debug builds only — e.g. 10.0.2.2 emulator -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>

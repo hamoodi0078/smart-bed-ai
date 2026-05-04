@@ -1,5 +1,9 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:lottie/lottie.dart';
 
+import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../home/home_screen.dart';
 
@@ -11,17 +15,111 @@ class SleepReportScreen extends StatefulWidget {
 }
 
 class _SleepReportScreenState extends State<SleepReportScreen> {
-  int _selectedIndex = 3;
+  bool _isLoading = true;
+  String? _errorMessage;
 
-  static const List<_SleepBarPoint> _weeklyData = [
-    _SleepBarPoint(day: 'Mon', hours: 6.5),
-    _SleepBarPoint(day: 'Tue', hours: 7.2),
-    _SleepBarPoint(day: 'Wed', hours: 5.8),
-    _SleepBarPoint(day: 'Thu', hours: 8.1),
-    _SleepBarPoint(day: 'Fri', hours: 7.5),
-    _SleepBarPoint(day: 'Sat', hours: 6.9),
-    _SleepBarPoint(day: 'Sun', hours: 7.8),
+  int _weeklyScore = 0;
+  String _weeklyScoreLabel = '—';
+  String _avgSleep = '—';
+  String _nightsTracked = '—';
+  String _bestNight = '—';
+  String _bestNightHours = '—';
+  String _worstNight = '—';
+  String _worstNightHours = '—';
+  String _danaSummary = '';
+  String _streak = '0';
+
+  List<_SleepBarPoint> _weeklyData = const [
+    _SleepBarPoint(day: 'Mon', hours: 0),
+    _SleepBarPoint(day: 'Tue', hours: 0),
+    _SleepBarPoint(day: 'Wed', hours: 0),
+    _SleepBarPoint(day: 'Thu', hours: 0),
+    _SleepBarPoint(day: 'Fri', hours: 0),
+    _SleepBarPoint(day: 'Sat', hours: 0),
+    _SleepBarPoint(day: 'Sun', hours: 0),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReport();
+  }
+
+  Future<void> _loadReport() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final data = await ApiService.getDashboard();
+      if (data['error'] == true) throw Exception(data['message']);
+
+      final weekly = data['weekly_insight'] as Map<String, dynamic>? ?? {};
+      final nightly = data['nightly_summary'] as Map<String, dynamic>? ?? {};
+
+      final score = (weekly['completion_rate_pct'] ?? 0) as num;
+      final avgHours = (nightly['avg_hours'] ?? nightly['last_night_hours'] ?? 0) as num;
+      final sessions = (weekly['wind_down_sessions'] ?? 0) as num;
+      final summary = weekly['summary'] as String? ?? '';
+
+      // Build bar chart from weekly_hours_breakdown if available
+      final breakdown = weekly['weekly_hours_breakdown'];
+      final List<_SleepBarPoint> bars;
+      if (breakdown is Map) {
+        final dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        bars = dayOrder
+            .map((d) => _SleepBarPoint(
+                  day: d,
+                  hours: (breakdown[d] ?? breakdown[d.toLowerCase()] ?? 0) as num,
+                ))
+            .toList();
+      } else {
+        bars = _weeklyData;
+      }
+
+      // Derive best/worst from bar data
+      final sorted = [...bars]..sort((a, b) => b.hours.compareTo(a.hours));
+      final best = sorted.isNotEmpty ? sorted.first : null;
+      final worst = sorted.isNotEmpty ? sorted.last : null;
+
+      final String scoreLabel;
+      if (score >= 80) {
+        scoreLabel = 'Great';
+      } else if (score >= 60) {
+        scoreLabel = 'Good';
+      } else {
+        scoreLabel = 'Needs Work';
+      }
+
+      if (mounted) {
+        setState(() {
+          _weeklyScore = score.toInt();
+          _weeklyScoreLabel = scoreLabel;
+          _avgSleep = avgHours > 0 ? '${avgHours.toStringAsFixed(1)}h' : '—';
+          _nightsTracked = sessions > 0 ? '$sessions/7' : '—';
+          _bestNight = best?.day ?? '—';
+          _bestNightHours = best != null && best.hours > 0
+              ? '${best.hours.toStringAsFixed(1)} hours'
+              : '—';
+          _worstNight = worst?.day ?? '—';
+          _worstNightHours = worst != null && worst.hours > 0
+              ? '${worst.hours.toStringAsFixed(1)} hours'
+              : '—';
+          _danaSummary = summary;
+          _streak = sessions.toString();
+          _weeklyData = bars;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   void _goBack() {
     if (Navigator.of(context).canPop()) {
@@ -38,45 +136,86 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A1628),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTopBar(),
-              const SizedBox(height: 14),
-              _buildWeeklyScoreSection(),
-              const SizedBox(height: 14),
-              _buildBarChartSection(),
-              const SizedBox(height: 14),
-              _buildBestWorstSection(),
-              const SizedBox(height: 14),
-              _buildDanaSummaryCard(),
-              const SizedBox(height: 14),
-              _buildStreakCard(),
-            ],
-          ),
+        child: Column(
+          children: [
+            if (_isLoading)
+              Lottie.asset(
+                'assets/animations/loading_moon.json',
+                width: 72,
+                height: 4,
+                fit: BoxFit.fitWidth,
+                errorBuilder: (_, __, ___) => const LinearProgressIndicator(
+                  minHeight: 2,
+                  color: Color(0xFF00D4FF),
+                  backgroundColor: Colors.transparent,
+                ),
+              ),
+            Expanded(
+              child: RefreshIndicator(
+                color: const Color(0xFF00D4FF),
+                onRefresh: _loadReport,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTopBar(),
+                      if (_errorMessage != null) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: AppColors.orange.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: AppColors.orange.withValues(alpha: 0.4)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.wifi_off_rounded,
+                                  color: AppColors.orange, size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Could not load report — $_errorMessage',
+                                  style: const TextStyle(
+                                      color: AppColors.orange, fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      _buildWeeklyScoreSection(),
+                      const SizedBox(height: 14),
+                      _buildBarChartSection(),
+                      const SizedBox(height: 14),
+                      _buildBestWorstSection(),
+                      const SizedBox(height: 14),
+                      _buildDanaSummaryCard(),
+                      const SizedBox(height: 14),
+                      _buildStreakCard(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: AppColors.cardBg,
-        selectedItemColor: AppColors.accent,
-        unselectedItemColor: AppColors.softWhite.withValues(alpha: 0.65),
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.nightlight_round), label: 'Wind-Down'),
-          BottomNavigationBarItem(icon: Icon(Icons.mosque_rounded), label: 'Islamic'),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: 'Report'),
-        ],
-      ),
     );
+  }
+
+  String _weekRangeLabel() {
+    final now = DateTime.now();
+    final weekday = now.weekday; // Mon=1, Sun=7
+    final start = now.subtract(Duration(days: weekday - 1));
+    final end = start.add(const Duration(days: 6));
+    final fmt = DateFormat('MMM d');
+    return '${fmt.format(start)} – ${fmt.format(end)}';
   }
 
   Widget _buildTopBar() {
@@ -99,14 +238,14 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
             ),
           ),
         ),
-        const SizedBox(
-          width: 62,
+        SizedBox(
+          width: 72,
           child: Text(
-            'This Week',
+            _weekRangeLabel(),
             textAlign: TextAlign.right,
-            style: TextStyle(
+            style: const TextStyle(
               color: AppColors.accent,
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -136,18 +275,18 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
               ),
             ],
           ),
-          child: const Column(
+          child: Column(
             children: [
               Text(
-                '78',
-                style: TextStyle(
+                '$_weeklyScore',
+                style: const TextStyle(
                   color: AppColors.accent,
                   fontSize: 64,
                   fontWeight: FontWeight.w700,
                   height: 1,
                 ),
               ),
-              Text(
+              const Text(
                 '/ 100',
                 style: TextStyle(
                   color: AppColors.softWhite,
@@ -155,17 +294,17 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Text(
-                'Good 👍',
-                style: TextStyle(
+                _weeklyScoreLabel,
+                style: const TextStyle(
                   color: AppColors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              SizedBox(height: 4),
-              Text(
+              const SizedBox(height: 4),
+              const Text(
                 'Weekly Average Score',
                 style: TextStyle(
                   color: Color(0xFF9CA6BF),
@@ -197,8 +336,8 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      '7.2h',
-                      style: TextStyle(
+                      _avgSleep,
+                      style: const TextStyle(
                         color: AppColors.accent,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -228,8 +367,8 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      '6/7',
-                      style: TextStyle(
+                      _nightsTracked,
+                      style: const TextStyle(
                         color: AppColors.accent,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -246,8 +385,26 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
   }
 
   Widget _buildBarChartSection() {
-    const double maxHours = 9;
-    const double maxBarHeight = 120;
+    final maxHours = _weeklyData.fold<double>(
+        9, (m, p) => p.hours.toDouble() > m ? p.hours.toDouble() : m);
+    final bestDay =
+        _weeklyData.reduce((a, b) => a.hours >= b.hours ? a : b).day;
+
+    final barGroups = List.generate(_weeklyData.length, (i) {
+      final point = _weeklyData[i];
+      final isBest = point.day == bestDay;
+      return BarChartGroupData(
+        x: i,
+        barRods: [
+          BarChartRodData(
+            toY: point.hours.toDouble(),
+            color: isBest ? AppColors.gold : AppColors.accent,
+            width: 18,
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ],
+      );
+    });
 
     return Container(
       width: double.infinity,
@@ -270,43 +427,54 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
           const SizedBox(height: 12),
           SizedBox(
             height: 160,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: _weeklyData.map((point) {
-                final double barHeight = (point.hours / maxHours) * maxBarHeight;
-                final bool isBestNight = point.day == 'Thu';
-
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      '${point.hours.toStringAsFixed(1)}h',
-                      style: const TextStyle(
-                        color: AppColors.white,
-                        fontSize: 9,
-                      ),
+            child: BarChart(
+              BarChartData(
+                maxY: maxHours + 1,
+                barGroups: barGroups,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: 2,
+                  getDrawingHorizontalLine: (_) => FlLine(
+                    color: Colors.white10,
+                    strokeWidth: 1,
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, _) {
+                        final idx = value.toInt();
+                        if (idx < 0 || idx >= _weeklyData.length) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            _weeklyData[idx].day,
+                            style: const TextStyle(
+                                color: AppColors.white, fontSize: 10),
+                          ),
+                        );
+                      },
                     ),
-                    const SizedBox(height: 4),
-                    Container(
-                      width: 30,
-                      height: barHeight,
-                      decoration: BoxDecoration(
-                        color: isBestNight ? AppColors.gold : AppColors.accent,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                  ),
+                ),
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipColor: (_) => const Color(0xFF1E2D45),
+                    getTooltipItem: (group, _, rod, __) => BarTooltipItem(
+                      '${rod.toY.toStringAsFixed(1)}h',
+                      const TextStyle(color: AppColors.white, fontSize: 11),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      point.day,
-                      style: const TextStyle(
-                        color: AppColors.white,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                );
-              }).toList(),
+                  ),
+                ),
+              ),
             ),
           ),
         ],
@@ -324,10 +492,10 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
               color: AppColors.cardBg,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   '🏆 Best Night',
                   style: TextStyle(
                     color: AppColors.gold,
@@ -335,19 +503,19 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  'Thursday',
-                  style: TextStyle(
+                  _bestNight,
+                  style: const TextStyle(
                     color: AppColors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
-                  '8.1 hours',
-                  style: TextStyle(
+                  _bestNightHours,
+                  style: const TextStyle(
                     color: AppColors.accent,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -365,10 +533,10 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
               color: AppColors.cardBg,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   '😴 Needs Work',
                   style: TextStyle(
                     color: AppColors.orange,
@@ -376,19 +544,19 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  'Wednesday',
-                  style: TextStyle(
+                  _worstNight,
+                  style: const TextStyle(
                     color: AppColors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
-                  '5.8 hours',
-                  style: TextStyle(
+                  _worstNightHours,
+                  style: const TextStyle(
                     color: AppColors.orange,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -421,11 +589,12 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
-            'This week you slept an average of 7.2 hours with a score of 78/100. '
-            'Your best night was Thursday. Keep your routine consistent!',
-            style: TextStyle(
+            _danaSummary.isNotEmpty
+                ? _danaSummary
+                : 'Keep your routine consistent for better sleep!',
+            style: const TextStyle(
               color: AppColors.softWhite,
               fontSize: 12,
               fontStyle: FontStyle.italic,
@@ -445,20 +614,20 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
         color: AppColors.cardBg,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Text(
-            '🔥 Current Streak: 5 nights',
+            '🔥 Current Streak: $_streak nights',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: AppColors.orange,
               fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
           ),
-          SizedBox(height: 6),
-          Text(
-            'Keep going! 2 more nights for your next badge 🏆',
+          const SizedBox(height: 6),
+          const Text(
+            'Keep going! Great work on your sleep routine 🏆',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppColors.softWhite,

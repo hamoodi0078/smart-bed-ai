@@ -3,18 +3,37 @@ from __future__ import annotations
 import logging
 import sys
 import threading
-import time
 from dataclasses import dataclass
 from typing import Callable
-
 
 try:
     from gpiozero import DigitalInputDevice
 except Exception:  # pragma: no cover - optional runtime dependency
     DigitalInputDevice = None
 
-
 logger = logging.getLogger("hardware.pi_sensors")
+
+# MQTT publisher — lazy import so missing env vars don't crash sensor startup
+_mqtt_client = None
+_mqtt_attempted = False
+
+
+def _get_mqtt():
+    global _mqtt_client, _mqtt_attempted
+    if _mqtt_attempted:
+        return _mqtt_client
+    _mqtt_attempted = True
+    try:
+        from integrations.mqtt_client import get_mqtt_client
+        client = get_mqtt_client()
+        if client.is_connected():
+            _mqtt_client = client
+            logger.info("pi_sensors: MQTT publishing enabled.")
+        else:
+            logger.debug("pi_sensors: MQTT client not connected — readings local only.")
+    except Exception as exc:
+        logger.debug("pi_sensors: MQTT unavailable: %s", exc)
+    return _mqtt_client
 
 
 @dataclass(frozen=True)
@@ -154,11 +173,20 @@ class RaspberryPiSensorMonitor:
                         should_emit = True
                     else:
                         should_emit = False
-                if should_emit and callable(callback):
-                    try:
-                        callback(snapshot)
-                    except Exception as exc:
-                        logger.warning("Sensor snapshot callback failed: %s", exc)
+                if should_emit:
+                    if callable(callback):
+                        try:
+                            callback(snapshot)
+                        except Exception as exc:
+                            logger.warning("Sensor snapshot callback failed: %s", exc)
+                    # Publish changed readings to MQTT bus
+                    mqtt = _get_mqtt()
+                    if mqtt:
+                        try:
+                            mqtt.publish_sensor("pressure", 100.0 if snapshot.pressure_active else 0.0)
+                            mqtt.publish_sensor("motion", 1.0 if snapshot.motion_active else 0.0)
+                        except Exception as exc:
+                            logger.debug("MQTT sensor publish failed: %s", exc)
                 self._stop_event.wait(self._poll_interval_seconds)
 
         self._thread = threading.Thread(target=_run, name="pi-sensor-monitor", daemon=True)

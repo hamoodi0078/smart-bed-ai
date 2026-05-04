@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date as date_type
 from datetime import datetime, timedelta
 from secrets import token_urlsafe
+
+from auth.jwt_handler import JWTError, create_access_token, decode_access_token, is_jwt
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -11,9 +13,12 @@ from time_utils import ensure_utc, from_iso, to_iso, utcnow
 
 from .connection import DatabaseConnection
 from .models import (
+    AppVersion,
     BetaCohortMember,
     BetaMetricsSnapshot,
     Event,
+    FeatureFlag,
+    FirmwareVersion,
     FirstThreeNightsProgress,
     MobileCommandFeedback,
     MobileCommandRecord,
@@ -21,6 +26,7 @@ from .models import (
     NightlySummaryFeedbackProgress,
     SleepSession,
     User,
+    UserFeatureOverride,
 )
 
 
@@ -740,11 +746,13 @@ class MobileAuthRepository:
         refresh_exp = now + timedelta(days=refresh_window_days)
         label = str(client_name or "").strip() or "flutter_app"
 
+        jti = token_urlsafe(32)  # opaque revocation key stored in DB (fits String(255))
+
         with self.db.get_session() as session:
             row = MobileAuthSession(
                 user_id=user_key,
                 client_name=label,
-                access_token=token_urlsafe(32),
+                access_token=jti,           # DB stores only the JTI, not the full JWT
                 refresh_token=token_urlsafe(48),
                 issued_at_utc=now,
                 access_expires_at_utc=access_exp,
@@ -757,16 +765,38 @@ class MobileAuthRepository:
             session.add(row)
             session.flush()
             session.refresh(row)
-            return self._tokens_payload_from_row(row)
+            payload = self._tokens_payload_from_row(row)
+
+        # Replace the raw JTI with a signed JWT for the client
+        signed_jwt = create_access_token(
+            user_id=user_key,
+            jti=jti,
+            exp=access_exp,
+            client_name=label,
+        )
+        payload["access_token"] = signed_jwt
+        return payload
 
     def validate_access_token(self, access_token: str, *, now_utc: datetime | None = None) -> dict[str, Any]:
         token = str(access_token or "").strip()
         if not token:
             return {}
         now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+
+        # JWT fast-path: decode claims first, then single DB revocation check by JTI
+        db_key = token  # for legacy opaque tokens
+        if is_jwt(token):
+            try:
+                claims = decode_access_token(token)
+                db_key = str(claims.get("jti", "") or "").strip()
+                if not db_key:
+                    return {}
+            except JWTError:
+                return {}
+
         with self.db.get_session() as session:
             statement = select(MobileAuthSession).where(
-                MobileAuthSession.access_token == token,
+                MobileAuthSession.access_token == db_key,
                 MobileAuthSession.revoked.is_(False),
             ).limit(1)
             row = session.execute(statement).scalar_one_or_none()
@@ -814,6 +844,28 @@ class MobileAuthRepository:
             refresh_days=refresh_days,
             now_utc=now,
         )
+
+    def revoke_all_tokens_for_user(self, user_id: str, now_utc: datetime | None = None) -> int:
+        """Revoke all active mobile sessions for a user (e.g. on password reset)."""
+        uid = str(user_id or "").strip()
+        if not uid:
+            return 0
+        now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        revoked_count = 0
+        with self.db.get_session() as session:
+            statement = select(MobileAuthSession).where(
+                MobileAuthSession.user_id == uid,
+                MobileAuthSession.revoked.is_(False),
+            )
+            for row in session.execute(statement).scalars().all():
+                row.revoked = True
+                row.revoked_at_utc = now
+                row.updated_at = now
+                session.add(row)
+                revoked_count += 1
+            if revoked_count:
+                session.flush()
+        return revoked_count
 
     def revoke_tokens(
         self,
@@ -1232,3 +1284,282 @@ class BetaProgressRepository:
             statement = statement.order_by(BetaCohortMember.updated_at.desc()).limit(safe_limit)
             rows = list(session.execute(statement).scalars().all())
             return [self._cohort_member_payload_from_row(row) for row in rows]
+
+
+class UpdateRepository:
+    def __init__(self, db: DatabaseConnection | None = None):
+        self.db = db or DatabaseConnection()
+        self.db.create_tables()
+
+    # ── App Versions ──────────────────────────────────────────────────────────
+
+    def create_app_version(self, *, platform: str, version_string: str, build_number: int,
+                           changelog: list, is_required: bool, rollout_percent: int,
+                           min_supported_version: str | None = None,
+                           store_url_ios: str | None = None,
+                           store_url_android: str | None = None,
+                           published_by: str | None = None) -> dict[str, Any]:
+        safe_platform = str(platform or "all").strip().lower()
+        with self.db.get_session() as session:
+            prev = list(session.execute(
+                select(AppVersion).where(AppVersion.platform == safe_platform, AppVersion.is_active == True)
+            ).scalars().all())
+            for v in prev:
+                v.is_active = False
+            new_v = AppVersion(
+                platform=safe_platform,
+                version_string=str(version_string or "").strip(),
+                build_number=max(0, int(build_number or 0)),
+                changelog=changelog if isinstance(changelog, list) else [],
+                is_required=bool(is_required),
+                rollout_percent=max(0, min(100, int(rollout_percent or 100))),
+                is_active=True,
+                min_supported_version=str(min_supported_version or "").strip() or None,
+                store_url_ios=str(store_url_ios or "").strip() or None,
+                store_url_android=str(store_url_android or "").strip() or None,
+                published_by=str(published_by or "").strip() or None,
+            )
+            session.add(new_v)
+            session.flush()
+            return self._app_version_dict(new_v)
+
+    def list_app_versions(self, limit: int = 50) -> list[dict[str, Any]]:
+        with self.db.get_session() as session:
+            rows = list(session.execute(
+                select(AppVersion).order_by(AppVersion.created_at.desc()).limit(max(1, min(limit, 200)))
+            ).scalars().all())
+            return [self._app_version_dict(r) for r in rows]
+
+    def update_app_version(self, version_id: str, **fields: Any) -> dict[str, Any] | None:
+        with self.db.get_session() as session:
+            row = session.execute(select(AppVersion).where(AppVersion.id == version_id)).scalar_one_or_none()
+            if row is None:
+                return None
+            for key, val in fields.items():
+                if hasattr(row, key):
+                    setattr(row, key, val)
+            return self._app_version_dict(row)
+
+    def get_active_app_version(self, platform: str) -> dict[str, Any] | None:
+        safe_platform = str(platform or "all").strip().lower()
+        with self.db.get_session() as session:
+            row = session.execute(
+                select(AppVersion).where(
+                    AppVersion.is_active == True,
+                    AppVersion.platform.in_([safe_platform, "all"]),
+                ).order_by(AppVersion.created_at.desc())
+            ).scalars().first()
+            return self._app_version_dict(row) if row else None
+
+    def _app_version_dict(self, row: AppVersion) -> dict[str, Any]:
+        return {
+            "id": str(row.id or ""),
+            "platform": str(row.platform or ""),
+            "version_string": str(row.version_string or ""),
+            "build_number": int(row.build_number or 0),
+            "changelog": row.changelog if isinstance(row.changelog, list) else [],
+            "is_required": bool(row.is_required),
+            "rollout_percent": int(row.rollout_percent or 0),
+            "is_active": bool(row.is_active),
+            "min_supported_version": str(row.min_supported_version or "") or None,
+            "store_url_ios": str(row.store_url_ios or "") or None,
+            "store_url_android": str(row.store_url_android or "") or None,
+            "published_by": str(row.published_by or "") or None,
+            "created_at": to_iso(ensure_utc(row.created_at)) if row.created_at else "",
+        }
+
+    # ── Firmware Versions ─────────────────────────────────────────────────────
+
+    def create_firmware_version(self, *, version_string: str, changelog: list, download_url: str,
+                                is_required: bool, rollout_percent: int, target_device_ids: list,
+                                published_by: str | None = None) -> dict[str, Any]:
+        with self.db.get_session() as session:
+            prev = list(session.execute(
+                select(FirmwareVersion).where(FirmwareVersion.is_active == True)
+            ).scalars().all())
+            for v in prev:
+                v.is_active = False
+            new_v = FirmwareVersion(
+                version_string=str(version_string or "").strip(),
+                changelog=changelog if isinstance(changelog, list) else [],
+                download_url=str(download_url or "").strip(),
+                is_required=bool(is_required),
+                rollout_percent=max(0, min(100, int(rollout_percent or 100))),
+                is_active=True,
+                target_device_ids=target_device_ids if isinstance(target_device_ids, list) else [],
+                published_by=str(published_by or "").strip() or None,
+            )
+            session.add(new_v)
+            session.flush()
+            return self._firmware_dict(new_v)
+
+    def list_firmware_versions(self, limit: int = 50) -> list[dict[str, Any]]:
+        with self.db.get_session() as session:
+            rows = list(session.execute(
+                select(FirmwareVersion).order_by(FirmwareVersion.created_at.desc()).limit(max(1, min(limit, 200)))
+            ).scalars().all())
+            return [self._firmware_dict(r) for r in rows]
+
+    def update_firmware_version(self, version_id: str, **fields: Any) -> dict[str, Any] | None:
+        with self.db.get_session() as session:
+            row = session.execute(select(FirmwareVersion).where(FirmwareVersion.id == version_id)).scalar_one_or_none()
+            if row is None:
+                return None
+            for key, val in fields.items():
+                if hasattr(row, key):
+                    setattr(row, key, val)
+            return self._firmware_dict(row)
+
+    def get_active_firmware_version(self, device_id: str = "") -> dict[str, Any] | None:
+        with self.db.get_session() as session:
+            row = session.execute(
+                select(FirmwareVersion).where(FirmwareVersion.is_active == True)
+                .order_by(FirmwareVersion.created_at.desc())
+            ).scalars().first()
+            if row is None:
+                return None
+            targets = row.target_device_ids if isinstance(row.target_device_ids, list) else []
+            if targets and device_id and device_id not in targets:
+                return None
+            return self._firmware_dict(row)
+
+    def _firmware_dict(self, row: FirmwareVersion) -> dict[str, Any]:
+        return {
+            "id": str(row.id or ""),
+            "version_string": str(row.version_string or ""),
+            "changelog": row.changelog if isinstance(row.changelog, list) else [],
+            "download_url": str(row.download_url or ""),
+            "is_required": bool(row.is_required),
+            "rollout_percent": int(row.rollout_percent or 0),
+            "is_active": bool(row.is_active),
+            "target_device_ids": row.target_device_ids if isinstance(row.target_device_ids, list) else [],
+            "published_by": str(row.published_by or "") or None,
+            "created_at": to_iso(ensure_utc(row.created_at)) if row.created_at else "",
+        }
+
+
+class FeatureFlagRepository:
+    def __init__(self, db: DatabaseConnection | None = None):
+        self.db = db or DatabaseConnection()
+        self.db.create_tables()
+
+    def upsert_flag(self, *, flag_key: str, display_name: str = "", description: str = "",
+                    enabled_globally: bool = False, enabled_for_plans: list | None = None,
+                    rollout_percent: int = 0, updated_by: str | None = None) -> dict[str, Any]:
+        import hashlib as _hashlib
+        key = str(flag_key or "").strip().lower()
+        with self.db.get_session() as session:
+            row = session.execute(select(FeatureFlag).where(FeatureFlag.flag_key == key)).scalar_one_or_none()
+            if row is None:
+                row = FeatureFlag(flag_key=key)
+                session.add(row)
+            if display_name:
+                row.display_name = str(display_name).strip()
+            if description:
+                row.description = str(description).strip()
+            row.enabled_globally = bool(enabled_globally)
+            row.enabled_for_plans = enabled_for_plans if isinstance(enabled_for_plans, list) else []
+            row.rollout_percent = max(0, min(100, int(rollout_percent or 0)))
+            if updated_by:
+                row.updated_by = str(updated_by).strip()
+            session.flush()
+            return self._flag_dict(row)
+
+    def list_flags(self) -> list[dict[str, Any]]:
+        with self.db.get_session() as session:
+            rows = list(session.execute(select(FeatureFlag).order_by(FeatureFlag.flag_key)).scalars().all())
+            return [self._flag_dict(r) for r in rows]
+
+    def get_flag(self, flag_key: str) -> dict[str, Any] | None:
+        key = str(flag_key or "").strip().lower()
+        with self.db.get_session() as session:
+            row = session.execute(select(FeatureFlag).where(FeatureFlag.flag_key == key)).scalar_one_or_none()
+            return self._flag_dict(row) if row else None
+
+    def set_user_override(self, *, user_id: str, flag_key: str, override_value: bool,
+                          reason: str = "", set_by: str | None = None) -> dict[str, Any]:
+        uid = str(user_id or "").strip()
+        key = str(flag_key or "").strip().lower()
+        with self.db.get_session() as session:
+            row = session.execute(
+                select(UserFeatureOverride).where(
+                    UserFeatureOverride.user_id == uid, UserFeatureOverride.flag_key == key
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                row = UserFeatureOverride(user_id=uid, flag_key=key)
+                session.add(row)
+            row.override_value = bool(override_value)
+            row.reason = str(reason or "").strip()
+            row.set_by = str(set_by or "").strip() or None
+            row.set_at = utcnow()
+            session.flush()
+            return self._override_dict(row)
+
+    def delete_user_override(self, *, user_id: str, flag_key: str) -> bool:
+        uid = str(user_id or "").strip()
+        key = str(flag_key or "").strip().lower()
+        with self.db.get_session() as session:
+            result = session.execute(
+                delete(UserFeatureOverride).where(
+                    UserFeatureOverride.user_id == uid, UserFeatureOverride.flag_key == key
+                )
+            )
+            return int(result.rowcount or 0) > 0
+
+    def list_user_overrides(self, user_id: str) -> list[dict[str, Any]]:
+        uid = str(user_id or "").strip()
+        with self.db.get_session() as session:
+            rows = list(session.execute(
+                select(UserFeatureOverride).where(UserFeatureOverride.user_id == uid)
+            ).scalars().all())
+            return [self._override_dict(r) for r in rows]
+
+    def resolve_feature(self, flag_key: str, user_id: str, subscription_status: str) -> bool:
+        import hashlib as _hashlib
+        key = str(flag_key or "").strip().lower()
+        uid = str(user_id or "").strip()
+        plan = str(subscription_status or "free").strip().lower()
+        with self.db.get_session() as session:
+            override = session.execute(
+                select(UserFeatureOverride).where(
+                    UserFeatureOverride.user_id == uid, UserFeatureOverride.flag_key == key
+                )
+            ).scalar_one_or_none()
+            if override is not None:
+                return bool(override.override_value)
+            flag = session.execute(select(FeatureFlag).where(FeatureFlag.flag_key == key)).scalar_one_or_none()
+            if flag is None:
+                return False
+            plans = flag.enabled_for_plans if isinstance(flag.enabled_for_plans, list) else []
+            if plans and plan in plans:
+                return True
+            if flag.rollout_percent > 0:
+                bucket = int(_hashlib.md5(f"{uid}{key}".encode()).hexdigest(), 16) % 100
+                if bucket < flag.rollout_percent:
+                    return True
+            return bool(flag.enabled_globally)
+
+    def _flag_dict(self, row: FeatureFlag) -> dict[str, Any]:
+        return {
+            "id": str(row.id or ""),
+            "flag_key": str(row.flag_key or ""),
+            "display_name": str(row.display_name or ""),
+            "description": str(row.description or ""),
+            "enabled_globally": bool(row.enabled_globally),
+            "enabled_for_plans": row.enabled_for_plans if isinstance(row.enabled_for_plans, list) else [],
+            "rollout_percent": int(row.rollout_percent or 0),
+            "updated_by": str(row.updated_by or "") or None,
+            "created_at": to_iso(ensure_utc(row.created_at)) if row.created_at else "",
+            "updated_at": to_iso(ensure_utc(row.updated_at)) if row.updated_at else "",
+        }
+
+    def _override_dict(self, row: UserFeatureOverride) -> dict[str, Any]:
+        return {
+            "user_id": str(row.user_id or ""),
+            "flag_key": str(row.flag_key or ""),
+            "override_value": bool(row.override_value),
+            "reason": str(row.reason or ""),
+            "set_by": str(row.set_by or "") or None,
+            "set_at": to_iso(ensure_utc(row.set_at)) if row.set_at else "",
+        }

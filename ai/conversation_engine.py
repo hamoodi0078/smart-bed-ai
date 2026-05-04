@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 import json
 
-import requests
+import httpx
+
+from core.http_client import http
 
 
 SYSTEM_PROMPTS = {
@@ -294,7 +296,7 @@ class ConversationEngine:
 
         for timeout_seconds in timeouts:
             try:
-                response = requests.post(
+                response = http.post(
                     self.voice_agent_url,
                     headers=headers,
                     json=payload,
@@ -353,15 +355,15 @@ class ConversationEngine:
 
         collected = []
         try:
-            with requests.post(
+            with http.stream(
+                "POST",
                 self.voice_agent_url,
                 headers=headers,
                 json=payload,
                 timeout=max(4, int(total_timeout_seconds)),
-                stream=True,
             ) as response:
                 response.raise_for_status()
-                for raw_line in response.iter_lines(decode_unicode=True):
+                for raw_line in response.iter_lines():
                     if not raw_line:
                         continue
                     line = str(raw_line).strip()

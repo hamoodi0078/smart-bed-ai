@@ -64,9 +64,10 @@ class PersonalityRuntimeOrchestrator:
                 return phrase
 
         # All candidates were used recently; pick the first to keep output deterministic.
-        fallback = clean_candidates[0] if clean_candidates else ""
-        if fallback:
-            self.record_phrase_usage(profile, fallback, phrase_kind=phrase_kind, now=now)
+        if not clean_candidates:
+            return "I'm here whenever you need me."
+        fallback = clean_candidates[0]
+        self.record_phrase_usage(profile, fallback, phrase_kind=phrase_kind, now=now)
         return fallback
 
     def record_phrase_usage(

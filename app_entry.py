@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 import logging
@@ -9,6 +10,9 @@ import re
 import threading
 import time
 from zoneinfo import ZoneInfo
+
+from core.logger import setup_logging
+setup_logging()
 
 import requests
 
@@ -155,6 +159,9 @@ from voice_handler import (
     get_query_text,
     handle_local_commands
 )
+
+from loguru import logger  # noqa: E402 (setup_logging already called above)
+
 
 def main():
     led = LEDController(
@@ -422,11 +429,20 @@ def main():
             runtime_flags = profile.get("runtime_flags", {})
             pressure_active = bool(runtime_flags.get("sensor_pressure_active", False)) and bool(settings.sensor_pressure_enabled)
             motion_active = bool(runtime_flags.get("sensor_motion_active", False)) and bool(settings.sensor_motion_enabled)
-            sensor_event = sensor_bridge.classify_event(
-                pressure_active=pressure_active,
-                motion_active=motion_active,
-                now=datetime.now(),
-            )
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _sensor_pool:
+                    sensor_event = _sensor_pool.submit(
+                        sensor_bridge.classify_event,
+                        pressure_active=pressure_active,
+                        motion_active=motion_active,
+                        now=datetime.now(),
+                    ).result(timeout=5.0)
+            except concurrent.futures.TimeoutError:
+                logger.warning("sensor_bridge.classify_event timed out after 5s — skipping")
+                sensor_event = None
+            except Exception as _sensor_exc:
+                logger.warning("sensor_bridge.classify_event error: %s", _sensor_exc)
+                sensor_event = None
             if sensor_event:
                 proactive_greeting = sensor_bridge.proactive_greeting(sensor_event, user_name=profile.get("name", ""))
                 if proactive_greeting:
@@ -872,7 +888,7 @@ def main():
         def handle_reminder_intent(text: str) -> str:
             result = handle_reminder_intent_result(
                 text,
-                reminders_summary=format_automation_engine.planned_reminders(),
+                reminders_summary=automation_engine.planned_reminders,
                 now_provider=datetime.now,
             )
             return apply_command_result_effects(result)
@@ -904,7 +920,6 @@ def main():
             if handled:
                 return str(local_response or "")
 
-            logger = __import__("logging").getLogger(__name__)
             user_text = str(text or "").strip()
             lowered_user_text = user_text.lower()
             if not user_text:
@@ -1196,6 +1211,50 @@ def main():
                 led.set_state("listening")
                 continue
 
+            safety_level, safety_message = evaluate_safety(user_text)
+            if safety_level in ("high", "moderate"):
+                fast_protocol = build_fast_protocol_message()
+                combined = f"{safety_message} {fast_protocol}".strip()
+                led.set_state("speaking")
+                audio_file = tts.synthesize_to_mp3(
+                    combined,
+                    voice_override=get_personality_voice(profile),
+                )
+                print(f"Bed: {combined}")
+                print(f"Bed: Audio saved at {audio_file}")
+                if audio_file:
+                    tts_player.play_file(audio_file)
+                interrupt_text = wake_word_manager.capture_barge_in_text()
+                if interrupt_text:
+                    tts_player.stop()
+                    led.set_state("listening")
+                    pending_user_text = interrupt_text
+                    continue
+                led.set_state("listening")
+                continue
+
+            quick_response, quick_handled = offline_pack.handle(user_text)
+            if quick_handled:
+                response_text = quick_response
+                environment_orchestrator.preload_transition_for_response(led, profile, response_text)
+                led.set_state("speaking")
+                audio_file = play_tts_with_fast_start(
+                    tts,
+                    tts_player,
+                    response_text,
+                    voice_override=get_personality_voice(profile),
+                )
+                print(f"Bed: {response_text}")
+                print(f"Bed: Audio saved at {audio_file}")
+                interrupt_text = wake_word_manager.capture_barge_in_text()
+                if interrupt_text:
+                    tts_player.stop()
+                    led.set_state("listening")
+                    pending_user_text = interrupt_text
+                    continue
+                led.set_state("listening")
+                continue
+
             print(f"[FLOW] STT captured chars={len(user_text)}")
             voice_failure_type = {"name": ""}
             voice_trace_id = f"voice_{time.time_ns()}"
@@ -1332,50 +1391,6 @@ def main():
             led.set_state("listening")
             continue
 
-            safety_level, safety_message = evaluate_safety(user_text)
-            if safety_level in ("high", "moderate"):
-                fast_protocol = build_fast_protocol_message()
-                combined = f"{safety_message} {fast_protocol}".strip()
-                led.set_state("speaking")
-                audio_file = tts.synthesize_to_mp3(
-                    combined,
-                    voice_override=get_personality_voice(profile),
-                )
-                print(f"Bed: {combined}")
-                print(f"Bed: Audio saved at {audio_file}")
-                if audio_file:
-                    tts_player.play_file(audio_file)
-                interrupt_text = wake_word_manager.capture_barge_in_text()
-                if interrupt_text:
-                    tts_player.stop()
-                    led.set_state("listening")
-                    pending_user_text = interrupt_text
-                    continue
-                led.set_state("listening")
-                continue
-
-            quick_response, quick_handled = offline_pack.handle(user_text)
-            if quick_handled:
-                response_text = quick_response
-                environment_orchestrator.preload_transition_for_response(led, profile, response_text)
-                led.set_state("speaking")
-                audio_file = play_tts_with_fast_start(
-                    tts,
-                    tts_player,
-                    response_text,
-                    voice_override=get_personality_voice(profile),
-                )
-                print(f"Bed: {response_text}")
-                print(f"Bed: Audio saved at {audio_file}")
-                interrupt_text = wake_word_manager.capture_barge_in_text()
-                if interrupt_text:
-                    tts_player.stop()
-                    led.set_state("listening")
-                    pending_user_text = interrupt_text
-                    continue
-                led.set_state("listening")
-                continue
-
             personality = profile.get("preferences", {}).get("personality", "therapist")
             speed_tuning = get_turn_speed_tuning(profile, user_text)
             emotion_state = detect_emotion_state(user_text)
@@ -1386,7 +1401,7 @@ def main():
                 profile,
                 base_personality=personality,
                 emotion_state=emotion_state,
-                safety_level="none",
+                safety_level=safety_level,
             )
 
             if personality == "coach":

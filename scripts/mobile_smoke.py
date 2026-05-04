@@ -178,8 +178,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--base-url",
-        default="http://127.0.0.1:8001",
-        help="Web runtime base URL (default: http://127.0.0.1:8001).",
+        default="http://127.0.0.1:8000",
+        help="Web runtime base URL (default: http://127.0.0.1:8000).",
     )
     parser.add_argument(
         "--email",

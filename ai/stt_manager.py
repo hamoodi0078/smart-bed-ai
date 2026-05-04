@@ -3,12 +3,18 @@ from pathlib import Path
 from typing import Callable, Iterable
 from urllib.parse import urlencode
 
+import numpy as np
 import requests
 
 try:
     import audioop
 except Exception:  # pragma: no cover - audioop removed in newer Python
     audioop = None
+
+try:
+    import pyaudio as _pyaudio
+except Exception:  # pragma: no cover - PyAudio requires PortAudio system library
+    _pyaudio = None
 
 try:
     from deepgram import DeepgramClient, LiveTranscriptionEvents, LiveOptions
@@ -66,15 +72,10 @@ class STTManager:
         if sample_width != 2:
             return 0.0
 
-        sample_count = len(raw) // 2
-        if sample_count <= 0:
+        samples = np.frombuffer(raw, dtype="<i2")
+        if samples.size == 0:
             return 0.0
-
-        total_sq = 0.0
-        for idx in range(0, sample_count * 2, 2):
-            sample = int.from_bytes(raw[idx : idx + 2], byteorder="little", signed=True)
-            total_sq += float(sample * sample)
-        return (total_sq / float(sample_count)) ** 0.5
+        return float(np.sqrt(np.mean(samples.astype(np.float64) ** 2)))
 
     def _estimate_text_confidence(self, text: str, base: float = 0.58) -> float:
         words = [w for w in str(text or "").strip().split() if w]
@@ -98,6 +99,66 @@ class STTManager:
 
     def _is_api_mode(self) -> bool:
         return self.mode in ("api", "hybrid")
+
+    @staticmethod
+    def list_audio_devices() -> list[dict]:
+        """Return detailed info for every audio input device via PyAudio.
+
+        Falls back to SpeechRecognition's name list when PyAudio is unavailable.
+        Each dict: {index, name, max_input_channels, default_sample_rate, is_default_input}
+        """
+        if _pyaudio is not None:
+            pa = _pyaudio.PyAudio()
+            try:
+                default_index = -1
+                try:
+                    default_index = pa.get_default_input_device_info()["index"]
+                except Exception:
+                    pass
+                devices = []
+                for i in range(pa.get_device_count()):
+                    try:
+                        info = pa.get_device_info_by_index(i)
+                        if int(info.get("maxInputChannels", 0)) > 0:
+                            devices.append({
+                                "index": i,
+                                "name": str(info.get("name", "")),
+                                "max_input_channels": int(info.get("maxInputChannels", 1)),
+                                "default_sample_rate": int(info.get("defaultSampleRate", 44100)),
+                                "is_default_input": i == default_index,
+                            })
+                    except Exception:
+                        continue
+                return devices
+            finally:
+                pa.terminate()
+
+        # Fallback: SpeechRecognition names only
+        if sr is not None:
+            return [
+                {"index": i, "name": name, "max_input_channels": 1,
+                 "default_sample_rate": 44100, "is_default_input": False}
+                for i, name in enumerate(sr.Microphone.list_microphone_names())
+            ]
+        return []
+
+    @staticmethod
+    def find_best_mic_index(preferred_rate: int = 16000) -> int | None:
+        """Return the index of the best available input device for the given sample rate.
+
+        Prefers the system default input; falls back to the first device that
+        supports the preferred_rate (or any input device if none matches exactly).
+        """
+        devices = STTManager.list_audio_devices()
+        if not devices:
+            return None
+        for d in devices:
+            if d.get("is_default_input"):
+                return int(d["index"])
+        for d in devices:
+            if int(d.get("default_sample_rate", 0)) == preferred_rate:
+                return int(d["index"])
+        return int(devices[0]["index"])
 
     def _load_local_model(self):
         if self._local_model is not None:
@@ -282,7 +343,11 @@ class STTManager:
             state["latest_interim"] = transcript
             state["latest_interim_confidence"] = score
             if interim_callback is not None:
-                interim_callback(transcript, score)
+                try:
+                    interim_callback(transcript, score)
+                except Exception as _cb_exc:
+                    from loguru import logger as _log
+                    _log.warning("interim_callback raised: {}", _cb_exc)
 
         try:
             connection.on(LiveTranscriptionEvents.Transcript, _on_transcript)

@@ -4,8 +4,9 @@ import datetime
 import json
 import os
 
-import requests
+from loguru import logger as _log
 
+from core.http_client import http
 from notifications.notification_types import NOTIFICATION_TEMPLATES, NotificationType
 
 
@@ -44,8 +45,8 @@ class ExpoPushSender:
             "sound": "default",
         }
         try:
-            response = requests.post(self.EXPO_PUSH_URL, json=payload, timeout=20)
-            if response.ok:
+            response = http.post(self.EXPO_PUSH_URL, json=payload, timeout=20)
+            if response.is_success:
                 return {"sent": True}
             return {"sent": False, "error": f"Expo API error {response.status_code}: {response.text}"}
         except Exception as exc:
@@ -63,15 +64,34 @@ class ExpoPushSender:
         self._write_json(self.tokens_path, tokens)
         return {"registered": True, "user_id": str(user_id), "platform": str(platform)}
 
-    def get_token(self, user_id: str) -> str | None:
+    def get_token(self, user_id: str) -> tuple[str | None, str]:
+        """Return (token, source) where source is 'db' or 'json'."""
+        # Prefer DB when DATABASE_URL is configured
+        try:
+            env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
+            if env_url:
+                from database.connection import DatabaseConnection
+                from database.models import UserPushToken
+                from sqlalchemy import select
+                conn = DatabaseConnection(database_url=env_url)
+                with conn.get_session() as session:
+                    row = session.execute(
+                        select(UserPushToken).where(UserPushToken.user_id == str(user_id))
+                    ).scalar_one_or_none()
+                    if row and row.expo_token:
+                        return row.expo_token, "db"
+        except Exception as exc:
+            _log.warning("DB push token lookup failed for user_id=%s, falling back to JSON: %s", user_id, exc)
+        # Fallback to JSON file
+        _log.warning("Using JSON fallback for push token user_id=%s", user_id)
         tokens = self._read_json(self.tokens_path, {})
         if not isinstance(tokens, dict):
-            return None
+            return None, "json"
         user_payload = tokens.get(str(user_id), {})
         if not isinstance(user_payload, dict):
-            return None
+            return None, "json"
         token = str(user_payload.get("expo_token", "")).strip()
-        return token or None
+        return (token or None), "json"
 
     def _resolve_notification_type(self, notification_type) -> NotificationType | None:
         if isinstance(notification_type, NotificationType):
@@ -120,7 +140,7 @@ class ExpoPushSender:
             )
             return result
 
-        expo_token = self.get_token(user_id)
+        expo_token, _token_source = self.get_token(user_id)
         if not expo_token:
             result = {"sent": False, "error": f"No Expo token for user_id={user_id}"}
             self._append_log(

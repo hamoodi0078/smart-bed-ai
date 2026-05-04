@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../home/home_screen.dart';
+
+// Helper: returns TextDirection.rtl when text contains Arabic characters.
+TextDirection _detectDirection(String text) {
+  return RegExp(r'[\u0600-\u06FF]').hasMatch(text)
+      ? TextDirection.rtl
+      : TextDirection.ltr;
+}
 
 class IslamicScreen extends StatefulWidget {
   const IslamicScreen({super.key});
@@ -12,18 +20,75 @@ class IslamicScreen extends StatefulWidget {
 
 class _IslamicScreenState extends State<IslamicScreen> {
   bool _islamicModeEnabled = true;
-  int _selectedIndex = 2;
+  bool _isLoading = true;
+  String? _errorMessage;
 
-  static const List<Map<String, String>> _prayerTimes = [
-    {'name': 'Fajr', 'time': '4:23'},
-    {'name': 'Dhuhr', 'time': '11:45'},
-    {'name': 'Asr', 'time': '15:12'},
-    {'name': 'Maghrib', 'time': '17:58'},
-    {'name': 'Isha', 'time': '19:28'},
+  List<Map<String, String>> _prayerTimes = const [
+    {'name': 'Fajr', 'time': '--:--'},
+    {'name': 'Dhuhr', 'time': '--:--'},
+    {'name': 'Asr', 'time': '--:--'},
+    {'name': 'Maghrib', 'time': '--:--'},
+    {'name': 'Isha', 'time': '--:--'},
   ];
+  int _nextPrayerIndex = 0;
+  String _nextPrayerName = '';
+  String _nextPrayerEta = '';
+  bool _isRamadan = false;
+  String _hijriDate = '';
+  String _hadith = '';
+  String _hadithSource = '';
 
-  static const int _nextPrayerIndex = 4;
-  static const bool _isRamadan = true;
+  @override
+  void initState() {
+    super.initState();
+    _loadIslamicData();
+  }
+
+  Future<void> _loadIslamicData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final data = await ApiService.getIslamicOverview();
+      if (data['error'] == true) throw Exception(data['message']);
+
+      final times = data['prayer_times'];
+      if (times is Map) {
+        final List<Map<String, String>> parsed = [];
+        final order = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+        for (final name in order) {
+          parsed.add({'name': name, 'time': times[name.toLowerCase()] ?? times[name] ?? '--:--'});
+        }
+        final nextPrayer = data['next_prayer'] as String? ?? '';
+        final nextIdx = order.indexWhere(
+          (n) => n.toLowerCase() == nextPrayer.toLowerCase(),
+        );
+        if (mounted) {
+          setState(() {
+            _prayerTimes = parsed;
+            _nextPrayerIndex = nextIdx < 0 ? 0 : nextIdx;
+            _nextPrayerName = nextPrayer;
+            _nextPrayerEta = data['next_prayer_eta'] as String? ?? '';
+            _isRamadan = data['is_ramadan'] as bool? ?? false;
+            _hijriDate = data['hijri_date'] as String? ?? '';
+            _hadith = data['hadith'] as String? ?? '';
+            _hadithSource = data['hadith_source'] as String? ?? '';
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   void _goBack() {
     if (Navigator.of(context).canPop()) {
@@ -40,42 +105,75 @@ class _IslamicScreenState extends State<IslamicScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A1628),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTopBar(),
-              const SizedBox(height: 14),
-              _buildPrayerTimesCard(),
-              const SizedBox(height: 14),
-              _buildNextPrayerCard(),
-              const SizedBox(height: 14),
-              _buildHadithCard(),
-              const SizedBox(height: 14),
-              _buildHijriCard(),
-              const SizedBox(height: 14),
-              _buildSunnahTipCard(),
-            ],
-          ),
+        child: Column(
+          children: [
+            if (_isLoading)
+              const LinearProgressIndicator(
+                minHeight: 2,
+                color: Color(0xFF00D4FF),
+                backgroundColor: Colors.transparent,
+              ),
+            Expanded(
+              child: RefreshIndicator(
+                color: const Color(0xFF00D4FF),
+                onRefresh: _loadIslamicData,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTopBar(),
+                      if (_errorMessage != null) ...[
+                        const SizedBox(height: 12),
+                        _buildErrorBanner(),
+                      ],
+                      const SizedBox(height: 14),
+                      _buildPrayerTimesCard(),
+                      const SizedBox(height: 14),
+                      _buildNextPrayerCard(),
+                      const SizedBox(height: 14),
+                      _buildHadithCard(),
+                      const SizedBox(height: 14),
+                      _buildHijriCard(),
+                      const SizedBox(height: 14),
+                      _buildSunnahTipCard(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: AppColors.cardBg,
-        selectedItemColor: AppColors.accent,
-        unselectedItemColor: AppColors.softWhite.withValues(alpha: 0.65),
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.nightlight_round), label: 'Wind-Down'),
-          BottomNavigationBarItem(icon: Icon(Icons.mosque_rounded), label: 'Islamic'),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: 'Report'),
+    );
+  }
+
+  Widget _buildErrorBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.orange.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.orange.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_off_rounded, color: AppColors.orange, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Showing cached data — $_errorMessage',
+              style: const TextStyle(color: AppColors.orange, fontSize: 12),
+            ),
+          ),
+          IconButton(
+            onPressed: _loadIslamicData,
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.orange, size: 18),
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
         ],
       ),
     );
@@ -215,6 +313,8 @@ class _IslamicScreenState extends State<IslamicScreen> {
 
   Widget _buildNextPrayerCard() {
     const Color prayerLedColor = AppColors.purple;
+    final String name = _nextPrayerName.isNotEmpty ? _nextPrayerName : '—';
+    final String eta = _nextPrayerEta.isNotEmpty ? _nextPrayerEta : '—';
 
     return Container(
       width: double.infinity,
@@ -237,18 +337,18 @@ class _IslamicScreenState extends State<IslamicScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Isha',
-            style: TextStyle(
+          Text(
+            name,
+            style: const TextStyle(
               color: AppColors.white,
               fontSize: 28,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'in 45 minutes',
-            style: TextStyle(
+          Text(
+            eta,
+            style: const TextStyle(
               color: AppColors.accent,
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -321,19 +421,27 @@ class _IslamicScreenState extends State<IslamicScreen> {
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
-            'The best of you are those with the best character.',
-            style: TextStyle(
-              color: AppColors.softWhite,
-              fontSize: 13,
-              fontStyle: FontStyle.italic,
-              height: 1.5,
-            ),
-          ),
+          Builder(builder: (context) {
+            final hadithText = _hadith.isNotEmpty
+                ? _hadith
+                : 'The best of you are those with the best character.';
+            return Directionality(
+              textDirection: _detectDirection(hadithText),
+              child: Text(
+                hadithText,
+                style: const TextStyle(
+                  color: AppColors.softWhite,
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                  height: 1.5,
+                ),
+              ),
+            );
+          }),
           const SizedBox(height: 8),
-          const Text(
-            '— Sahih Bukhari',
-            style: TextStyle(
+          Text(
+            _hadithSource.isNotEmpty ? '— $_hadithSource' : '— Sahih Bukhari',
+            style: const TextStyle(
               color: AppColors.gold,
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -356,10 +464,10 @@ class _IslamicScreenState extends State<IslamicScreen> {
       ),
       child: Column(
         children: [
-          const Text(
-            '📅 15 Ramadan 1447',
+          Text(
+            _hijriDate.isNotEmpty ? '📅 $_hijriDate' : '📅 —',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: AppColors.gold,
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -407,15 +515,21 @@ class _IslamicScreenState extends State<IslamicScreen> {
                   ),
                 ),
                 SizedBox(height: 8),
-                Text(
-                  'Sleep on your right side as the Prophet ﷺ recommended',
-                  style: TextStyle(
-                    color: AppColors.softWhite,
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
-                    height: 1.4,
-                  ),
-                ),
+                Builder(builder: (context) {
+                  const tip = 'Sleep on your right side as the Prophet ﷺ recommended';
+                  return Directionality(
+                    textDirection: _detectDirection(tip),
+                    child: Text(
+                      tip,
+                      style: const TextStyle(
+                        color: AppColors.softWhite,
+                        fontSize: 13,
+                        fontStyle: FontStyle.italic,
+                        height: 1.4,
+                      ),
+                    ),
+                  );
+                }),
               ],
             ),
           ),

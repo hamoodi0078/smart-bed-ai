@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
 import 'models.dart';
@@ -19,15 +20,31 @@ class ApiException implements Exception {
   factory ApiException.unauthenticated([
     String message = 'Please sign in again.',
   ]) {
-    return ApiException(
-      message: message,
-      statusCode: 401,
-      code: 'UNAUTHORIZED',
-    );
+    return ApiUnauthorizedException(message: message);
   }
 
   @override
   String toString() => message;
+}
+
+class ApiTimeoutException extends ApiException {
+  const ApiTimeoutException({super.message = 'Connection timed out.'})
+      : super(statusCode: null, code: 'TIMEOUT');
+}
+
+class ApiUnauthorizedException extends ApiException {
+  const ApiUnauthorizedException({super.message = 'Please sign in again.'})
+      : super(statusCode: 401, code: 'UNAUTHORIZED');
+}
+
+class ApiNotFoundException extends ApiException {
+  const ApiNotFoundException({super.message = 'Requested resource not found.'})
+      : super(statusCode: 404, code: 'NOT_FOUND');
+}
+
+class ApiServerException extends ApiException {
+  const ApiServerException({super.message = 'Server error. Please try again later.', super.statusCode})
+      : super(code: 'SERVER_ERROR');
 }
 
 class SmartBedApi {
@@ -694,12 +711,19 @@ class SmartBedApi {
 
     final error = _asMap(json['error'], 'error');
     final fallbackDetail = _string(json['detail'], fallback: 'Request failed.');
-    throw ApiException(
-      message: _string(error['message'], fallback: fallbackDetail),
-      statusCode: statusCode,
-      code: _string(error['code']),
-      traceId: _string(error['trace_id']),
-    );
+    final message = _string(error['message'], fallback: fallbackDetail);
+    final code = _string(error['code']);
+    final traceId = _string(error['trace_id']);
+    if (statusCode == 401) {
+      throw ApiUnauthorizedException(message: message);
+    }
+    if (statusCode == 404) {
+      throw ApiNotFoundException(message: message);
+    }
+    if (statusCode >= 500) {
+      throw ApiServerException(message: message, statusCode: statusCode);
+    }
+    throw ApiException(message: message, statusCode: statusCode, code: code, traceId: traceId);
   }
 
   Map<String, dynamic> _asMap(Object? value, String label) {
@@ -721,21 +745,25 @@ class SmartBedApi {
     if (error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.receiveTimeout ||
         error.type == DioExceptionType.sendTimeout) {
-      return const ApiException(
-        message:
-            'The Danah backend timed out. Check the local server and try again.',
+      return ApiTimeoutException(
+        message: kReleaseMode
+            ? 'Connection timed out. Check your network and try again.'
+            : 'The Danah backend at ${_dio.options.baseUrl} timed out. Start scripts/start_backend.ps1 and try again.',
       );
     }
     if (error.type == DioExceptionType.connectionError ||
         (error.type == DioExceptionType.unknown &&
             (error.message ?? '').contains('XMLHttpRequest onError callback'))) {
       return ApiException(
-        message:
-            'Unable to reach the Danah backend at ${_dio.options.baseUrl}. Start the backend server and try again.',
+        message: kReleaseMode
+            ? 'Cannot reach the server. Check your network and try again.'
+            : 'Unable to reach the Danah backend at ${_dio.options.baseUrl}. Start scripts/start_backend.ps1 and verify your API base URL.',
       );
     }
     return ApiException(
-      message: error.message ?? 'Unable to reach the Danah backend.',
+      message: kReleaseMode
+          ? 'Network error. Please try again.'
+          : (error.message ?? 'Unable to reach the Danah backend.'),
     );
   }
 }

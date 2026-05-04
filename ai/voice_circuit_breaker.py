@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-import logging
+from loguru import logger as _LOG
 from pathlib import Path
 from threading import RLock
 from typing import Callable, TypeVar
@@ -16,7 +16,6 @@ STATE_OPEN = "open"
 STATE_HALF_OPEN = "half_open"
 
 T = TypeVar("T")
-_LOG = logging.getLogger("voice.circuit_breaker")
 
 
 def _utc_iso_now() -> str:
@@ -151,7 +150,7 @@ class VoiceCircuitBreaker:
             self._last_failure_time = now
 
             if self._failure_count >= self.failure_threshold:
-                exponent = max(0, self._failure_count - self.failure_threshold)
+                exponent = min(30, max(0, self._failure_count - self.failure_threshold))
                 backoff = min(self.backoff_max_seconds, self.backoff_base_seconds * (2**exponent))
                 self._state = STATE_OPEN
                 self._next_retry_time = now + float(backoff)

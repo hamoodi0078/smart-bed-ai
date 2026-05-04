@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile main.py)",
+      "Bash(python -m py_compile app_entry.py)",
+      "Bash(ls -la /c/Users/PC#####/Desktop/'smart bed by me'/ai/*.py)",
+      "Bash(ls -1 /c/Users/PC#####/Desktop/'smart bed by me'/ai/*.py)",
+      "Bash(gh pr:*)",
+      "Bash(grep -E \"\\\\.\\(py|json|md|yml|yaml\\)$\")",
+      "Bash(find lib/screens -name \"*.dart\" -exec wc -l {} +)",
+      "Bash(grep -E \"\\\\.py$\")",
+      "Bash(head -40 \"/c/Users/PC#####/Desktop/smart bed by me/database\"/*.py)",
+      "Bash(flutter analyze:*)",
+      "Bash(where flutter:*)",
+      "Read(//c/Users/**)",
+      "Bash(ls /c/Users/PC*/AppData/Local/flutter/bin/)",
+      "Read(//c/flutter/**)",
+      "Read(//c/src/flutter/**)",
+      "Bash(.venv/Scripts/alembic revision *)",
+      "Bash(.venv/Scripts/alembic upgrade *)"
+    ]
+  }
+}

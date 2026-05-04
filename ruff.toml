@@ -1,5 +1,9 @@
 target-version = "py311"
 line-length = 100
+# Prevent the monolith from growing further; new routes should go in api/ routers.
+# web_server.py is already at the limit — any new code must be in a separate module.
+[lint.pycodestyle]
+max-doc-length = 120
 
 exclude = [
   ".git",
@@ -8,18 +12,53 @@ exclude = [
   "__pycache__",
   "runtime_data",
   "output_audio",
+  "alembic/versions",
+  "mobile_app",
+  ".tmp",
 ]
 
 [lint]
 select = [
-  "E",   # pycodestyle errors
-  "F",   # pyflakes
-  "W",   # pycodestyle warnings
-  "I",   # import sorting
-  "B",   # flake8-bugbear
-  "UP",  # pyupgrade
+  "E",    # pycodestyle errors
+  "F",    # pyflakes
+  "W",    # pycodestyle warnings
+  "I",    # import sorting
+  "B",    # flake8-bugbear
+  "UP",   # pyupgrade
+  "S",    # flake8-bandit (security)
+  "SIM",  # flake8-simplify
+  "RET",  # flake8-return
+  "PTH",  # flake8-use-pathlib
 ]
 ignore = [
   "E203",
   "E266",
+  "S101",  # assert used (OK in tests)
+  "S105",  # hardcoded password (false positives on var names)
+  "S106",  # hardcoded password (false positives on var names)
 ]
+
+[lint.per-file-ignores]
+"tests/*" = ["S101", "S106"]
+
+[lint.isort]
+known-first-party = [
+  "ai",
+  "api",
+  "automations",
+  "commands",
+  "constants",
+  "core",
+  "database",
+  "health",
+  "notifications",
+  "scenes",
+  "subscriptions",
+  "Storage",
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

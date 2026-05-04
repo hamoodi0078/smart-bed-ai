@@ -16,7 +16,7 @@ cd mobile_app
 flutter pub get
 flutter analyze
 flutter test
-flutter run --dart-define=SMART_BED_API_BASE_URL=http://10.0.2.2:8001
+flutter run --dart-define=SMART_BED_API_BASE_URL=http://10.0.2.2:8000
 ```
 
 ## VS Code Run and Debug (Windows Desktop)
@@ -47,14 +47,14 @@ flutter pub get
   "program": "lib/main.dart",
   "deviceId": "windows",
   "toolArgs": [
-    "--dart-define=SMART_BED_API_BASE_URL=http://127.0.0.1:8001"
+    "--dart-define=SMART_BED_API_BASE_URL=http://127.0.0.1:8000"
   ]
 }
 ```
 
 ## API Base URL Notes
-- Android emulator: `http://10.0.2.2:8001`
-- iOS simulator: `http://127.0.0.1:8001`
+- Android emulator: `http://10.0.2.2:8000`
+- iOS simulator: `http://127.0.0.1:8000`
 - Physical device/staging: set your reachable HTTPS backend via `SMART_BED_API_BASE_URL`
 
 ## Build

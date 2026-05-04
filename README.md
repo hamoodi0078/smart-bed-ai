@@ -2,30 +2,66 @@
 
 Production-ready backend runtime for the Smart Bed voice assistant, with realtime voice flow, adaptive personality, long-term memory, and web/mobile bridge APIs.
 
+## Project Structure
+
+```
+├── ai/                  # AI modules (conversation, emotion, sleep intelligence)
+├── alembic/             # Database migration scripts (Alembic)
+├── api/                 # FastAPI routers and middleware
+│   └── middleware/      # Rate limiter, auth helpers
+├── automations/         # Automation engine and rule registry
+├── commands/            # Command handlers and undo manager
+├── constants/           # Centralized constants (voice, limits, scenes)
+├── core/                # Core infrastructure (errors, logging, types)
+├── database/            # SQLAlchemy models, repositories, connection
+├── docs/adr/            # Architecture Decision Records
+├── health/              # Health monitoring modules
+├── mobile_app/          # Flutter mobile application
+├── notifications/       # Email and push notification services
+├── scenes/              # Scene management and weather-adaptive logic
+├── scripts/             # Dev and deployment scripts
+├── Storage/             # JSON file I/O and subscription store
+├── subscriptions/       # Billing service integration
+├── tests/               # Test suite (pytest)
+├── web/                 # Static web assets
+├── .github/workflows/   # CI/CD pipeline
+├── Dockerfile           # Container image definition
+├── docker-compose.yml   # Local dev orchestration (backend + PostgreSQL)
+├── pyproject.toml       # Pytest and coverage configuration
+├── requirements.txt     # Production Python dependencies
+└── requirements-dev.txt # Dev/test Python dependencies
+```
+
 ## Developer Quick Start (App Development Phase)
 
 ### 1) Prerequisites
 - Python 3.11+
-- Windows PowerShell
-- `.env` configured (at minimum `DEEPGRAM_API_KEY`)
+- Windows PowerShell (or bash on Linux/macOS)
+- `.env` configured (copy from `.env.example`)
 
 ### 2) Install dependencies
 ```powershell
 python -m venv .venv311
 .\.venv311\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+pre-commit install
 ```
 
 ### 3) Configure environment
-Copy and edit:
-- `.env.example` -> `.env`
+```powershell
+Copy-Item .env.example .env
+# Edit .env and fill in your API keys
+```
 
-Important keys:
-- `DEEPGRAM_API_KEY` (required for STT, TTS, and Voice Agent conversation)
-- `DEEPGRAM_VOICE_AGENT_MODEL` (LLM/agent model id)
-- `DEEPGRAM_VOICE_AGENT_URL` (Voice Agent endpoint)
-- `WAKE_WORD_MODE` (`keyboard` for desktop testing, voice mode on device)
-- `APP_BASE_URL` / `APP_BACKEND_BASE_URL` if web/mobile clients are external
+Required keys:
+- `DEEPGRAM_API_KEY` — STT, TTS, and Voice Agent
+- `DEEPGRAM_VOICE_AGENT_MODEL` — LLM/agent model id
+- `WAKE_WORD_MODE` — `keyboard` for desktop, `voice` on device
+
+Optional:
+- `DATABASE_URL` — PostgreSQL connection string (falls back to SQLite)
+- `OPENAI_API_KEY` — Direct GPT route (set `USE_OPENAI_DIRECT=1`)
+- `APP_BASE_URL` / `APP_BACKEND_BASE_URL` — If clients are external
 
 ### 4) Start backend
 Preferred script flow:
@@ -39,14 +75,20 @@ python main.py
 
 ### 5) Start web runtime API
 ```powershell
-python -m uvicorn web_server:app --host 127.0.0.1 --port 8001 --reload
+python -m uvicorn web_server:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ### 6) Validate core health
-- `GET /healthz` -> should return `{"ok": true, "service": "web_runtime"}`
-- Run test gate:
+- `GET /healthz` — basic liveness check
+- `GET /healthz/detailed` — database, disk, API key status
+- Run test suite:
 ```powershell
-python -m unittest discover -s tests -p "test_*.py"
+python -m pytest tests/ --cov --cov-report=term-missing -q
+```
+
+### 7) Docker (optional)
+```bash
+docker compose up --build
 ```
 
 ## Raspberry Pi 5 Runtime
@@ -60,22 +102,22 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-pi.txt
 python main.py
-python -m uvicorn web_server:app --host 0.0.0.0 --port 8001
+python -m uvicorn web_server:app --host 0.0.0.0 --port 8000
 ```
 
 Pi-specific notes:
 - Set `WAKE_WORD_MODE=voice`
-- Set `APP_BASE_URL` and `APP_BACKEND_BASE_URL` to `http://<pi-ip>:8001`
+- Set `APP_BASE_URL` and `APP_BACKEND_BASE_URL` to `http://<pi-ip>:8000`
 - Enable real LED output with `LED_HARDWARE_ENABLED=1`
 - Configure GPIO sensor pins with `SENSOR_PRESSURE_PIN` / `SENSOR_MOTION_PIN`
-- Point the phone app at the Pi with `--dart-define=SMART_BED_API_BASE_URL=http://<pi-ip>:8001`
+- Point the phone app at the Pi with `--dart-define=SMART_BED_API_BASE_URL=http://<pi-ip>:8000`
 
 Full setup steps are in [`docs/raspberry-pi-setup.md`](/c:/Users/PC#####/Desktop/smart%20bed%20by%20me/docs/raspberry-pi-setup.md).
 
 ### 7) Run mobile smoke flow (manual E2E helper)
-With backend running on `127.0.0.1:8001`, execute:
+With backend running on `127.0.0.1:8000`, execute:
 ```powershell
-.\.venv311\Scripts\python.exe .\scripts\mobile_smoke.py --base-url http://127.0.0.1:8001
+.\.venv311\Scripts\python.exe .\scripts\mobile_smoke.py --base-url http://127.0.0.1:8000
 ```
 This validates: `signup/register -> dashboard -> quick action -> scene preview -> timeline update`.
 
@@ -92,7 +134,7 @@ This validates: `signup/register -> dashboard -> quick action -> scene preview -
 ### 10) Run one Day-45 gate command (recommended)
 From repo root:
 ```powershell
-.\.venv311\Scripts\python.exe .\scripts\day45_gate.py --base-url http://127.0.0.1:8001
+.\.venv311\Scripts\python.exe .\scripts\day45_gate.py --base-url http://127.0.0.1:8000
 ```
 Useful options:
 - `--skip-smoke` if backend is not running yet
@@ -109,7 +151,7 @@ cd mobile_app
 flutter pub get
 flutter analyze
 flutter test
-flutter run --dart-define=SMART_BED_API_BASE_URL=http://10.0.2.2:8001
+flutter run --dart-define=SMART_BED_API_BASE_URL=http://10.0.2.2:8000
 ```
 
 ### VS Code Run and Debug (Windows desktop)
@@ -122,8 +164,8 @@ flutter run --dart-define=SMART_BED_API_BASE_URL=http://10.0.2.2:8001
 ```
 
 Notes:
-- Android emulator defaults to `http://10.0.2.2:8001`
-- iOS simulator defaults to `http://127.0.0.1:8001`
+- Android emulator defaults to `http://10.0.2.2:8000`
+- iOS simulator defaults to `http://127.0.0.1:8000`
 - Use `--dart-define=SMART_BED_API_BASE_URL=https://your-host` for staging or physical-device testing
 - Mobile settings now include automation controls: `bedtime_drift_automation_enabled`, `quiet_hours_override_limit_minutes`, and `weekly_insight_enabled`
 - Mobile automation feedback loop is live: `POST /v1/mobile/device-commands/{command_id}/feedback` and dashboard field `automation_feedback_loop`

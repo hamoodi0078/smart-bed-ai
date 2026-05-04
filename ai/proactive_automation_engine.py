@@ -119,7 +119,7 @@ class ProactiveAutomationEngine:
 
         if 17 <= now.hour <= 23:
             key = "bedtime_drift_intervention"
-            if (not self._already_sent(profile, key, now)) and str(session_state.get("bedtime_drift_alert", "")).startswith("Predictive alert:"):
+            if (not self._already_sent(profile, key, now)) and str(session_state.get("bedtime_drift_alert") or "").startswith("Predictive alert:"):
                 suggestions.append(
                     {
                         "key": key,

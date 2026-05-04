@@ -1,4 +1,5 @@
 import hashlib
+from loguru import logger as _log
 import re
 import shutil
 import threading
@@ -8,6 +9,23 @@ from urllib.parse import urlencode
 from pathlib import Path
 
 import requests
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
+
+
+def _write_bytes_to_path(path: Path, data: bytes) -> None:
+    path.write_bytes(data)
+
+
+_write_bytes_with_retry = retry(
+    stop=stop_after_attempt(4),
+    wait=wait_fixed(0.15),
+    retry=retry_if_exception_type(PermissionError),
+    reraise=False,
+    before_sleep=lambda rs: _log.warning(
+        "TTS write contention PermissionError attempt {}/4 — retrying",
+        rs.attempt_number,
+    ),
+)(_write_bytes_to_path)
 
 
 class TTSManager:
@@ -134,20 +152,21 @@ class TTSManager:
                         stream=True,
                         timeout=(4, self.timeout_seconds),
                     ) as response:
-                        print(f"[TTS] Deepgram request URL: {response.url}")
+                        _log.debug("Deepgram request URL: %s", response.url)
                         if not response.ok:
                             try:
                                 error_body = response.text[:300].replace("\n", " ").strip()
                             except Exception:
                                 error_body = "<unable to read error body>"
-                            print(
-                                f"[TTS] Deepgram TTS request failed. "
-                                f"status={response.status_code} body={error_body}"
+                            _log.warning(
+                                "Deepgram TTS request failed. status=%s body=%s",
+                                response.status_code,
+                                error_body,
                             )
                             response.raise_for_status()
-                        print(f"[TTS] Deepgram response status: {response.status_code}")
+                        _log.debug("Deepgram response status: %s", response.status_code)
                         content_type = str(response.headers.get("Content-Type", "") or "").strip()
-                        print(f"[TTS] Model response Content-Type: {content_type or 'unknown'}")
+                        _log.debug("Model response Content-Type: %s", content_type or "unknown")
 
                         audio_buffer = bytearray()
                         for chunk in response.iter_content(chunk_size=4096):
@@ -173,15 +192,16 @@ class TTSManager:
                     short_message = str(req_err).replace("\n", " ").strip()
                     if len(short_message) > 220:
                         short_message = short_message[:217] + "..."
-                    print(
-                        f"[TTS][WARN] Deepgram TTS failed ({type(req_err).__name__}): "
-                        f"{short_message}. Skipping this utterance."
+                    _log.warning(
+                        "Deepgram TTS failed (%s): %s. Skipping this utterance.",
+                        type(req_err).__name__,
+                        short_message,
                     )
                     stream_error["exc"] = None
                     return
             except Exception as e:
                 stream_error["exc"] = e
-                print(f"[TTS] Stream synthesis failed before playable MP3 was written: {e}")
+                _log.error("Stream synthesis failed before playable MP3 was written: %s", e)
             finally:
                 started.set()
                 done.set()
@@ -216,42 +236,26 @@ class TTSManager:
 
         audio_bytes = bytes(content)
         buffer_len = len(audio_bytes)
-        print(f"[TTS] Audio buffer length before write: {buffer_len} bytes -> {output_path.resolve()}")
+        _log.debug("Audio buffer length before write: %d bytes -> %s", buffer_len, output_path.resolve())
         if buffer_len <= 0:
             raise ValueError("TTS audio buffer is empty (0 bytes); refusing to write MP3.")
 
         writer = threading.current_thread().name
-        print(f"[TTS] Waiting for write lock: {output_path.resolve()} (thread={writer})")
+        _log.debug("Waiting for write lock: {} (thread={})", output_path.resolve(), writer)
         with self._write_lock:
-            print(f"[TTS] Write lock acquired: {output_path.resolve()} (thread={writer})")
+            _log.debug("Write lock acquired: {} (thread={})", output_path.resolve(), writer)
             try:
-                max_attempts = 4
-                # We rely on AudioPlaybackController.play_file() stop/unload to release file handles promptly.
-                for attempt in range(1, max_attempts + 1):
-                    try:
-                        output_path.write_bytes(audio_bytes)
-                        file_size = output_path.stat().st_size if output_path.exists() else 0
-                        print(f"[TTS] Audio file size after write: {file_size} bytes -> {output_path.resolve()}")
-                        if file_size <= 0:
-                            raise ValueError(f"TTS write produced empty file on disk: {output_path.resolve()}")
-                        print(f"[TTS] Finished writing audio file: {output_path.resolve()}")
-                        return output_path
-                    except PermissionError as e:
-                        if attempt >= max_attempts:
-                            print(
-                                f"[TTS][WARN] Write contention persisted after {attempt} attempts; "
-                                f"skipping overwrite for {output_path.resolve()}: {e}"
-                            )
-                            return output_path
-                        wait_seconds = min(0.45, 0.15 * attempt)
-                        print(
-                            f"[TTS] Write contention (PermissionError). "
-                            f"retry={attempt}/{max_attempts} wait={wait_seconds:.2f}s "
-                            f"path={output_path.resolve()}"
-                        )
-                        time.sleep(wait_seconds)
+                # PermissionError retry handled by tenacity (_write_bytes_with_retry).
+                # AudioPlaybackController.play_file() must stop/unload before this returns.
+                _write_bytes_with_retry(output_path, audio_bytes)
+                file_size = output_path.stat().st_size if output_path.exists() else 0
+                _log.debug("Audio file size after write: {} bytes -> {}", file_size, output_path.resolve())
+                if file_size <= 0:
+                    raise ValueError(f"TTS write produced empty file on disk: {output_path.resolve()}")
+                _log.debug("Finished writing audio file: {}", output_path.resolve())
+                return output_path
             finally:
-                print(f"[TTS] Write lock released: {output_path.resolve()} (thread={writer})")
+                _log.debug("Write lock released: {} (thread={})", output_path.resolve(), writer)
 
     def synthesize_to_mp3(
         self,
@@ -274,15 +278,13 @@ class TTSManager:
             pace_value = 1.0
 
         if not self.api_key:
-            msg = "[TTS] Missing API key; cannot synthesize MP3."
-            print(f"[TTS][WARN] {msg} Creating silent fallback audio.")
-            # Create a minimal valid MP3 file as fallback with actual audio data
-            # This creates a very short silent MP3 file
+            msg = "Missing API key; cannot synthesize MP3."
+            _log.warning("%s Creating silent fallback audio.", msg)
             fallback_content = (
-                b'\xFF\xFB\x80\x00'  # MP3 frame header (MPEG-1, Layer III, 320kbps, 44.1kHz, stereo)
-                + b'\x00' * 417        # Audio data (creates about 0.026 seconds of silence)
-                + b'\xFF\xFB\x80\x00'  # Another MP3 frame header
-                + b'\x00' * 417        # More audio data
+                b'\xFF\xFB\x80\x00'
+                + b'\x00' * 417
+                + b'\xFF\xFB\x80\x00'
+                + b'\x00' * 417
             )
             output_path.write_bytes(fallback_content)
             return str(output_path)
@@ -299,7 +301,7 @@ class TTSManager:
             try:
                 self._write_bytes_safely(output_path, cache_path.read_bytes())
             except Exception as e:
-                print(f"[TTS] Cache copy failed for {output_path}: {e}")
+                _log.warning("Cache copy failed for %s: %s", output_path, e)
                 return None
             return str(cache_path)
 
@@ -329,27 +331,23 @@ class TTSManager:
                 cache_key=cache_key,
             )
             if result_path is None:
-                print("[TTS][WARN] No playable TTS audio produced; creating silent fallback audio.")
-                # Create a minimal valid MP3 file as fallback with actual audio data
-                # This creates a very short silent MP3 file
+                _log.warning("No playable TTS audio produced; creating silent fallback audio.")
                 fallback_content = (
-                    b'\xFF\xFB\x80\x00'  # MP3 frame header (MPEG-1, Layer III, 320kbps, 44.1kHz, stereo)
-                    + b'\x00' * 417        # Audio data (creates about 0.026 seconds of silence)
-                    + b'\xFF\xFB\x80\x00'  # Another MP3 frame header
-                    + b'\x00' * 417        # More audio data
+                    b'\xFF\xFB\x80\x00'
+                    + b'\x00' * 417
+                    + b'\xFF\xFB\x80\x00'
+                    + b'\x00' * 417
                 )
                 output_path.write_bytes(fallback_content)
                 return str(output_path)
             return str(result_path)
         except Exception as e:
-            print(f"TTS synthesis failed: {str(e)}")
-            # Create a minimal valid MP3 file as fallback with actual audio data
-            # This creates a very short silent MP3 file
+            _log.error("TTS synthesis failed: %s", e)
             fallback_content = (
-                b'\xFF\xFB\x80\x00'  # MP3 frame header (MPEG-1, Layer III, 320kbps, 44.1kHz, stereo)
-                + b'\x00' * 417        # Audio data (creates about 0.026 seconds of silence)
-                + b'\xFF\xFB\x80\x00'  # Another MP3 frame header
-                + b'\x00' * 417        # More audio
+                b'\xFF\xFB\x80\x00'
+                + b'\x00' * 417
+                + b'\xFF\xFB\x80\x00'
+                + b'\x00' * 417
             )
             output_path.write_bytes(fallback_content)
             return str(output_path)

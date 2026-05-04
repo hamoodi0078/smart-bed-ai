@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../services/push_notification_service.dart';
 import '../core/api_client.dart';
 import '../core/device_location_service.dart';
 import '../core/models.dart';
@@ -187,6 +188,9 @@ class AuthController extends Notifier<AuthViewState> {
         rethrow;
       }
       final refreshed = await _refreshSession();
+      if (refreshed.accessToken.isEmpty) {
+        throw ApiException.unauthenticated();
+      }
       return action(refreshed.accessToken);
     }
   }
@@ -217,7 +221,10 @@ class AuthController extends Notifier<AuthViewState> {
       await _hydrateSession(refreshed);
     } on ApiException {
       await _store.clear();
-      state = const AuthViewState.ready(session: null);
+      state = const AuthViewState.ready(
+        session: null,
+        errorMessage: 'Your session expired. Please sign in again.',
+      );
     }
   }
 
@@ -270,52 +277,66 @@ class AuthController extends Notifier<AuthViewState> {
   }
 
   Future<void> _syncRemoteProfileContext(AuthSession session) async {
+    unawaited(PushNotificationService.syncStoredToken());
     try {
-      final profile = await _api.getProfile(session.accessToken);
-      await _themeController.applyRemoteTheme(profile.themeMode);
+      await Future(() async {
+        final profile = await _api.getProfile(session.accessToken);
+        await _themeController.applyRemoteTheme(profile.themeMode);
 
-      var updatedProfile = profile;
-      var changed = false;
+        var updatedProfile = profile;
+        var changed = false;
 
-      if (updatedProfile.locationMode.toLowerCase() != 'manual') {
-        final locationResult = await _locationService.captureCurrentLocation();
-        if (locationResult.snapshot != null) {
-          final snapshot = locationResult.snapshot!;
-          final timezone = _isTimezoneName(snapshot.timezone)
-              ? snapshot.timezone
-              : updatedProfile.timezone;
-          final latChanged =
-              updatedProfile.latitude == null ||
-              (updatedProfile.latitude! - snapshot.latitude).abs() > 0.0005;
-          final lonChanged =
-              updatedProfile.longitude == null ||
-              (updatedProfile.longitude! - snapshot.longitude).abs() > 0.0005;
-          final timezoneChanged = timezone != updatedProfile.timezone;
-          if (latChanged || lonChanged || timezoneChanged) {
-            updatedProfile = updatedProfile.copyWith(
-              locationMode: 'auto',
-              latitude: snapshot.latitude,
-              longitude: snapshot.longitude,
-              timezone: timezone,
-            );
+        if (updatedProfile.locationMode.toLowerCase() != 'manual') {
+          final locationResult = await _locationService
+              .captureCurrentLocation()
+              .timeout(const Duration(seconds: 10));
+          if (locationResult.snapshot != null) {
+            final snapshot = locationResult.snapshot!;
+            final timezone = _isTimezoneName(snapshot.timezone)
+                ? snapshot.timezone
+                : updatedProfile.timezone;
+            final latChanged =
+                updatedProfile.latitude == null ||
+                (updatedProfile.latitude! - snapshot.latitude).abs() > 0.0005;
+            final lonChanged =
+                updatedProfile.longitude == null ||
+                (updatedProfile.longitude! - snapshot.longitude).abs() >
+                    0.0005;
+            final timezoneChanged = timezone != updatedProfile.timezone;
+            if (latChanged || lonChanged || timezoneChanged) {
+              updatedProfile = updatedProfile.copyWith(
+                locationMode: 'auto',
+                latitude: snapshot.latitude,
+                longitude: snapshot.longitude,
+                timezone: timezone,
+              );
+              changed = true;
+            }
+          } else if ((locationResult.permissionDenied ||
+                  locationResult.serviceDisabled) &&
+              updatedProfile.latitude == null &&
+              updatedProfile.longitude == null &&
+              updatedProfile.locationMode.toLowerCase() != 'manual') {
+            updatedProfile = updatedProfile.copyWith(locationMode: 'manual');
             changed = true;
           }
-        } else if ((locationResult.permissionDenied ||
-                locationResult.serviceDisabled) &&
-            updatedProfile.latitude == null &&
-            updatedProfile.longitude == null &&
-            updatedProfile.locationMode.toLowerCase() != 'manual') {
-          updatedProfile = updatedProfile.copyWith(locationMode: 'manual');
-          changed = true;
         }
-      }
 
-      if (changed) {
-        final saved = await _api.updateProfile(
-          accessToken: session.accessToken,
-          profile: updatedProfile,
+        if (changed) {
+          final saved = await _api.updateProfile(
+            accessToken: session.accessToken,
+            profile: updatedProfile,
+          );
+          await _themeController.applyRemoteTheme(saved.themeMode);
+        }
+      }).timeout(const Duration(seconds: 20));
+    } on ApiException catch (error) {
+      if (error.statusCode == 401) {
+        await _store.clear();
+        state = const AuthViewState.ready(
+          session: null,
+          errorMessage: 'Your session expired. Please sign in again.',
         );
-        await _themeController.applyRemoteTheme(saved.themeMode);
       }
     } catch (_) {}
   }

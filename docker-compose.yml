@@ -1,0 +1,82 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://smartbed:${POSTGRES_PASSWORD:-smartbed_dev}@db:5432/smartbed
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - runtime_data:/app/runtime_data
+      - output_audio:/app/output_audio
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  voice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "app_entry.py"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://smartbed:${POSTGRES_PASSWORD:-smartbed_dev}@db:5432/smartbed
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - runtime_data:/app/runtime_data
+      - output_audio:/app/output_audio
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: smartbed
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartbed_dev}
+      POSTGRES_DB: smartbed
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartbed"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  runtime_data:
+  output_audio:
+  pgdata:

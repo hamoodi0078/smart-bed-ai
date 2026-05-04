@@ -1,6 +1,10 @@
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+dist/
+build/
+.mypy_cache/
 
 # Virtual environments
 .venv/
@@ -33,10 +37,30 @@ data/long_term_memory.json
 data/cache.db
 data/spotify_tokens.json
 data/*_db.json
-
-.venv311/
-.env
-test_results.txt
-desktop.ini
 data/.scenes_store.json.lock
- 
+
+# Testing / coverage
+.tmp/
+.pytest_cache/
+htmlcov/
+coverage.xml
+test_results.txt
+test_audit_unittest.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+desktop.ini
+
+# Docker
+docker-compose.override.yml
+
+# Mobile app build artifacts
+mobile_app/build/
+mobile_app/.dart_tool/
+mobile_app/.flutter-plugins
+mobile_app/.flutter-plugins-dependencies
+mobile_app/.packages
+mobile_app/.venv/
