@@ -128,19 +128,36 @@ def create_app() -> FastAPI:
     )
 
     # ── Middleware stack (order matters: innermost runs last) ─────────────────
-    # Rate limiting — must run before CORS to avoid wasted processing
-    try:
-        from api.middleware.rate_limiter import RateLimitMiddleware
-        application.add_middleware(RateLimitMiddleware)
-    except ImportError:
-        pass
+
+    # CORS origin validation — crash early on misconfiguration
+    if "*" in allowed_origins:
+        is_production = os.getenv("DANAH_ENV", "development").lower() == "production"
+        if is_production:
+            raise RuntimeError(
+                "CORS misconfiguration: WEB_ALLOWED_ORIGINS contains '*' wildcard in production. "
+                "Specify explicit origin URLs."
+            )
+        import warnings as _warnings
+        _warnings.warn(
+            "CORS: allow_origins=['*'] detected — this is unsafe for production.",
+            stacklevel=2,
+        )
+    _allow_credentials = bool(allowed_origins) and "*" not in allowed_origins
+
+    # Rate limiting — hard import: app must not start without this protection
+    from api.middleware.rate_limiter import RateLimitMiddleware
+    application.add_middleware(RateLimitMiddleware)
+
+    # Security headers — applied to every response
+    from api.middleware.security_headers import SecurityHeadersMiddleware
+    application.add_middleware(SecurityHeadersMiddleware)
 
     # CORS
     application.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_origin_regex=allowed_origin_regex,
-        allow_credentials=bool(allowed_origins) and "*" not in allowed_origins,
+        allow_credentials=_allow_credentials,
         allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Trace-ID", "X-Request-ID"],
     )

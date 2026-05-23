@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 from datetime import datetime, timedelta
 import logging
 from zoneinfo import ZoneInfo
@@ -14,6 +15,12 @@ from Storage.user_profile import load_profile, save_profile
 from time_utils import utcnow
 
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+_EFFECT_TIMEOUT_SECONDS: float = 5.0
+_EFFECT_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2,
+    thread_name_prefix="automation_effect",
+)
 
 logger = logging.getLogger(__name__)
 planned_reminders: list[dict[str, object]] = []
@@ -30,6 +37,27 @@ automation_registry = AutomationRegistry(state_path=AUTOMATION_STATE_PATH)
 automation_reply_handler = None
 automation_runtime_hooks: dict[str, object] = {}
 automation_profile_ref: dict | None = None
+
+def _is_in_quiet_window(now_local: datetime, quiet_window: str) -> bool:
+    """Return True if *now_local* falls inside the configured quiet window.
+
+    Format expected: "HH:MM-HH:MM" (e.g. "22:00-07:00"). Handles overnight spans.
+    """
+    try:
+        parts = quiet_window.strip().split("-")
+        if len(parts) != 2:
+            return False
+        start_h, start_m = (int(x) for x in parts[0].strip().split(":"))
+        end_h, end_m = (int(x) for x in parts[1].strip().split(":"))
+        now_mins = now_local.hour * 60 + now_local.minute
+        start_mins = start_h * 60 + start_m
+        end_mins = end_h * 60 + end_m
+        if start_mins <= end_mins:
+            return start_mins <= now_mins < end_mins
+        return now_mins >= start_mins or now_mins < end_mins
+    except Exception:
+        return False
+
 
 def _parse_datetime_like(value) -> datetime | None:
     if isinstance(value, datetime):
@@ -109,6 +137,21 @@ def run_automations():
             reply = str(payload.get("text", "") or "").strip()
             if not reply:
                 continue
+
+            is_emergency = reply.upper().startswith("[EMERGENCY]")
+            quiet_active = bool(ctx.get("quiet_mode_active", False))
+            quiet_window_str = str(ctx.get("quiet_window", "") or "")
+            in_quiet_hours = quiet_window_str and _is_in_quiet_window(now_local, quiet_window_str)
+            if not is_emergency and (quiet_active or in_quiet_hours):
+                emit_json_log(
+                    logger,
+                    level="info",
+                    event_type="automation_say_suppressed_quiet_hours",
+                    trace_id="automation_runtime",
+                    metadata={"quiet_active": quiet_active, "in_quiet_hours": in_quiet_hours},
+                )
+                continue
+
             emit_json_log(
                 logger,
                 level="info",
@@ -119,19 +162,26 @@ def run_automations():
                     "reply_chars": len(reply),
                 },
             )
-            try:
-                if callable(automation_reply_handler):
-                    automation_reply_handler(reply)
-            except Exception as exc:
-                emit_json_log(
-                    logger,
-                    level="error",
-                    event_type="automation_reply_handler_failed",
-                    trace_id="automation_runtime",
-                    metadata={
-                        "error_type": type(exc).__name__,
-                    },
-                )
+            if callable(automation_reply_handler):
+                fut = _EFFECT_EXECUTOR.submit(automation_reply_handler, reply)
+                try:
+                    fut.result(timeout=_EFFECT_TIMEOUT_SECONDS)
+                except concurrent.futures.TimeoutError:
+                    emit_json_log(
+                        logger,
+                        level="error",
+                        event_type="automation_reply_handler_timeout",
+                        trace_id="automation_runtime",
+                        metadata={"timeout_seconds": _EFFECT_TIMEOUT_SECONDS},
+                    )
+                except Exception as exc:
+                    emit_json_log(
+                        logger,
+                        level="error",
+                        event_type="automation_reply_handler_failed",
+                        trace_id="automation_runtime",
+                        metadata={"error_type": type(exc).__name__},
+                    )
             continue
 
         if kind == "led":

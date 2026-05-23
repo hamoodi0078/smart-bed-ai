@@ -73,18 +73,11 @@ class Settings(BaseSettings):
     @classmethod
     def secret_key_must_be_secure(cls, v: str) -> str:
         _unsafe = {"change-me-in-production", "secret", "changeme", "development", ""}
-        is_production = os.getenv("DANAH_ENV", "development").lower() == "production"
-        if is_production and (v in _unsafe or len(v) < 32):
+        if v in _unsafe or len(v) < 32:
             raise ValueError(
-                "SECRET_KEY must be a random string of at least 32 characters in production. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
-            )
-        if v in _unsafe or len(v) < 16:
-            import warnings
-            warnings.warn(
-                "SECRET_KEY is weak or default — JWT tokens are insecure. "
-                "Set SECRET_KEY in your .env file.",
-                stacklevel=4,
+                "SECRET_KEY is unsafe or too short (minimum 32 characters). "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\" "
+                "and set it as SECRET_KEY in your .env file."
             )
         return v
 
@@ -476,8 +469,6 @@ def validate_production_secrets() -> list[str]:
         warnings.append("SECRET_KEY is not set or uses the insecure default")
     if not settings.deepgram_api_key and is_production:
         warnings.append("DEEPGRAM_API_KEY not set — voice features unavailable")
-    if not settings.anthropic_api_key and is_production:
-        warnings.append("ANTHROPIC_API_KEY not set — AI chat unavailable")
     if not settings.paypal_client_id and is_production:
         warnings.append("PAYPAL_CLIENT_ID not set — billing unavailable")
     if not settings.aws_ses_from_email and is_production:

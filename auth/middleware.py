@@ -81,20 +81,22 @@ async def get_current_user(
 async def get_current_user_optional(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Optional[dict]:
-    """Verify JWT token but return None if missing (optional auth).
-    
-    Use this for routes that have different behavior for authenticated vs anonymous users.
-    
+    """Verify JWT token but return None if no credentials were provided.
+
+    Unlike get_current_user, this does NOT require authentication — but if a
+    token IS present and is expired or invalid, a 401 is still raised so the
+    client knows it must re-authenticate rather than silently receiving an
+    anonymous response.
+
     Returns:
-        dict | None: Decoded token payload, or None if no token provided
+        dict | None: Decoded token payload, or None if no token was sent
+    Raises:
+        HTTPException 401: If a token was sent but is expired or invalid
     """
     if not credentials:
         return None
-    
-    try:
-        return await get_current_user(credentials)
-    except HTTPException:
-        return None
+
+    return await get_current_user(credentials)
 
 
 def require_role(*allowed_roles: str):

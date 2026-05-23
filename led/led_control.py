@@ -5,6 +5,8 @@ from hardware.pi_led import _LedFrameState, build_led_backend
 
 
 class LEDController:
+    MAX_SAFE_BRIGHTNESS: float = 0.80
+
     NAMED_COLORS = {
         "red": (255, 0, 0),
         "green": (0, 255, 0),
@@ -314,14 +316,20 @@ class LEDController:
 
     def set_user_brightness(self, value: float, log: bool = True):
         old_percent = int(self.user_strip_brightness * 100)
-        self.user_strip_brightness = max(0.0, min(1.0, float(value)))
+        clamped = max(0.0, min(self.MAX_SAFE_BRIGHTNESS, float(value)))
+        if float(value) > self.MAX_SAFE_BRIGHTNESS:
+            print(
+                f"[LED][UserStrip] Brightness request {int(float(value)*100)}% "
+                f"capped to safety limit {int(self.MAX_SAFE_BRIGHTNESS*100)}%"
+            )
+        self.user_strip_brightness = clamped
         new_percent = int(self.user_strip_brightness * 100)
         if log and new_percent != old_percent:
             print(f"[LED][UserStrip] Brightness -> {new_percent}%")
         self._sync_hardware()
 
     def brightness_up(self):
-        self.brightness = min(1.0, self.brightness + 0.2)
+        self.brightness = min(self.MAX_SAFE_BRIGHTNESS, self.brightness + 0.2)
         print(f"[LED] Brightness -> {int(self.brightness * 100)}%")
         self._sync_hardware()
 
