@@ -14,6 +14,10 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_CRITICAL_DEBT_HOURS = 10.0   # ≥ 10h cumulative debt triggers a critical alert
+_HIGH_DEBT_HOURS = 5.0        # boundary between moderate and high
+
+
 class SleepDebtTracker:
     """Tracks cumulative sleep debt and generates recovery recommendations."""
 
@@ -212,6 +216,75 @@ class SleepDebtTracker:
     # Helpers
     # ------------------------------------------------------------------
 
+    def check_critical_debt_alert(self, profile: dict) -> dict[str, Any]:
+        """Return a critical alert when cumulative sleep debt crosses the clinical threshold.
+
+        A 7-day debt ≥ 10 hours (roughly < 6.6 h/night average with an 8-hour target)
+        is considered critically impairing — comparable in effect to 24 h total sleep
+        deprivation.  This warrants a push notification and immediate intervention.
+
+        Returns
+        -------
+        dict with keys:
+          alert (bool)        — True when debt is critical
+          severity (str)      — 'critical' | 'high' | 'moderate' | 'mild' | 'none'
+          debt_hours (float)
+          message (str)       — user-facing alert text
+          recommended_action (str)
+        """
+        self.ensure_shape(profile)
+        debt = float(profile.get("sleep_debt", {}).get("cumulative_debt_hours", 0.0) or 0.0)
+
+        if debt < 0:
+            return {
+                "alert": False,
+                "severity": "none",
+                "debt_hours": 0.0,
+                "message": "Sleep bank is positive — great job!",
+                "recommended_action": "Maintain current sleep schedule.",
+            }
+
+        if debt >= _CRITICAL_DEBT_HOURS:
+            return {
+                "alert": True,
+                "severity": "critical",
+                "debt_hours": round(debt, 1),
+                "message": (
+                    f"Critical sleep debt: {debt:.1f} hours. "
+                    "Cognitive function is significantly impaired. Immediate recovery required."
+                ),
+                "recommended_action": (
+                    "Start a structured recovery plan tonight: add 1.5 hours to your sleep window "
+                    "and avoid all-nighters for the next 7 days."
+                ),
+            }
+
+        if debt >= _HIGH_DEBT_HOURS:
+            return {
+                "alert": True,
+                "severity": "high",
+                "debt_hours": round(debt, 1),
+                "message": f"High sleep debt: {debt:.1f} hours. Recovery plan recommended.",
+                "recommended_action": "Sleep 1 extra hour per night for the next week.",
+            }
+
+        if debt >= 2.0:
+            return {
+                "alert": False,
+                "severity": "moderate",
+                "debt_hours": round(debt, 1),
+                "message": f"Moderate sleep debt: {debt:.1f} hours.",
+                "recommended_action": "Go to bed 30 minutes earlier tonight.",
+            }
+
+        return {
+            "alert": False,
+            "severity": "mild",
+            "debt_hours": round(debt, 1),
+            "message": f"Mild sleep debt: {debt:.1f} hours.",
+            "recommended_action": "An early bedtime tonight will clear this.",
+        }
+
     def _append_debt_history(self, profile: dict, debt: float) -> None:
         history = profile["sleep_debt"].get("debt_history", [])
         history.append({
@@ -226,9 +299,11 @@ class SleepDebtTracker:
             return "debt_free"
         if debt <= 2.0:
             return "mild"
-        if debt <= 5.0:
+        if debt < _HIGH_DEBT_HOURS:
             return "moderate"
-        return "severe"
+        if debt < _CRITICAL_DEBT_HOURS:
+            return "high"
+        return "critical"
 
     @staticmethod
     def _debt_message(debt: float, avg: float, target: float) -> str:
@@ -236,6 +311,11 @@ class SleepDebtTracker:
             return f"No sleep debt! Avg {avg:.1f}h/night (target {target:.1f}h). MashaAllah!"
         if debt <= 2.0:
             return f"Mild debt: {debt:.1f}h. Avg {avg:.1f}h/night. Go to bed 30min early tonight."
-        if debt <= 5.0:
+        if debt < _HIGH_DEBT_HOURS:
             return f"Moderate debt: {debt:.1f}h. Avg {avg:.1f}h/night. Consider a recovery plan."
-        return f"Significant debt: {debt:.1f}h. Avg {avg:.1f}h/night. Recovery plan recommended."
+        if debt < _CRITICAL_DEBT_HOURS:
+            return f"High debt: {debt:.1f}h. Avg {avg:.1f}h/night. Start a recovery plan tonight."
+        return (
+            f"CRITICAL debt: {debt:.1f}h. Avg {avg:.1f}h/night. "
+            "Cognitive function impaired — immediate recovery required."
+        )

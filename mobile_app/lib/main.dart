@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'screens/main_shell.dart';
+import 'services/journal_store.dart';
 import 'services/local_notification_service.dart';
 import 'src/app.dart';
 import 'src/state/onboarding_controller.dart';
@@ -21,6 +22,7 @@ const String _appEnv = String.fromEnvironment('ENV', defaultValue: 'development'
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LocalNotificationService.instance.init();
+  await JournalStore.init();
 
   // In production builds, Sentry must be configured for crash visibility.
   assert(

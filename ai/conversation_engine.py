@@ -1,9 +1,93 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 import json
+from typing import Any, Iterator
 
 import httpx
+from loguru import logger
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from core.http_client import http
+
+try:
+    import anthropic as _anthropic
+    _ANTHROPIC_AVAILABLE = True
+except ImportError:
+    _anthropic = None  # type: ignore[assignment]
+    _ANTHROPIC_AVAILABLE = False
+
+# Transient Anthropic errors that warrant an automatic retry.
+_ANTHROPIC_TRANSIENT: tuple[type[BaseException], ...] = ()
+if _ANTHROPIC_AVAILABLE and _anthropic is not None:
+    try:
+        _ANTHROPIC_TRANSIENT = (
+            _anthropic.RateLimitError,
+            _anthropic.APIConnectionError,
+            _anthropic.APITimeoutError,
+            _anthropic.InternalServerError,
+        )
+    except AttributeError:
+        pass
+
+# Shared tenacity policy: up to 3 attempts, exponential backoff 1 → 2 → 4 s.
+_AI_RETRY_KWARGS = dict(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    reraise=True,
+)
+
+try:
+    import litellm as _litellm
+    _LITELLM_AVAILABLE = True
+except ImportError:
+    _litellm = None  # type: ignore[assignment]
+    _LITELLM_AVAILABLE = False
+
+try:
+    from langchain_core.messages import (
+        AIMessage as _AIMessage,
+        BaseMessage as _BaseMessage,
+        HumanMessage as _HumanMessage,
+        SystemMessage as _SystemMessage,
+    )
+    from langchain_core.output_parsers import StrOutputParser as _StrOutputParser
+    from langchain_core.prompts import ChatPromptTemplate as _ChatPromptTemplate
+    _LANGCHAIN_CORE_AVAILABLE = True
+    _str_parser = _StrOutputParser()
+except ImportError:
+    _LANGCHAIN_CORE_AVAILABLE = False
+    _str_parser = None  # type: ignore[assignment]
+
+
+# ── Token budget helpers ──────────────────────────────────────────────────────
+# Claude's context window is 200K tokens.  We leave a 40K buffer for the
+# system prompt + response, so history is pruned when it grows past 160K.
+_HISTORY_TOKEN_BUDGET = 160_000
+
+
+def _estimate_tokens(text: str) -> int:
+    """Fast approximation: ~4 chars per token (slightly conservative)."""
+    return max(1, len(str(text or "")) // 4)
+
+
+def _trim_history_to_budget(history: list[dict]) -> list[dict]:
+    """Remove oldest message pairs until the history fits within _HISTORY_TOKEN_BUDGET.
+
+    Always removes in user/assistant pairs (oldest pair first) to preserve
+    conversational coherence.
+    """
+    while len(history) >= 2:
+        total = sum(_estimate_tokens(m.get("content", "")) for m in history)
+        if total <= _HISTORY_TOKEN_BUDGET:
+            break
+        history = history[2:]  # drop oldest user+assistant pair
+    return history
 
 
 SYSTEM_PROMPTS = {
@@ -317,10 +401,10 @@ class ConversationEngine:
     def _append_history(self, user_text: str, assistant_text: str):
         self.history.append({"role": "user", "content": user_text})
         self.history.append({"role": "assistant", "content": assistant_text})
-
         max_messages = self.max_history_turns * 2
         if len(self.history) > max_messages:
             self.history = self.history[-max_messages:]
+        self.history = _trim_history_to_budget(self.history)
 
     def generate_response_stream(
         self,
@@ -419,4 +503,526 @@ class ConversationEngine:
         return (
             f"(Deepgram fallback - {personality}) I heard: '{user_text}'. "
             "I can respond better once Deepgram Voice Agent access is available."
+        )
+
+
+class AnthropicConversationEngine:
+    """Claude-powered conversation engine using the Anthropic SDK.
+
+    Uses claude-opus-4-7 with adaptive thinking and prompt caching so the
+    stable persona block is re-used across calls without re-tokenising.
+
+    Falls back to a canned message when the ``anthropic`` package is absent
+    or no API key is provided.
+    """
+
+    DEFAULT_MODEL = "claude-opus-4-7"
+
+    def __init__(
+        self,
+        api_key: str = "",
+        model: str = DEFAULT_MODEL,
+        timeout_seconds: int = 20,
+    ) -> None:
+        self._api_key = str(api_key or "").strip()
+        self._model = str(model or self.DEFAULT_MODEL).strip()
+        self._timeout_seconds = int(timeout_seconds)
+        self._client: Any = None
+        self.max_history_turns = 6
+        self.history: list[dict] = []
+
+    # ------------------------------------------------------------------
+    # Client lifecycle
+    # ------------------------------------------------------------------
+
+    def _get_client(self) -> Any:
+        if not _ANTHROPIC_AVAILABLE or not self._api_key:
+            return None
+        if self._client is None:
+            self._client = _anthropic.Anthropic(
+                api_key=self._api_key,
+                timeout=float(self._timeout_seconds),
+            )
+        return self._client
+
+    # ------------------------------------------------------------------
+    # Prompt construction
+    # ------------------------------------------------------------------
+
+    def _build_system_blocks(
+        self,
+        personality: str,
+        user_context: str,
+        emotion_state: str,
+        cognitive_load_mode: str,
+    ) -> list[dict]:
+        """Return system as content blocks; the stable persona block is cached."""
+        p = personality.lower().strip()
+        persona_text = SYSTEM_PROMPTS.get(p, SYSTEM_PROMPTS["guide"])
+        method_pack = PERSONA_METHOD_PACKS.get(p, "")
+
+        stable_parts = [persona_text, HUMAN_ENGAGEMENT_INSTRUCTION]
+        if method_pack:
+            stable_parts.append(method_pack)
+        stable_parts.append(SESSION_ARC_INSTRUCTION)
+
+        blocks: list[dict] = [
+            {
+                "type": "text",
+                "text": "\n\n".join(stable_parts),
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
+        volatile_parts = [_build_temporal_grounding_message()]
+
+        mood_layer = MOOD_LAYERS.get(str(emotion_state or "neutral").strip().lower())
+        if mood_layer:
+            volatile_parts.append(mood_layer)
+
+        load_instruction = _cognitive_load_instruction(cognitive_load_mode)
+        if load_instruction:
+            volatile_parts.append(load_instruction)
+
+        if user_context.strip():
+            volatile_parts.append(
+                "Personalization context (follow this for tone and format when helpful):\n"
+                + user_context.strip()
+            )
+
+        blocks.append({"type": "text", "text": "\n\n".join(volatile_parts)})
+        return blocks
+
+    def _build_messages(
+        self,
+        user_text: str,
+        realtime_context: str = "",
+    ) -> list[dict]:
+        msgs: list[dict] = list(self.history)
+        content = user_text
+        if realtime_context.strip():
+            content = f"[Live context: {realtime_context.strip()}]\n\n{user_text}"
+        msgs.append({"role": "user", "content": content})
+        return msgs
+
+    # ------------------------------------------------------------------
+    # Response generation
+    # ------------------------------------------------------------------
+
+    def generate_response(
+        self,
+        user_text: str,
+        personality: str = "therapist",
+        realtime_context: str = "",
+        user_context: str = "",
+        emotion_state: str = "neutral",
+        cognitive_load_mode: str = "normal",
+        quick_timeout_seconds: int = 4,
+        total_timeout_seconds: int = 10,
+        max_response_tokens: int = 120,
+    ) -> str:
+        personality = personality.lower().strip()
+        client = self._get_client()
+        if client is None:
+            return self._fallback_response(user_text, personality)
+
+        system_blocks = self._build_system_blocks(
+            personality=personality,
+            user_context=user_context,
+            emotion_state=emotion_state,
+            cognitive_load_mode=cognitive_load_mode,
+        )
+        messages = self._build_messages(user_text=user_text, realtime_context=realtime_context)
+
+        @retry(
+            retry=retry_if_exception(lambda e: isinstance(e, _ANTHROPIC_TRANSIENT)),
+            **_AI_RETRY_KWARGS,
+        )
+        def _call() -> Any:
+            return client.messages.create(
+                model=self._model,
+                max_tokens=max(512, int(max_response_tokens)),
+                system=system_blocks,
+                messages=messages,
+                thinking={"type": "adaptive"},
+            )
+
+        try:
+            response = _call()
+            text = "".join(
+                block.text for block in response.content if block.type == "text"
+            ).strip()
+            if text:
+                self._append_history(user_text, text)
+                return text
+        except Exception as exc:
+            logger.debug("AnthropicConversationEngine.generate_response error: {}", exc)
+
+        return self._fallback_response(user_text, personality)
+
+    def generate_response_stream(
+        self,
+        user_text: str,
+        personality: str = "therapist",
+        realtime_context: str = "",
+        user_context: str = "",
+        emotion_state: str = "neutral",
+        cognitive_load_mode: str = "normal",
+        total_timeout_seconds: int = 15,
+        max_response_tokens: int = 140,
+    ) -> Iterator[str]:
+        personality = personality.lower().strip()
+        client = self._get_client()
+        if client is None:
+            yield self._fallback_response(user_text, personality)
+            return
+
+        collected: list[str] = []
+        try:
+            with client.messages.stream(
+                model=self._model,
+                max_tokens=max(512, int(max_response_tokens)),
+                system=self._build_system_blocks(
+                    personality=personality,
+                    user_context=user_context,
+                    emotion_state=emotion_state,
+                    cognitive_load_mode=cognitive_load_mode,
+                ),
+                messages=self._build_messages(
+                    user_text=user_text,
+                    realtime_context=realtime_context,
+                ),
+                thinking={"type": "adaptive"},
+            ) as stream:
+                for chunk in stream.text_stream:
+                    if chunk:
+                        collected.append(chunk)
+                        yield chunk
+        except Exception as exc:
+            logger.debug(
+                "AnthropicConversationEngine.generate_response_stream error: {}", exc
+            )
+            if not collected:
+                yield self._fallback_response(user_text, personality)
+            return
+
+        assistant_text = "".join(collected).strip()
+        if assistant_text:
+            self._append_history(user_text, assistant_text)
+
+    # ------------------------------------------------------------------
+    # History
+    # ------------------------------------------------------------------
+
+    def _append_history(self, user_text: str, assistant_text: str) -> None:
+        self.history.append({"role": "user", "content": user_text})
+        self.history.append({"role": "assistant", "content": assistant_text})
+        max_msgs = self.max_history_turns * 2
+        if len(self.history) > max_msgs:
+            self.history = self.history[-max_msgs:]
+        self.history = _trim_history_to_budget(self.history)
+
+    # ------------------------------------------------------------------
+    # Fallback
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _fallback_response(user_text: str, personality: str) -> str:
+        return (
+            f"(Claude fallback - {personality}) I heard: '{user_text}'. "
+            "I can respond better once ANTHROPIC_API_KEY is configured."
+        )
+
+
+class LiteLLMConversationEngine:
+    """Universal conversation engine backed by litellm.
+
+    Routes to any provider supported by litellm (Anthropic, OpenAI, Gemini,
+    Ollama, …) using a single ``provider/model`` string.  API keys are read
+    from the environment (``ANTHROPIC_API_KEY``, ``OPENAI_API_KEY``, …) or
+    passed explicitly via *api_key*.
+
+    Uses the same system-prompt architecture as the other engines — persona,
+    temporal grounding, mood layers, cognitive-load adjustments — but combines
+    everything into one ``system`` message so it works with every provider.
+
+    Parameters
+    ----------
+    model:
+        LiteLLM model string, e.g. ``"anthropic/claude-opus-4-7"``,
+        ``"gpt-4o"``, ``"gemini/gemini-1.5-pro"``, ``"ollama/llama3"``.
+    api_key:
+        Optional explicit API key — overrides the environment variable for
+        the chosen provider.
+    timeout_seconds:
+        Request timeout forwarded to litellm.
+    """
+
+    DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
+
+    def __init__(
+        self,
+        model: str = DEFAULT_MODEL,
+        api_key: str = "",
+        timeout_seconds: int = 20,
+        temperature: float = 0.7,
+        num_retries: int = 2,
+    ) -> None:
+        self._model = str(model or self.DEFAULT_MODEL).strip()
+        self._api_key = str(api_key or "").strip() or None
+        self._timeout_seconds = int(timeout_seconds)
+        self._temperature = max(0.0, min(2.0, float(temperature)))
+        self._num_retries = max(0, int(num_retries))
+        self.max_history_turns = 6
+        # History stored as typed langchain-core messages when available,
+        # falling back to raw dicts for providers that skip langchain-core.
+        self.history: list[Any] = []
+
+    # ------------------------------------------------------------------
+    # Message helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _to_dict(msg: Any) -> dict:
+        """Convert a langchain-core BaseMessage (or plain dict) to a litellm dict."""
+        if isinstance(msg, dict):
+            return msg
+        if _LANGCHAIN_CORE_AVAILABLE and isinstance(msg, _BaseMessage):
+            role_map = {"human": "user", "ai": "assistant", "system": "system"}
+            return {"role": role_map.get(msg.type, msg.type), "content": str(msg.content)}
+        return {"role": "user", "content": str(msg)}
+
+    def _messages_to_dicts(self, msgs: list[Any]) -> list[dict]:
+        return [self._to_dict(m) for m in msgs]
+
+    # ------------------------------------------------------------------
+    # Prompt construction
+    # ------------------------------------------------------------------
+
+    def _build_system_text(
+        self,
+        personality: str,
+        user_context: str,
+        emotion_state: str,
+        cognitive_load_mode: str,
+    ) -> str:
+        """Assemble all system-prompt layers into a single text block."""
+        p = personality.lower().strip()
+
+        if _LANGCHAIN_CORE_AVAILABLE:
+            # Use ChatPromptTemplate for the stable persona+engagement block.
+            persona_template = _ChatPromptTemplate.from_messages([
+                ("system", "{persona}\n\n{engagement}\n\n{method_pack}\n\n{session_arc}"),
+            ])
+            method_pack = PERSONA_METHOD_PACKS.get(p, "")
+            base_block = persona_template.format_messages(
+                persona=SYSTEM_PROMPTS.get(p, SYSTEM_PROMPTS["guide"]),
+                engagement=HUMAN_ENGAGEMENT_INSTRUCTION,
+                method_pack=method_pack,
+                session_arc=SESSION_ARC_INSTRUCTION,
+            )[0].content
+            parts = [base_block, _build_temporal_grounding_message()]
+        else:
+            parts = [SYSTEM_PROMPTS.get(p, SYSTEM_PROMPTS["guide"])]
+            parts.append(_build_temporal_grounding_message())
+            parts.append(HUMAN_ENGAGEMENT_INSTRUCTION)
+            method_pack_text = PERSONA_METHOD_PACKS.get(p)
+            if method_pack_text:
+                parts.append(method_pack_text)
+            parts.append(SESSION_ARC_INSTRUCTION)
+
+        mood_layer = MOOD_LAYERS.get(str(emotion_state or "neutral").strip().lower())
+        if mood_layer:
+            parts.append(mood_layer)
+
+        load_instruction = _cognitive_load_instruction(cognitive_load_mode)
+        if load_instruction:
+            parts.append(load_instruction)
+
+        if user_context.strip():
+            parts.append(
+                "Personalization context (follow this for tone and format when helpful):\n"
+                + user_context.strip()
+            )
+        return "\n\n".join(parts)
+
+    def _build_messages(
+        self,
+        user_text: str,
+        personality: str,
+        realtime_context: str,
+        user_context: str,
+        emotion_state: str,
+        cognitive_load_mode: str,
+    ) -> list[dict]:
+        system_text = self._build_system_text(
+            personality=personality,
+            user_context=user_context,
+            emotion_state=emotion_state,
+            cognitive_load_mode=cognitive_load_mode,
+        )
+        content = user_text
+        if realtime_context.strip():
+            content = f"[Live context: {realtime_context.strip()}]\n\n{user_text}"
+
+        if _LANGCHAIN_CORE_AVAILABLE:
+            lc_msgs: list[Any] = [_SystemMessage(content=system_text)]
+            lc_msgs.extend(self.history)
+            lc_msgs.append(_HumanMessage(content=content))
+            return self._messages_to_dicts(lc_msgs)
+
+        msgs: list[dict] = [{"role": "system", "content": system_text}]
+        msgs.extend(self.history)  # type: ignore[arg-type]
+        msgs.append({"role": "user", "content": content})
+        return msgs
+
+    # ------------------------------------------------------------------
+    # Response generation
+    # ------------------------------------------------------------------
+
+    def generate_response(
+        self,
+        user_text: str,
+        personality: str = "therapist",
+        realtime_context: str = "",
+        user_context: str = "",
+        emotion_state: str = "neutral",
+        cognitive_load_mode: str = "normal",
+        quick_timeout_seconds: int = 4,
+        total_timeout_seconds: int = 10,
+        max_response_tokens: int = 120,
+    ) -> str:
+        personality = personality.lower().strip()
+        if not _LITELLM_AVAILABLE:
+            return self._fallback_response(user_text, personality)
+
+        messages = self._build_messages(
+            user_text=user_text,
+            personality=personality,
+            realtime_context=realtime_context,
+            user_context=user_context,
+            emotion_state=emotion_state,
+            cognitive_load_mode=cognitive_load_mode,
+        )
+        extra = {"api_key": self._api_key} if self._api_key else {}
+
+        @retry(
+            retry=retry_if_exception(
+                lambda e: isinstance(e, (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.NetworkError))
+            ),
+            **_AI_RETRY_KWARGS,
+        )
+        def _call() -> Any:
+            return _litellm.completion(
+                model=self._model,
+                messages=messages,
+                max_tokens=max(40, int(max_response_tokens)),
+                temperature=self._temperature,
+                timeout=self._timeout_seconds,
+                num_retries=self._num_retries,
+                drop_params=True,
+                **extra,
+            )
+
+        try:
+            response = _call()
+            raw = str(
+                (response.choices[0].message.content or "") if response.choices else ""
+            ).strip()
+            text = _str_parser.parse(raw) if _LANGCHAIN_CORE_AVAILABLE and _str_parser else raw
+            if text:
+                self._append_history(user_text, text)
+                return text
+        except Exception as exc:
+            logger.debug("LiteLLMConversationEngine.generate_response error: {}", exc)
+
+        return self._fallback_response(user_text, personality)
+
+    def generate_response_stream(
+        self,
+        user_text: str,
+        personality: str = "therapist",
+        realtime_context: str = "",
+        user_context: str = "",
+        emotion_state: str = "neutral",
+        cognitive_load_mode: str = "normal",
+        total_timeout_seconds: int = 15,
+        max_response_tokens: int = 140,
+    ) -> Iterator[str]:
+        personality = personality.lower().strip()
+        if not _LITELLM_AVAILABLE:
+            yield self._fallback_response(user_text, personality)
+            return
+
+        messages = self._build_messages(
+            user_text=user_text,
+            personality=personality,
+            realtime_context=realtime_context,
+            user_context=user_context,
+            emotion_state=emotion_state,
+            cognitive_load_mode=cognitive_load_mode,
+        )
+        collected: list[str] = []
+        try:
+            stream = _litellm.completion(
+                model=self._model,
+                messages=messages,
+                stream=True,
+                max_tokens=max(40, int(max_response_tokens)),
+                temperature=self._temperature,
+                timeout=self._timeout_seconds,
+                num_retries=self._num_retries,
+                drop_params=True,
+                **({"api_key": self._api_key} if self._api_key else {}),
+            )
+            for chunk in stream:
+                delta = ""
+                if chunk.choices:
+                    delta = str(chunk.choices[0].delta.content or "")
+                if delta:
+                    collected.append(delta)
+                    yield delta
+        except Exception as exc:
+            logger.debug(
+                "LiteLLMConversationEngine.generate_response_stream error: {}", exc
+            )
+            if not collected:
+                yield self._fallback_response(user_text, personality)
+            return
+
+        assistant_text = "".join(collected).strip()
+        if assistant_text:
+            self._append_history(user_text, assistant_text)
+
+    # ------------------------------------------------------------------
+    # History
+    # ------------------------------------------------------------------
+
+    def _append_history(self, user_text: str, assistant_text: str) -> None:
+        if _LANGCHAIN_CORE_AVAILABLE:
+            self.history.append(_HumanMessage(content=user_text))
+            self.history.append(_AIMessage(content=assistant_text))
+        else:
+            self.history.append({"role": "user", "content": user_text})
+            self.history.append({"role": "assistant", "content": assistant_text})
+        max_msgs = self.max_history_turns * 2
+        if len(self.history) > max_msgs:
+            self.history = self.history[-max_msgs:]
+        # Normalize to dicts for token counting, then convert back if needed
+        dict_history = self._messages_to_dicts(self.history) if _LANGCHAIN_CORE_AVAILABLE else list(self.history)
+        dict_history = _trim_history_to_budget(dict_history)
+        if _LANGCHAIN_CORE_AVAILABLE and len(dict_history) < len(self.history):
+            self.history = self.history[len(self.history) - len(dict_history):]
+        elif not _LANGCHAIN_CORE_AVAILABLE:
+            self.history = dict_history
+
+    # ------------------------------------------------------------------
+    # Fallback
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _fallback_response(user_text: str, personality: str) -> str:
+        return (
+            f"(LiteLLM fallback - {personality}) I heard: '{user_text}'. "
+            "I can respond better once litellm is installed and a provider key is set."
         )

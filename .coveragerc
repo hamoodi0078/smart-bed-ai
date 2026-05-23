@@ -1,0 +1,66 @@
+# Coverage.py configuration for pytest-cov
+# Run tests with: pytest --cov=. --cov-report=html --cov-report=term
+
+[run]
+source = .
+omit =
+    # Test files
+    tests/*
+    */test_*.py
+    # Virtual environments
+    .venv*/*
+    venv/*
+    # Third-party
+    */site-packages/*
+    # Configuration and scripts
+    alembic/*
+    scripts/*
+    # Mobile app (separate Flutter coverage)
+    mobile_app/*
+    # Static assets
+    web/*
+    local_music/*
+    output_audio/*
+    runtime_data/*
+    # Build artifacts
+    *.egg-info/*
+    build/*
+    dist/*
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+
+# Coverage thresholds
+fail_under = 70
+
+# Exclude lines from coverage
+exclude_lines =
+    # Standard pragmas
+    pragma: no cover
+    
+    # Don't complain about missing debug-only code
+    def __repr__
+    def __str__
+    
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+    
+    # Don't complain if non-runnable code isn't run
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    
+    # Don't complain about abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+    
+    # Don't complain about pass statements
+    pass
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml

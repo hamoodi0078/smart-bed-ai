@@ -15,6 +15,13 @@ from typing import Any, Callable
 import numpy as np
 from loguru import logger
 
+try:
+    import antropy as ant
+    _ANTROPY_AVAILABLE = True
+except ImportError:
+    ant = None  # type: ignore[assignment]
+    _ANTROPY_AVAILABLE = False
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -69,6 +76,9 @@ class WakeOptimizer:
         self._monitoring = False
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+
+        # HRV data for recovery-quality scoring (RMSSD in ms)
+        self._hrv_readings: list[float] = []
 
     # ------------------------------------------------------------------
     # Configuration
@@ -182,6 +192,7 @@ class WakeOptimizer:
                     time_to_alarm is not None
                     and self._min_before_alarm <= time_to_alarm <= self._pre_alarm_minutes
                 ),
+                "signal_complexity": self.get_signal_complexity(),
             }
 
     def get_restlessness_score(self, window_minutes: int = 60) -> float:
@@ -194,8 +205,12 @@ class WakeOptimizer:
         return round(count / hours, 2)
 
     def get_sleep_quality_estimate(self) -> dict[str, Any]:
-        """Estimate sleep quality from pressure data collected overnight."""
-        now = _utcnow()
+        """Estimate sleep quality from pressure data collected overnight.
+
+        When antropy is available the estimate is refined with signal entropy:
+        low-entropy (regular) pressure patterns indicate deeper, more restorative
+        sleep; high entropy indicates fragmented or light sleep.
+        """
         readings = list(self._readings)
         if len(readings) < 30:
             return {"quality": "unknown", "message": "Not enough pressure data."}
@@ -206,6 +221,7 @@ class WakeOptimizer:
 
         restlessness_per_hour = self.get_restlessness_score(int(total_hours * 60))
 
+        # Base score from restlessness event frequency.
         if restlessness_per_hour < 3:
             quality = "deep"
             score = 90
@@ -219,12 +235,180 @@ class WakeOptimizer:
             quality = "restless"
             score = 30
 
+        complexity = self.get_signal_complexity()
+        entropy_penalty = 0
+        if complexity.get("available"):
+            perm_e = complexity["perm_entropy"]
+            # perm_entropy is normalised [0,1]; >0.85 indicates fragmented signal.
+            if perm_e > 0.85:
+                entropy_penalty = 10
+            elif perm_e > 0.75:
+                entropy_penalty = 5
+            # Upgrade "moderate" to "light" when signal entropy is high.
+            if entropy_penalty >= 10 and quality == "moderate":
+                quality = "light"
+
+        # Blend in HRV quality score when data is available (weighted 40% HRV / 60% pressure)
+        hrv_result = self.get_hrv_quality_score()
+        pressure_score = max(0, score - entropy_penalty)
+        if hrv_result.get("available"):
+            hrv_score = hrv_result["score"]
+            blended_score = int(pressure_score * 0.6 + hrv_score * 0.4)
+            if hrv_result["recovery_rating"] in ("poor", "below_average") and quality == "moderate":
+                quality = "light"
+        else:
+            blended_score = pressure_score
+            hrv_result = None
+
         return {
             "quality": quality,
-            "estimated_score": score,
+            "estimated_score": blended_score,
+            "pressure_score": pressure_score,
             "restlessness_per_hour": restlessness_per_hour,
             "monitoring_hours": round(total_hours, 2),
             "total_readings": len(readings),
+            "signal_complexity": complexity,
+            "hrv_quality": hrv_result,
+        }
+
+    def record_hrv_reading(self, rmssd_ms: float) -> None:
+        """Record an HRV RMSSD measurement in milliseconds.
+
+        RMSSD (Root Mean Square of Successive Differences) is the primary
+        time-domain metric for autonomic recovery.  Normal overnight RMSSD
+        in healthy adults is 30-100 ms.
+        """
+        value = float(rmssd_ms)
+        if value > 0:
+            with self._lock:
+                self._hrv_readings.append(value)
+                # Keep only the last 24 hours of readings (avoid unbounded growth)
+                if len(self._hrv_readings) > 1000:
+                    self._hrv_readings = self._hrv_readings[-1000:]
+
+    def get_hrv_quality_score(self) -> dict[str, Any]:
+        """Derive a sleep quality score from nightly HRV RMSSD values.
+
+        Scoring rubric (evidence-based thresholds from peer-reviewed literature):
+        ≥ 60 ms  → excellent recovery (score 90-100)
+        40-59 ms → good recovery     (score 70-89)
+        25-39 ms → moderate recovery (score 50-69)
+        15-24 ms → below-average     (score 30-49)
+        < 15 ms  → poor recovery     (score 0-29)
+
+        Returns
+        -------
+        dict with keys: available, avg_rmssd, min_rmssd, max_rmssd, score,
+                        recovery_rating, recommendation, n_readings.
+        """
+        with self._lock:
+            readings = list(self._hrv_readings)
+
+        if not readings:
+            return {
+                "available": False,
+                "reason": "No HRV data recorded yet. Call record_hrv_reading() with RMSSD values.",
+            }
+
+        arr = np.asarray(readings, dtype=float)
+        avg_rmssd = float(arr.mean())
+        min_rmssd = float(arr.min())
+        max_rmssd = float(arr.max())
+        trend = "stable"
+        if len(readings) >= 4:
+            mid = len(readings) // 2
+            first_half = float(arr[:mid].mean())
+            second_half = float(arr[mid:].mean())
+            if second_half > first_half + 3.0:
+                trend = "improving"
+            elif second_half < first_half - 3.0:
+                trend = "declining"
+
+        # Map RMSSD to 0-100 score
+        if avg_rmssd >= 60:
+            score = min(100, int(90 + (avg_rmssd - 60) / 4))
+            rating = "excellent"
+            recommendation = "Excellent HRV recovery. Your autonomic nervous system is well-rested."
+        elif avg_rmssd >= 40:
+            score = int(70 + (avg_rmssd - 40) / 2)
+            rating = "good"
+            recommendation = "Good HRV recovery. Maintain consistent sleep schedule for further improvement."
+        elif avg_rmssd >= 25:
+            score = int(50 + (avg_rmssd - 25) / 1.5)
+            rating = "moderate"
+            recommendation = "Moderate HRV. Consider earlier bedtime and reducing evening stress."
+        elif avg_rmssd >= 15:
+            score = int(30 + (avg_rmssd - 15) / 1)
+            rating = "below_average"
+            recommendation = "Below-average HRV. Prioritize sleep consistency, avoid alcohol and late screens."
+        else:
+            score = max(0, int(avg_rmssd * 2))
+            rating = "poor"
+            recommendation = "Poor HRV recovery. Consult a physician if this persists. Prioritize sleep hygiene."
+
+        return {
+            "available": True,
+            "avg_rmssd_ms": round(avg_rmssd, 1),
+            "min_rmssd_ms": round(min_rmssd, 1),
+            "max_rmssd_ms": round(max_rmssd, 1),
+            "score": max(0, min(100, score)),
+            "recovery_rating": rating,
+            "trend": trend,
+            "recommendation": recommendation,
+            "n_readings": len(readings),
+        }
+
+    def get_signal_complexity(self, window: int = 512) -> dict[str, Any]:
+        """Compute entropy-based complexity metrics on recent pressure readings.
+
+        Uses the last *window* samples for efficiency.  Returns a dict with:
+        - available (bool): False when antropy is not installed or data is too short.
+        - sample_entropy (float): regularity measure; low = more regular = deeper sleep.
+        - perm_entropy (float): normalised permutation entropy in [0, 1].
+        - svd_entropy (float): singular-value entropy of the signal.
+        - num_zerocross (int): zero-crossings of the mean-centred signal.
+        - complexity_label (str): 'low' | 'medium' | 'high'.
+        """
+        if not _ANTROPY_AVAILABLE:
+            return {"available": False, "reason": "antropy not installed"}
+
+        readings = list(self._readings)
+        if len(readings) < 20:
+            return {"available": False, "reason": "insufficient data"}
+
+        values = np.array([r.value for r in readings[-window:]], dtype=np.float64)
+        std = values.std()
+        if std < 1e-9:
+            return {"available": False, "reason": "signal is constant"}
+
+        # Normalise so entropy measures are scale-independent.
+        signal = (values - values.mean()) / std
+
+        try:
+            samp_e = float(ant.sample_entropy(signal))
+            perm_e = float(ant.perm_entropy(signal, normalize=True))
+            svd_e = float(ant.svd_entropy(signal, normalize=True))
+            zerocross = int(ant.num_zerocross(signal))
+        except Exception as exc:
+            logger.debug("antropy computation error: {}", exc)
+            return {"available": False, "reason": str(exc)}
+
+        # Map to a coarse label for easy downstream consumption.
+        if perm_e < 0.6:
+            label = "low"
+        elif perm_e < 0.78:
+            label = "medium"
+        else:
+            label = "high"
+
+        return {
+            "available": True,
+            "sample_entropy": round(samp_e, 4),
+            "perm_entropy": round(perm_e, 4),
+            "svd_entropy": round(svd_e, 4),
+            "num_zerocross": zerocross,
+            "complexity_label": label,
+            "window_samples": len(signal),
         }
 
     # ------------------------------------------------------------------

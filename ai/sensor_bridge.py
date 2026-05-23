@@ -135,7 +135,25 @@ class SensorBridge:
         return ""
 
     # ------------------------------------------------------------------
-    # Environmental data accessors (populated by MQTT/Zigbee)
+    # Direct hardware sensor integration (GPIO drivers)
+    # ------------------------------------------------------------------
+
+    def update_temperature(self, temperature_c: float, humidity_pct: float | None = None) -> None:
+        """Accept a reading from the AM2301A driver (or any source)."""
+        self._temperature = float(temperature_c)
+        if humidity_pct is not None:
+            self._humidity = float(humidity_pct)
+        logger.debug("SensorBridge temperature updated: %.1f°C, humidity: %s%%", self._temperature, self._humidity)
+
+    def update_heart_rate(self, heart_rate_bpm: float, spo2_pct: float | None = None) -> None:
+        """Accept a reading from the MAX30102 driver (or any source)."""
+        self._heart_rate = float(heart_rate_bpm)
+        if spo2_pct is not None:
+            self._spo2 = float(spo2_pct)
+        logger.debug("SensorBridge heart rate updated: %.0f bpm, SpO2: %s%%", self._heart_rate, getattr(self, '_spo2', None))
+
+    # ------------------------------------------------------------------
+    # Environmental data accessors (populated by MQTT/Zigbee/GPIO)
     # ------------------------------------------------------------------
 
     def get_temperature(self) -> float | None:
@@ -147,11 +165,15 @@ class SensorBridge:
     def get_heart_rate(self) -> float | None:
         return self._heart_rate
 
+    def get_spo2(self) -> float | None:
+        return getattr(self, "_spo2", None)
+
     def get_environment_summary(self) -> dict[str, Any]:
         return {
             "temperature_c": self._temperature,
             "humidity_pct": self._humidity,
             "heart_rate_bpm": self._heart_rate,
+            "spo2_pct": getattr(self, "_spo2", None),
             "pressure_active": self._pressure_active,
             "motion_active": self._motion_active,
         }

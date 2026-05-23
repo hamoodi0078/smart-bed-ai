@@ -35,7 +35,13 @@ def normalize_automation_criticality(value: str) -> str:
 
 @dataclass(frozen=True)
 class Automation:
-    """Declarative automation with pure trigger/action callables."""
+    """Declarative automation with pure trigger/action callables.
+
+    Scheduling modes (mutually exclusive):
+    - ``cron_expr`` set  → fires when ``core.cron_utils.should_fire_now`` returns True
+                           (e.g. ``"0 22 * * *"`` fires at 22:00 every day).
+    - ``cron_expr`` None → fires when ``cooldown_minutes`` has elapsed since last run.
+    """
 
     name: str
     trigger: AutomationTrigger
@@ -44,3 +50,4 @@ class Automation:
     criticality: str = AUTOMATION_CRITICALITY_NON_CRITICAL
     enabled: bool = True
     window_key: WindowKeyResolver | None = None
+    cron_expr: str | None = None

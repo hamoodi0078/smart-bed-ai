@@ -2,6 +2,7 @@ from typing import Tuple
 
 
 HIGH_RISK_KEYWORDS = (
+    # English
     "suicide",
     "kill myself",
     "end my life",
@@ -10,14 +11,39 @@ HIGH_RISK_KEYWORDS = (
     "self-harm",
     "want to die",
     "overdose",
+    # Arabic
+    "انتحار",
+    "اقتل نفسي",
+    "اختم حياتي",
+    "أؤذي نفسي",
+    "أجرح نفسي",
+    "أريد الموت",
+    "موت",
+    "ودي أموت",
+    "خنقت",
+    "ما ابغى اعيش",
 )
 
 MODERATE_RISK_KEYWORDS = (
+    # English
     "hopeless",
     "i can't go on",
     "panic attack",
     "severe depression",
     "i am not safe",
+    # Arabic
+    "يائس",
+    "ما قدرت أكمل",
+    "ضاق صدري",
+    "قلبي انقبض",
+    "هلع",
+    "اكتئاب شديد",
+    "حزين",
+    "زعلان",
+    "قلقان",
+    "محد يحبني",
+    "مافي أمل",
+    "ما في أمل",
 )
 
 

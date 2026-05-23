@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import '../../theme/app_theme.dart';
 
 class SleepSoundsScreen extends StatefulWidget {
@@ -11,6 +12,7 @@ class SleepSoundsScreen extends StatefulWidget {
 class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
   String? _playingSound;
   double _volume = 0.7;
+  late final AudioPlayer _player;
 
   final List<_Sound> _sounds = [
     _Sound(
@@ -87,14 +89,34 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
     ),
   ];
 
-  void _toggleSound(String soundId) {
-    setState(() {
-      if (_playingSound == soundId) {
-        _playingSound = null;
-      } else {
-        _playingSound = soundId;
+  @override
+  void initState() {
+    super.initState();
+    _player = AudioPlayer();
+    _player.setVolume(_volume);
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggleSound(String soundId) async {
+    if (_playingSound == soundId) {
+      await _player.stop();
+      setState(() => _playingSound = null);
+    } else {
+      setState(() => _playingSound = soundId);
+      await _player.stop();
+      try {
+        await _player.setAssetSource('assets/sounds/$soundId.mp3');
+        await _player.setLoopMode(LoopMode.one);
+        await _player.play();
+      } catch (_) {
+        // Asset not yet bundled — UI still reflects playing state for preview.
       }
-    });
+    }
   }
 
   @override
@@ -148,11 +170,11 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
         borderRadius: BorderRadius.circular(16),
         gradient: LinearGradient(
           colors: [
-            sound.color.withOpacity(0.3),
-            sound.color.withOpacity(0.1),
+            sound.color.withValues(alpha: 0.3),
+            sound.color.withValues(alpha: 0.1),
           ],
         ),
-        border: Border.all(color: sound.color.withOpacity(0.5)),
+        border: Border.all(color: sound.color.withValues(alpha: 0.5)),
       ),
       child: Column(
         children: [
@@ -161,7 +183,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: sound.color.withOpacity(0.2),
+                  color: sound.color.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(sound.icon, color: sound.color, size: 24),
@@ -182,7 +204,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
                     Text(
                       'Now Playing',
                       style: TextStyle(
-                        color: sound.color.withOpacity(0.8),
+                        color: sound.color.withValues(alpha: 0.8),
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -201,17 +223,20 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
           Row(
             children: [
               Icon(Icons.volume_down_rounded,
-                  color: AppColors.softWhite.withOpacity(0.6), size: 20),
+                  color: AppColors.softWhite.withValues(alpha: 0.6), size: 20),
               Expanded(
                 child: Slider(
                   value: _volume,
-                  onChanged: (value) => setState(() => _volume = value),
+                  onChanged: (value) {
+                    setState(() => _volume = value);
+                    _player.setVolume(value);
+                  },
                   activeColor: sound.color,
-                  inactiveColor: AppColors.softWhite.withOpacity(0.2),
+                  inactiveColor: AppColors.softWhite.withValues(alpha: 0.2),
                 ),
               ),
               Icon(Icons.volume_up_rounded,
-                  color: AppColors.softWhite.withOpacity(0.6), size: 20),
+                  color: AppColors.softWhite.withValues(alpha: 0.6), size: 20),
               const SizedBox(width: 8),
               Text(
                 '${(_volume * 100).toInt()}%',
@@ -253,18 +278,18 @@ class _SoundCard extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              sound.color.withOpacity(isPlaying ? 0.3 : 0.15),
-              sound.color.withOpacity(isPlaying ? 0.15 : 0.05),
+              sound.color.withValues(alpha: isPlaying ? 0.3 : 0.15),
+              sound.color.withValues(alpha: isPlaying ? 0.15 : 0.05),
             ],
           ),
           border: Border.all(
-            color: isPlaying ? sound.color : sound.color.withOpacity(0.3),
+            color: isPlaying ? sound.color : sound.color.withValues(alpha: 0.3),
             width: isPlaying ? 2 : 1,
           ),
           boxShadow: isPlaying
               ? [
                   BoxShadow(
-                    color: sound.color.withOpacity(0.4),
+                    color: sound.color.withValues(alpha: 0.4),
                     blurRadius: 16,
                     spreadRadius: 2,
                   )
@@ -281,7 +306,7 @@ class _SoundCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: sound.color.withOpacity(0.2),
+                    color: sound.color.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -297,7 +322,7 @@ class _SoundCard extends StatelessWidget {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.gold.withOpacity(0.2),
+                      color: AppColors.gold.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(color: AppColors.gold),
                     ),
@@ -333,7 +358,7 @@ class _SoundCard extends StatelessWidget {
                 Text(
                   sound.description,
                   style: TextStyle(
-                    color: AppColors.softWhite.withOpacity(0.7),
+                    color: AppColors.softWhite.withValues(alpha: 0.7),
                     fontSize: 11,
                     height: 1.3,
                   ),
@@ -348,14 +373,14 @@ class _SoundCard extends StatelessWidget {
                       children: [
                         Icon(
                           Icons.timer_rounded,
-                          color: sound.color.withOpacity(0.7),
+                          color: sound.color.withValues(alpha: 0.7),
                           size: 14,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           sound.duration,
                           style: TextStyle(
-                            color: sound.color.withOpacity(0.8),
+                            color: sound.color.withValues(alpha: 0.8),
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),

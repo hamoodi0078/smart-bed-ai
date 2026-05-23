@@ -182,7 +182,11 @@ class AutomationRegistry:
             )
 
             last_ran = self._parse_optional_utc(record.get("last_ran_utc", ""))
-            if last_ran is not None:
+            if automation.cron_expr:
+                from core.cron_utils import should_fire_now
+                if not should_fire_now(automation.cron_expr, now=now_utc, tolerance_seconds=60):
+                    continue
+            elif last_ran is not None:
                 cooldown = normalize_cooldown_minutes(automation.cooldown_minutes)
                 if now_utc - last_ran < timedelta(minutes=cooldown):
                     continue
@@ -287,7 +291,14 @@ class AutomationRegistry:
 
             next_run_utc = ""
             next_run_in_minutes = 0
-            if isinstance(last_ran, datetime):
+            if automation.cron_expr:
+                from core.cron_utils import next_fire, should_fire_now
+                nf = next_fire(automation.cron_expr, now=now)
+                if nf:
+                    next_run_utc = to_iso(nf)
+                    seconds_remaining = max(0.0, (nf - now).total_seconds())
+                    next_run_in_minutes = int(math.ceil(seconds_remaining / 60.0))
+            elif isinstance(last_ran, datetime):
                 next_run_at = ensure_utc(last_ran) + timedelta(minutes=cooldown)
                 next_run_utc = to_iso(next_run_at)
                 seconds_remaining = max(0.0, (next_run_at - now).total_seconds())
@@ -296,6 +307,7 @@ class AutomationRegistry:
             rows.append(
                 {
                     "name": automation.name,
+                    "cron_expr": automation.cron_expr or "",
                     "cooldown_minutes": cooldown,
                     "criticality": normalize_automation_criticality(automation.criticality),
                     "last_ran_utc": to_iso(last_ran) if isinstance(last_ran, datetime) else "",

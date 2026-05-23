@@ -1,31 +1,22 @@
-"""Celery application instance for background task processing."""
+"""Celery application instance — **DEPRECATED**.
+
+Celery has been replaced by ARQ (``tasks/arq_app.py``) as the sole async job
+queue.  This file is kept only so that imports referencing ``celery_app`` do
+not crash at import time.  Remove this file once all call-sites are confirmed
+to use ARQ instead.
+
+To run the async worker:
+    arq tasks.arq_app.WorkerSettings
+"""
 
 from __future__ import annotations
 
-from celery import Celery
+import warnings
 
-from config import settings
+warnings.warn(
+    "tasks.celery_app is deprecated — use arq (tasks.arq_app.WorkerSettings) instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
-
-def make_celery() -> Celery:
-    app = Celery("danah_tasks")
-    app.conf.update(
-        broker_url=settings.celery_broker_url,
-        result_backend=settings.celery_result_backend,
-        task_serializer="json",
-        result_serializer="json",
-        accept_content=["json"],
-        timezone="UTC",
-        enable_utc=True,
-        task_acks_late=True,
-        task_reject_on_worker_lost=True,
-        worker_prefetch_multiplier=1,
-        task_routes={
-            "tasks.notification_tasks.*": {"queue": "notifications"},
-        },
-    )
-    app.autodiscover_tasks(["tasks"])
-    return app
-
-
-celery_app = make_celery()
+celery_app = None  # Stub — prevents AttributeError on import

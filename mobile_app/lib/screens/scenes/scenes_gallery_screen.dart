@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
@@ -182,20 +182,20 @@ class _SceneCard extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              scene.color.withOpacity(isPreviewing ? 0.4 : 0.2),
-              scene.color.withOpacity(isPreviewing ? 0.2 : 0.05),
+              scene.color.withValues(alpha: isPreviewing ? 0.4 : 0.2),
+              scene.color.withValues(alpha: isPreviewing ? 0.2 : 0.05),
             ],
           ),
           border: Border.all(
             color: isPreviewing
                 ? scene.color
-                : scene.color.withOpacity(0.3),
+                : scene.color.withValues(alpha: 0.3),
             width: isPreviewing ? 2 : 1,
           ),
           boxShadow: isPreviewing
               ? [
                   BoxShadow(
-                    color: scene.color.withOpacity(0.5),
+                    color: scene.color.withValues(alpha: 0.5),
                     blurRadius: 20,
                     spreadRadius: 5,
                   ),
@@ -214,7 +214,7 @@ class _SceneCard extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: scene.color.withOpacity(0.2),
+                          color: scene.color.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
@@ -231,7 +231,7 @@ class _SceneCard extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: AppColors.gold.withOpacity(0.2),
+                            color: AppColors.gold.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: AppColors.gold,
@@ -272,7 +272,7 @@ class _SceneCard extends StatelessWidget {
                   Text(
                     scene.description,
                     style: TextStyle(
-                      color: AppColors.softWhite.withOpacity(0.8),
+                      color: AppColors.softWhite.withValues(alpha: 0.8),
                       fontSize: 12,
                       height: 1.3,
                     ),
@@ -314,7 +314,7 @@ class _SceneCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                     gradient: RadialGradient(
                       colors: [
-                        scene.color.withOpacity(0.3),
+                        scene.color.withValues(alpha: 0.3),
                         Colors.transparent,
                       ],
                     ),

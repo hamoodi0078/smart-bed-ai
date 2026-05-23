@@ -3,11 +3,14 @@ from __future__ import annotations
 import datetime
 import json
 import os
+from pathlib import Path
+
+from config import RUNTIME_DATA_DIR
 
 
 class GuestModeManager:
     def __init__(self):
-        self.state_file = "guest_mode/guest_state.json"
+        self.state_file = str(RUNTIME_DATA_DIR / "guest_state.json")
 
     def _default_state(self) -> dict:
         return {

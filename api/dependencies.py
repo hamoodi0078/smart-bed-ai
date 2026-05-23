@@ -8,6 +8,23 @@ from fastapi import Depends, Request
 
 from core.service_registry import ServiceRegistry
 
+try:
+    from database import (
+        AsyncDatabaseConnection,
+        AsyncEventRepository,
+        AsyncSleepSessionRepository,
+        AsyncUserRepository,
+    )
+    _ASYNC_DB_AVAILABLE = True
+except ImportError as _async_db_import_error:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "Async database layer unavailable — routes that depend on it will fail at runtime. "
+        "Import error: %s",
+        _async_db_import_error,
+    )
+    _ASYNC_DB_AVAILABLE = False
+
 
 def get_service_registry(request: Request) -> ServiceRegistry:
     """Get the service registry from app state.
@@ -199,3 +216,83 @@ def get_dream_journal(registry: ServiceRegistry = Depends(get_service_registry))
 def get_fitness_tracker(registry: ServiceRegistry = Depends(get_service_registry)):
     """Get FitnessTracker service."""
     return registry.get("fitness_tracker")
+
+
+# ---------------------------------------------------------------------------
+# Async DB dependencies (asyncpg-backed)
+# ---------------------------------------------------------------------------
+
+async def get_async_db(request: Request) -> "AsyncDatabaseConnection":
+    """Get the async PostgreSQL connection pool from app state."""
+    return request.app.state.async_db
+
+
+async def get_async_user_repo(
+    db: "AsyncDatabaseConnection" = Depends(get_async_db),
+) -> "AsyncUserRepository":
+    """Get an async User repository backed by asyncpg."""
+    return AsyncUserRepository(db)
+
+
+async def get_async_sleep_repo(
+    db: "AsyncDatabaseConnection" = Depends(get_async_db),
+) -> "AsyncSleepSessionRepository":
+    """Get an async SleepSession repository backed by asyncpg."""
+    return AsyncSleepSessionRepository(db)
+
+
+async def get_async_event_repo(
+    db: "AsyncDatabaseConnection" = Depends(get_async_db),
+) -> "AsyncEventRepository":
+    """Get an async Event repository backed by asyncpg."""
+    return AsyncEventRepository(db)
+
+
+async def get_pgvector_index(request: Request) -> "Any":
+    """Get the PgVectorMemoryIndex from app state (None if pgvector unavailable)."""
+    return getattr(request.app.state, "pgvector_index", None)
+
+
+async def get_arq(request: Request) -> "Any":
+    """Get the arq job queue pool from app state (None if Redis unavailable)."""
+    return getattr(request.app.state, "arq", None)
+
+
+async def get_fcm_sender(request: Request) -> "Any":
+    """Get the FcmSender from app state (None if Firebase unconfigured)."""
+    return getattr(request.app.state, "fcm_sender", None)
+
+
+# ---------------------------------------------------------------------------
+# Authentication dependencies
+# ---------------------------------------------------------------------------
+
+async def get_db_session(request: Request):
+    """Get async database session from app state."""
+    if hasattr(request.app.state, "db_session_factory"):
+        async with request.app.state.db_session_factory() as session:
+            yield session
+    else:
+        raise RuntimeError("Database session factory not available")
+
+
+# Re-export auth middleware dependencies
+from auth.middleware import (
+    get_current_user,
+    get_current_user_optional,
+    require_role,
+)
+
+__all__ = [
+    "get_service_registry",
+    "get_user_profile",
+    "get_trace_id",
+    "get_async_db",
+    "get_async_user_repo",
+    "get_async_sleep_repo",
+    "get_async_event_repo",
+    "get_db_session",
+    "get_current_user",
+    "get_current_user_optional",
+    "require_role",
+]

@@ -239,3 +239,227 @@ This is the baseline release check before onboarding new pilot customers.
 
 For runtime-only Pi deployment (without Flutter mobile source on Pi), use:
 - `docs/raspberry-pi-backend-only-transfer.md`
+
+---
+
+## Authentication & Security
+
+### JWT Authentication
+
+The backend now uses industry-standard JWT authentication for API access.
+
+**Setup:**
+1. Generate a secure secret key:
+   ```bash
+   openssl rand -hex 32
+   ```
+2. Add to `.env`:
+   ```bash
+   SECRET_KEY=your-generated-key-here
+   JWT_ALGORITHM=HS256
+   ACCESS_TOKEN_EXPIRE_MINUTES=15
+   REFRESH_TOKEN_EXPIRE_DAYS=7
+   ```
+
+**Token Flow:**
+- Access tokens: 15 minutes (short-lived, stateless)
+- Refresh tokens: 7 days (stored in DB, revocable)
+- Token rotation on refresh (old token automatically revoked)
+
+### User Registration & Login
+
+**Register:**
+```bash
+POST /v1/auth/register
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!",
+  "full_name": "John Doe"
+}
+```
+
+**Login:**
+```bash
+POST /v1/auth/login
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!"
+}
+
+# Response:
+{
+  "access_token": "eyJ...",
+  "refresh_token": "...",
+  "token_type": "bearer",
+  "expires_in": 900
+}
+```
+
+**Protected Routes:**
+```bash
+GET /api/user/profile
+Authorization: Bearer eyJ...
+```
+
+### Role-Based Access Control (RBAC)
+
+**Roles:**
+- `user` - Standard user (default)
+- `admin` - Administrator
+- `superadmin` - Super administrator
+
+**Example:**
+```python
+from fastapi import Depends
+from auth.middleware import require_role
+
+@router.delete("/admin/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    admin: dict = Depends(require_role("admin"))
+):
+    # Only admins can access this endpoint
+    pass
+```
+
+### Security Features
+
+✅ **Bcrypt password hashing** (12 rounds)  
+✅ **JWT token authentication** with refresh token rotation  
+✅ **Role-based access control** (RBAC)  
+✅ **Token blacklisting** for logout  
+✅ **Account status checking** (is_active flag)  
+✅ **Production secret validation**  
+✅ **CORS security** (environment-aware, HTTPS-only in production)  
+✅ **Last login tracking**  
+✅ **Password strength requirements** (min 8 chars, numbers, special chars)
+
+---
+
+## Monitoring & Observability
+
+### Prometheus Metrics
+
+Metrics exposed at `/metrics` endpoint:
+- HTTP request count (by method, path, status)
+- Request latency (histograms)
+- Error rates
+- Process memory/CPU usage
+
+**Access Prometheus:**
+```bash
+docker-compose up -d prometheus
+# Open http://localhost:9090
+```
+
+### Grafana Dashboards
+
+Pre-configured dashboards for:
+- API performance
+- Error rates
+- Resource usage
+- Business metrics
+
+**Access Grafana:**
+```bash
+docker-compose up -d grafana
+# Open http://localhost:3000 (admin/admin)
+```
+
+### Alert Rules
+
+Configured alerts for:
+- High error rate (>5% for 5min)
+- High latency (P95 >2s for 5min)
+- Service downtime (>2min)
+- High memory usage (>1GB for 10min)
+- High authentication failure rate (>5/s for 10min)
+
+---
+
+## Database Management
+
+### Migrations
+
+Run migrations:
+```bash
+alembic upgrade head
+```
+
+Create new migration:
+```bash
+alembic revision --autogenerate -m "description"
+```
+
+### Backup & Restore
+
+**Backup:**
+```bash
+export DB_PASSWORD=your_password
+./scripts/backup_db.sh
+```
+
+**Restore:**
+```bash
+./scripts/restore_db.sh /backups/postgres/backup_smartbed_20260515_233000.sql.gz
+```
+
+**Features:**
+- Timestamped backups with compression
+- 30-day retention policy
+- Integrity verification
+- Automatic cleanup
+
+---
+
+## Testing & Coverage
+
+Run tests with coverage:
+```bash
+pytest --cov=. --cov-report=html --cov-report=term
+```
+
+View HTML coverage report:
+```bash
+open htmlcov/index.html
+```
+
+**Coverage threshold:** 70% (configured in `.coveragerc`)
+
+---
+
+## Production Deployment Checklist
+
+Before deploying to production:
+
+### Security
+- [ ] Generate strong `SECRET_KEY` (not default value)
+- [ ] Set `DANAH_ENV=production`
+- [ ] Configure `WEB_ALLOWED_ORIGINS` (no wildcards)
+- [ ] Ensure all origins use HTTPS
+- [ ] Set strong `GRAFANA_ADMIN_PASSWORD`
+- [ ] Configure database credentials securely
+
+### Database
+- [ ] Run all migrations: `alembic upgrade head`
+- [ ] Set up automated backups (cron job)
+- [ ] Test restore procedure
+- [ ] Configure connection pooling
+
+### Monitoring
+- [ ] Start Prometheus and Grafana services
+- [ ] Configure alert notifications (email/Slack)
+- [ ] Set up log aggregation
+- [ ] Configure retention policies
+
+### Performance
+- [ ] Set appropriate `GUNICORN_WORKERS` (2-4× CPU cores)
+- [ ] Configure Redis connection limits
+- [ ] Set up CDN for static assets
+- [ ] Enable HTTP/2 and compression
+
+### Documentation
+- [ ] Document runbook for common issues
+- [ ] Document disaster recovery procedures
+- [ ] Document scaling procedures
+- [ ] Update API documentation

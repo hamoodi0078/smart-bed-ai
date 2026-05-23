@@ -3,6 +3,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+asyncio_mode = "auto"
 addopts = [
     "--strict-markers",
     "--tb=short",
@@ -45,7 +46,7 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 precision = 2
-fail_under = 50
+fail_under = 65
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
@@ -57,3 +58,19 @@ exclude_lines = [
 
 [tool.coverage.html]
 directory = "htmlcov"
+
+[tool.mypy]
+python_version = "3.11"
+# Start lenient — tighten per-module as code is cleaned up
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_return_any = false
+check_untyped_defs = true
+# SQLAlchemy typed mappings need this
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+
+# Strict on new modules only
+[[tool.mypy.overrides]]
+module = ["api.routers.*", "database.models", "database.repositories"]
+disallow_untyped_defs = true
+warn_return_any = true

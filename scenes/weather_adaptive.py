@@ -1,21 +1,26 @@
 """Weather-responsive lighting adaptation for Smart Bed AI.
 
 Adjusts LED brightness and color based on outdoor weather conditions
-using OpenWeatherMap API. Compensates for cloudy/rainy days with increased
-brightness and adapts color palette to temperature.
+using OpenWeatherMap via pyowm (primary) with a raw-requests fallback
+and a free open-meteo fallback when no API key is configured.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
-import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
+
+try:
+    import pyowm
+    _PYOWM_AVAILABLE = True
+except ImportError:
+    pyowm = None  # type: ignore[assignment]
+    _PYOWM_AVAILABLE = False
 
 logger = logging.getLogger("scenes.weather_adaptive")
 
@@ -118,7 +123,14 @@ class WeatherAdaptive:
         return result
 
     def fetch_weather(self) -> dict[str, Any]:
-        """Fetch current weather. Uses open-meteo (free) when no OWM key is set."""
+        """Fetch current weather.
+
+        Priority:
+          1. pyowm (typed OWM client)  — when api_key + pyowm installed
+          2. raw requests to OWM REST  — when api_key set but pyowm absent
+          3. open-meteo (free, no key) — fallback when no api_key
+        All paths share the same in-memory cache.
+        """
         if not self._api_key:
             return self._fetch_open_meteo()
 
@@ -128,6 +140,49 @@ class WeatherAdaptive:
                 if elapsed < self._cache_minutes:
                     return self._cached_weather
 
+        if _PYOWM_AVAILABLE:
+            result = self._fetch_via_pyowm()
+            if result.get("available"):
+                return result
+            logger.warning("pyowm fetch failed, falling back to raw requests")
+
+        return self._fetch_via_requests()
+
+    def _fetch_via_pyowm(self) -> dict[str, Any]:
+        """Fetch weather using the pyowm client library."""
+        try:
+            owm = pyowm.OWM(self._api_key)
+            mgr = owm.weather_manager()
+            if self._lat and self._lon:
+                obs = mgr.weather_at_coords(self._lat, self._lon)
+            else:
+                obs = mgr.weather_at_place(f"{self._city},{self._country}")
+
+            w = obs.weather
+            temp_dict = w.temperature("celsius")
+            result = {
+                "available": True,
+                "condition": str(w.status or "").lower(),
+                "description": str(w.detailed_status or ""),
+                "temp_c": float(temp_dict.get("temp", 0)),
+                "feels_like_c": float(temp_dict.get("feels_like", 0)),
+                "humidity": int(w.humidity or 0),
+                "clouds_pct": int(w.clouds or 0),
+                "wind_speed": float((w.wind() or {}).get("speed", 0)),
+                "is_day": self._is_daytime_from_ref_time(int(w.reference_time() or 0)),
+                "fetched_at": _utcnow().isoformat(),
+            }
+        except Exception as exc:
+            logger.warning("pyowm fetch error: %s", exc)
+            return {"available": False, "reason": str(exc)}
+
+        with self._lock:
+            self._cached_weather = result
+            self._cache_time = _utcnow()
+        return result
+
+    def _fetch_via_requests(self) -> dict[str, Any]:
+        """Fetch weather using raw HTTP requests to OWM REST API."""
         params: dict[str, Any] = {"appid": self._api_key, "units": "metric"}
         if self._lat and self._lon:
             params["lat"] = self._lat
@@ -140,33 +195,28 @@ class WeatherAdaptive:
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:
-            logger.warning("Weather fetch failed: %s", exc)
+            logger.warning("OWM requests fetch failed: %s", exc)
             return self._cached_weather or {"available": False, "reason": str(exc)}
 
-        weather_main = ""
-        weather_desc = ""
         weather_list = data.get("weather", [])
-        if weather_list and isinstance(weather_list, list):
-            weather_main = str(weather_list[0].get("main", "")).strip()
-            weather_desc = str(weather_list[0].get("description", "")).strip()
-
+        weather_main = str(weather_list[0].get("main", "")).strip() if weather_list else ""
+        weather_desc = str(weather_list[0].get("description", "")).strip() if weather_list else ""
         main_data = data.get("main", {}) if isinstance(data.get("main"), dict) else {}
         result = {
             "available": True,
             "condition": weather_main.lower(),
             "description": weather_desc,
             "temp_c": float(main_data.get("temp", 0)),
+            "feels_like_c": float(main_data.get("feels_like", 0)),
             "humidity": int(main_data.get("humidity", 0)),
             "clouds_pct": int(data.get("clouds", {}).get("all", 0)),
             "wind_speed": float(data.get("wind", {}).get("speed", 0)),
             "is_day": self._is_daytime(data),
             "fetched_at": _utcnow().isoformat(),
         }
-
         with self._lock:
             self._cached_weather = result
             self._cache_time = _utcnow()
-
         return result
 
     # ------------------------------------------------------------------
@@ -292,6 +342,14 @@ class WeatherAdaptive:
         if sunrise and sunset and dt:
             return sunrise <= dt <= sunset
         hour = datetime.now().hour
+        return 6 <= hour <= 18
+
+    @staticmethod
+    def _is_daytime_from_ref_time(ref_time: int) -> bool:
+        """Estimate daytime from a UTC unix timestamp (pyowm reference_time)."""
+        if not ref_time:
+            return 6 <= datetime.now().hour <= 18
+        hour = datetime.utcfromtimestamp(ref_time).hour
         return 6 <= hour <= 18
 
     def update_location(self, latitude: float, longitude: float) -> None:

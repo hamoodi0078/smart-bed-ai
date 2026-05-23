@@ -1,8 +1,45 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../src/config/app_config.dart';
+
+// Typed API exceptions — callers catch these instead of checking map['error']
+class ApiNetworkException implements Exception {
+  final String message;
+  const ApiNetworkException([this.message = 'No internet connection']);
+  @override
+  String toString() => message;
+}
+
+class ApiTimeoutException implements Exception {
+  const ApiTimeoutException();
+  @override
+  String toString() => 'Request timed out. Please try again.';
+}
+
+class ApiUnauthorizedException implements Exception {
+  const ApiUnauthorizedException();
+  @override
+  String toString() => 'Session expired. Please log in again.';
+}
+
+class ApiServerException implements Exception {
+  final int statusCode;
+  final String message;
+  const ApiServerException(this.statusCode, [this.message = '']);
+  @override
+  String toString() => message.isNotEmpty ? message : 'Server error ($statusCode)';
+}
+
+class ApiNotFoundException implements Exception {
+  final String message;
+  const ApiNotFoundException([this.message = 'Resource not found']);
+  @override
+  String toString() => message;
+}
 
 class ApiService {
   static String get baseUrl => AppConfig.apiBaseUrl;
@@ -52,7 +89,7 @@ class ApiService {
     String name,
   ) async {
     try {
-      final http.Response response = await http.post(
+      final http.Response response = await _post(
         Uri.parse('$baseUrl/v1/auth/register'),
         headers: const <String, String>{'Content-Type': 'application/json'},
         body: jsonEncode(<String, dynamic>{
@@ -75,7 +112,7 @@ class ApiService {
     String password,
   ) async {
     try {
-      final http.Response response = await http.post(
+      final http.Response response = await _post(
         Uri.parse('$baseUrl/v1/auth/login'),
         headers: const <String, String>{'Content-Type': 'application/json'},
         body: jsonEncode(<String, dynamic>{
@@ -106,7 +143,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getBedStatus() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/bed/status'),
         headers: await _authHeaders(),
       );
@@ -124,7 +161,7 @@ class ApiService {
     int brightness,
   ) async {
     try {
-      final http.Response response = await http.post(
+      final http.Response response = await _post(
         Uri.parse('$baseUrl/v1/bed/lighting'),
         headers: await _authHeaders(),
         body: jsonEncode(<String, dynamic>{
@@ -146,7 +183,7 @@ class ApiService {
     bool enabled,
   ) async {
     try {
-      final http.Response response = await http.post(
+      final http.Response response = await _post(
         Uri.parse('$baseUrl/v1/bed/alarms'),
         headers: await _authHeaders(),
         body: jsonEncode(<String, dynamic>{
@@ -165,13 +202,14 @@ class ApiService {
 
   static Future<String> sendMessage(String message, {String personality = 'guide'}) async {
     try {
-      final http.Response response = await http.post(
+      final http.Response response = await _post(
         Uri.parse('$baseUrl/v1/ai/chat'),
         headers: await _authHeaders(),
         body: jsonEncode(<String, dynamic>{
           'message': message,
           'personality': personality,
         }),
+        timeout: const Duration(seconds: 20),
       );
 
       final Map<String, dynamic> decoded = _decodeResponse(response);
@@ -188,7 +226,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getDashboard() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/mobile/dashboard'),
         headers: await _authHeaders(),
       );
@@ -203,7 +241,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getDeviceStatus() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/device/status'),
         headers: await _authHeaders(),
       );
@@ -218,7 +256,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getAlarms() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/mobile/alarms'),
         headers: await _authHeaders(),
       );
@@ -239,7 +277,7 @@ class ApiService {
     String wakeStyle = 'led_sunrise',
   }) async {
     try {
-      final http.Response response = await http.post(
+      final http.Response response = await _post(
         Uri.parse('$baseUrl/v1/mobile/alarms'),
         headers: await _authHeaders(),
         body: jsonEncode(<String, dynamic>{
@@ -268,7 +306,7 @@ class ApiService {
     String wakeStyle = 'led_sunrise',
   }) async {
     try {
-      final http.Response response = await http.post(
+      final http.Response response = await _post(
         Uri.parse('$baseUrl/v1/mobile/alarms'),
         headers: await _authHeaders(),
         body: jsonEncode(<String, dynamic>{
@@ -291,7 +329,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> deleteAlarm(String alarmId) async {
     try {
-      final http.Response response = await http.delete(
+      final http.Response response = await _delete(
         Uri.parse('$baseUrl/v1/mobile/alarms/$alarmId'),
         headers: await _authHeaders(),
       );
@@ -306,7 +344,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getScenes() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/mobile/scenes'),
         headers: await _authHeaders(),
       );
@@ -321,7 +359,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> activateScene(String sceneId) async {
     try {
-      final http.Response response = await http.post(
+      final http.Response response = await _post(
         Uri.parse('$baseUrl/v1/scenes/compose'),
         headers: await _authHeaders(),
         body: jsonEncode(<String, dynamic>{
@@ -339,7 +377,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getIslamicOverview() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/mobile/islamic/overview'),
         headers: await _authHeaders(),
       );
@@ -354,7 +392,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getUserMe() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/mobile/auth/me'),
         headers: await _authHeaders(),
       );
@@ -369,7 +407,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getPlan() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/mobile/plan'),
         headers: await _authHeaders(),
       );
@@ -384,7 +422,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getUsage() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/mobile/usage'),
         headers: await _authHeaders(),
       );
@@ -399,7 +437,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getSubscriptionStatus() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/mobile/subscription/status'),
         headers: await _authHeaders(),
       );
@@ -412,16 +450,23 @@ class ApiService {
     }
   }
 
+  // Default timeout for all API requests
+  static const Duration _defaultTimeout = Duration(seconds: 12);
+  static const Duration _shortTimeout = Duration(seconds: 6);
+
   static Map<String, dynamic> _decodeResponse(http.Response response) {
     if (response.body.isEmpty) {
       return <String, dynamic>{};
     }
-
-    final dynamic decoded = jsonDecode(response.body);
-    if (decoded is Map<String, dynamic>) {
-      return decoded;
+    try {
+      final dynamic decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      return <String, dynamic>{'data': decoded};
+    } catch (_) {
+      return <String, dynamic>{};
     }
-    return <String, dynamic>{'data': decoded};
   }
 
   static void _throwIfError(
@@ -431,26 +476,72 @@ class ApiService {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return;
     }
-
-    final dynamic message = decoded['message'] ?? decoded['detail'];
-    if (message is String && message.isNotEmpty) {
-      throw Exception(message);
-    }
-    throw Exception('Request failed with status ${response.statusCode}');
+    final dynamic msg = decoded['message'] ?? decoded['detail'];
+    final String detail = msg is String && msg.isNotEmpty ? msg : '';
+    if (response.statusCode == 401) throw const ApiUnauthorizedException();
+    if (response.statusCode == 404) throw ApiNotFoundException(detail);
+    throw ApiServerException(response.statusCode, detail);
   }
 
+  // Wraps all network-layer exceptions into typed API exceptions.
   static Map<String, dynamic> _errorMap(Object error) {
+    final String type;
+    if (error is ApiUnauthorizedException) {
+      type = 'unauthorized';
+    } else if (error is ApiTimeoutException) {
+      type = 'timeout';
+    } else if (error is ApiNetworkException) {
+      type = 'network';
+    } else if (error is ApiServerException) {
+      type = 'server';
+    } else if (error is TimeoutException || error is SocketException) {
+      type = error is TimeoutException ? 'timeout' : 'network';
+    } else {
+      type = 'unknown';
+    }
     return <String, dynamic>{
       'error': true,
+      'error_type': type,
       'message': error.toString(),
     };
+  }
+
+  // Helper that applies the default timeout and converts network exceptions.
+  static Future<http.Response> _get(Uri uri, {Map<String, String>? headers, Duration? timeout}) async {
+    try {
+      return await http.get(uri, headers: headers).timeout(timeout ?? _defaultTimeout);
+    } on TimeoutException {
+      throw const ApiTimeoutException();
+    } on SocketException catch (e) {
+      throw ApiNetworkException(e.message);
+    }
+  }
+
+  static Future<http.Response> _post(Uri uri, {Map<String, String>? headers, Object? body, Duration? timeout}) async {
+    try {
+      return await http.post(uri, headers: headers, body: body).timeout(timeout ?? _defaultTimeout);
+    } on TimeoutException {
+      throw const ApiTimeoutException();
+    } on SocketException catch (e) {
+      throw ApiNetworkException(e.message);
+    }
+  }
+
+  static Future<http.Response> _delete(Uri uri, {Map<String, String>? headers, Duration? timeout}) async {
+    try {
+      return await http.delete(uri, headers: headers).timeout(timeout ?? _defaultTimeout);
+    } on TimeoutException {
+      throw const ApiTimeoutException();
+    } on SocketException catch (e) {
+      throw ApiNetworkException(e.message);
+    }
   }
 
   // ── Wind-down ────────────────────────────────────────────────────────────────
 
   static Future<Map<String, dynamic>> startWindDown(String userId) async {
     try {
-      final response = await http.post(
+      final response = await _post(
         Uri.parse('$baseUrl/v1/winddown/start'),
         headers: await _authHeaders(),
         body: jsonEncode(<String, dynamic>{'user_id': userId}),
@@ -465,7 +556,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> nextWindDownStep() async {
     try {
-      final response = await http.post(
+      final response = await _post(
         Uri.parse('$baseUrl/v1/winddown/next'),
         headers: await _authHeaders(),
       );
@@ -479,7 +570,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getBreathingPattern(String pattern) async {
     try {
-      final response = await http.get(
+      final response = await _get(
         Uri.parse('$baseUrl/v1/winddown/breathing/$pattern?cycles=3'),
         headers: await _authHeaders(),
       );
@@ -495,7 +586,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getAchievements() async {
     try {
-      final response = await http.get(
+      final response = await _get(
         Uri.parse('$baseUrl/v1/automation/achievements'),
         headers: await _authHeaders(),
       );
@@ -511,7 +602,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getDreamJournal() async {
     try {
-      final response = await http.get(
+      final response = await _get(
         Uri.parse('$baseUrl/v1/automation/dream-journal'),
         headers: await _authHeaders(),
       );
@@ -525,7 +616,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> addDreamEntry(String content, {String mood = ''}) async {
     try {
-      final response = await http.post(
+      final response = await _post(
         Uri.parse('$baseUrl/v1/automation/dream-journal'),
         headers: await _authHeaders(),
         body: jsonEncode(<String, dynamic>{'content': content, 'mood': mood}),
@@ -542,7 +633,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getHealthReport() async {
     try {
-      final response = await http.get(
+      final response = await _get(
         Uri.parse('$baseUrl/v1/automation/health-report'),
         headers: await _authHeaders(),
       );
@@ -556,7 +647,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getHydrationStatus() async {
     try {
-      final response = await http.get(
+      final response = await _get(
         Uri.parse('$baseUrl/v1/automation/hydration'),
         headers: await _authHeaders(),
       );
@@ -570,7 +661,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> logWater(int glasses) async {
     try {
-      final response = await http.post(
+      final response = await _post(
         Uri.parse('$baseUrl/v1/automation/hydration/log'),
         headers: await _authHeaders(),
         body: jsonEncode(<String, dynamic>{'glasses': glasses}),
@@ -636,6 +727,219 @@ class ApiService {
         headers: await _authHeaders(),
       ).timeout(const Duration(seconds: 8));
       final Map<String, dynamic> decoded = _decodeResponse(response);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  // ── Live sensor data ────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getLiveSensors() async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/mobile/sensors/live'),
+        headers: await _authHeaders(),
+        timeout: _shortTimeout,
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  // ── Bed state (v1) ──────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getBedState() async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/bed/state'),
+        headers: await _authHeaders(),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  // ── Device controls ─────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getDeviceControls() async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/mobile/device-controls'),
+        headers: await _authHeaders(),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  static Future<Map<String, dynamic>> sendDeviceCommand(String action) async {
+    try {
+      final http.Response response = await _post(
+        Uri.parse('$baseUrl/v1/mobile/device-commands'),
+        headers: await _authHeaders(),
+        body: jsonEncode(<String, dynamic>{'action': action}),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  // ── Spotify ─────────────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getSpotifyStatus() async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/mobile/spotify/status'),
+        headers: await _authHeaders(),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  static Future<Map<String, dynamic>> getSpotifyAuthUrl() async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/mobile/spotify/auth-url'),
+        headers: await _authHeaders(),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  // ── Garmin / Fitbit integrations ────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getGarminStatus() async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/garmin/status'),
+        headers: await _authHeaders(),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  static Future<Map<String, dynamic>> getFitbitAuthUrl() async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/fitbit/auth-url'),
+        headers: await _authHeaders(),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  // ── Calendar ────────────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getCalendarSchedule({int daysAhead = 1}) async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/calendar/schedule?days_ahead=$daysAhead'),
+        headers: await _authHeaders(),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  // ── Bed pairing ─────────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getBedPairingStatus() async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/mobile/bed/pairing'),
+        headers: await _authHeaders(),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  static Future<Map<String, dynamic>> pairBed({
+    required String qrPayload,
+    String deviceId = '',
+    String claimToken = '',
+    String bedLocation = 'Kuwait',
+  }) async {
+    try {
+      final http.Response response = await _post(
+        Uri.parse('$baseUrl/v1/mobile/bed/pair'),
+        headers: await _authHeaders(),
+        body: jsonEncode(<String, dynamic>{
+          'qr_payload': qrPayload,
+          'device_id': deviceId,
+          'claim_token': claimToken,
+          'bed_location': bedLocation,
+        }),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  static Future<Map<String, dynamic>> unpairBed({String deviceId = ''}) async {
+    try {
+      final http.Response response = await _post(
+        Uri.parse('$baseUrl/v1/mobile/bed/unpair'),
+        headers: await _authHeaders(),
+        body: jsonEncode(<String, dynamic>{'device_id': deviceId}),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  // ── Weekly report ───────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getWeeklyReportUrl() async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/report/weekly/pdf/url'),
+        headers: await _authHeaders(),
+        timeout: const Duration(seconds: 30),
+      );
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
       return decoded;
     } catch (e) {
       return _errorMap(e);

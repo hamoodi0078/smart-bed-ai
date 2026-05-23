@@ -1,88 +1,201 @@
-import 'dart:io' show Platform;
+﻿import 'dart:io' show Platform;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/cached_avatar.dart';
 import '../../widgets/glass_card.dart';
-import '../winddown/winddown_journey_screen.dart';
-import '../alarm/alarm_screen.dart';
-import '../spotify/spotify_screen.dart';
-import '../dana/dana_chat_screen.dart';
-import '../led/led_control_screen.dart';
-import '../scenes/scenes_gallery_screen.dart';
-import '../achievements/achievements_screen.dart';
-import '../journal/sleep_journal_screen.dart';
-import '../health/health_dashboard_screen.dart';
+import '../../widgets/network_banner.dart';
+import '../../widgets/live_sensor_card.dart';
+import '../../widgets/shimmer_loader.dart';
 
-class HomeScreen extends StatefulWidget {
+// ─── Data models ─────────────────────────────────────────────────────────────
+
+class _HomeData {
+  const _HomeData({
+    required this.dashboard,
+    required this.device,
+    required this.userName,
+    this.profileImageUrl,
+  });
+  final Map<String, dynamic> dashboard;
+  final Map<String, dynamic> device;
+  final String userName;
+  final String? profileImageUrl;
+}
+
+// ─── Providers ───────────────────────────────────────────────────────────────
+
+final homeDashboardProvider = FutureProvider.autoDispose<_HomeData>((ref) async {
+  final results = await Future.wait([
+    ApiService.getDashboard(),
+    ApiService.getDeviceStatus(),
+    ApiService.getUserMe(),
+  ]);
+  final dashData = results[0] as Map<String, dynamic>;
+  final deviceData = results[1] as Map<String, dynamic>;
+  final userData = results[2] as Map<String, dynamic>;
+
+  final allFailed = dashData['error'] == true &&
+      deviceData['error'] == true &&
+      userData['error'] == true;
+  if (allFailed) {
+    throw Exception(dashData['message'] ?? 'Could not reach the server');
+  }
+
+  String userName = 'User';
+  if (dashData['error'] != true) {
+    userName = dashData['name'] as String? ?? userName;
+  }
+  if (userData['error'] != true) {
+    final name = userData['name'] as String? ?? userData['full_name'] as String? ?? '';
+    if (name.isNotEmpty) userName = name;
+  }
+
+  return _HomeData(
+    dashboard: dashData['error'] != true ? dashData : <String, dynamic>{},
+    device: deviceData['error'] != true ? deviceData : <String, dynamic>{},
+    userName: userName,
+    profileImageUrl: userData['profile_image'] as String? ??
+        userData['avatar_url'] as String?,
+  );
+});
+
+final homeSmartInsightProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  try {
+    final result = await ApiService.getSmartSleepInsight();
+    if (result['error'] != true && result['headline'] != null) return result;
+  } catch (_) {}
+  return null;
+});
+
+final homeActivityFeedProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  try {
+    final result = await ApiService.getDanaActivityFeed();
+    if (result['error'] != true) {
+      final items = result['items'];
+      if (items is List) {
+        return items.whereType<Map<String, dynamic>>().take(5).toList();
+      }
+    }
+  } catch (_) {}
+  return const [];
+});
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
-  bool _isLoading = true;
-  String? _errorMessage;
-  Map<String, dynamic> _dashboard = <String, dynamic>{};
-  Map<String, dynamic> _deviceStatus = <String, dynamic>{};
-  String _userName = 'User';
-  late AnimationController _scoreAnimationController;
-  late Animation<double> _scoreAnimation;
-  late AnimationController _bgAnimController;
-  late AnimationController _staggerController;
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with TickerProviderStateMixin {
+  late AnimationController _scoreAnimCtrl;
+  late Animation<double> _scoreAnim;
+  late AnimationController _bgAnimCtrl;
+  late AnimationController _staggerCtrl;
   Map<String, dynamic>? _updateInfo;
-  Map<String, dynamic>? _smartInsight;
-  List<Map<String, dynamic>> _activityFeed = [];
 
   static const List<_ActionItem> _actions = [
-    _ActionItem(icon: Icons.nightlight_round, label: 'Wind-Down', color: AppColors.purple),
-    _ActionItem(icon: Icons.lightbulb_rounded, label: 'LED Control', color: AppColors.accent),
-    _ActionItem(icon: Icons.music_note_rounded, label: 'Spotify', color: Color(0xFF1DB954)),
-    _ActionItem(icon: Icons.alarm_rounded, label: 'Alarms', color: AppColors.orange),
-    _ActionItem(icon: Icons.palette_rounded, label: 'Scenes', color: AppColors.purple),
-    _ActionItem(icon: Icons.chat_bubble_rounded, label: 'Dana Chat', color: AppColors.gold),
-    _ActionItem(icon: Icons.emoji_events_rounded, label: 'Achievements', color: AppColors.gold),
-    _ActionItem(icon: Icons.edit_note_rounded, label: 'Journal', color: AppColors.purple),
-    _ActionItem(icon: Icons.monitor_heart_rounded, label: 'Health', color: Color(0xFF1DB954)),
+    _ActionItem(
+      icon: Icons.nightlight_round,
+      label: 'Wind-Down',
+      color: AppColors.purple,
+      route: '/winddown',
+    ),
+    _ActionItem(
+      icon: Icons.lightbulb_rounded,
+      label: 'LED Control',
+      color: AppColors.accent,
+      route: '/led',
+    ),
+    _ActionItem(
+      icon: Icons.music_note_rounded,
+      label: 'Spotify',
+      color: Color(0xFF1DB954),
+      route: '/spotify',
+    ),
+    _ActionItem(
+      icon: Icons.alarm_rounded,
+      label: 'Alarms',
+      color: AppColors.orange,
+      route: '/alarm',
+    ),
+    _ActionItem(
+      icon: Icons.palette_rounded,
+      label: 'Scenes',
+      color: AppColors.purple,
+      route: '/scenes-gallery',
+    ),
+    _ActionItem(
+      icon: Icons.chat_bubble_rounded,
+      label: 'Dana Chat',
+      color: AppColors.gold,
+      route: '/dana-chat',
+    ),
+    _ActionItem(
+      icon: Icons.emoji_events_rounded,
+      label: 'Achievements',
+      color: AppColors.gold,
+      route: '/achievements',
+    ),
+    _ActionItem(
+      icon: Icons.edit_note_rounded,
+      label: 'Journal',
+      color: AppColors.purple,
+      route: '/journal',
+    ),
+    _ActionItem(
+      icon: Icons.monitor_heart_rounded,
+      label: 'Health',
+      color: Color(0xFF1DB954),
+      route: '/health',
+    ),
   ];
 
   @override
   void initState() {
     super.initState();
-    _scoreAnimationController = AnimationController(
+    _scoreAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
-    _scoreAnimation = Tween<double>(begin: 0, end: 0).animate(
-      CurvedAnimation(parent: _scoreAnimationController, curve: Curves.easeOutCubic),
+    _scoreAnim = Tween<double>(begin: 0, end: 0).animate(
+      CurvedAnimation(parent: _scoreAnimCtrl, curve: Curves.easeOutCubic),
     );
-    _bgAnimController = AnimationController(
+    _bgAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 6),
     )..repeat(reverse: true);
-    _staggerController = AnimationController(
+    _staggerCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
-    _loadData();
+    _checkForUpdate();
   }
 
   @override
   void dispose() {
-    _scoreAnimationController.dispose();
-    _bgAnimController.dispose();
-    _staggerController.dispose();
+    _scoreAnimCtrl.dispose();
+    _bgAnimCtrl.dispose();
+    _staggerCtrl.dispose();
     super.dispose();
   }
 
   Animation<double> _cardAnim(int index) => CurvedAnimation(
-        parent: _staggerController,
+        parent: _staggerCtrl,
         curve: Interval(
           (index * 0.08).clamp(0.0, 0.8),
           (index * 0.08 + 0.5).clamp(0.0, 1.0),
@@ -90,15 +203,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       );
 
+  Future<void> _onRefresh() async {
+    ref.invalidate(homeDashboardProvider);
+    ref.invalidate(homeSmartInsightProvider);
+    ref.invalidate(homeActivityFeedProvider);
+  }
+
   String _userFriendlyError(Object e) {
     final raw = e.toString().toLowerCase();
     if (raw.contains('timeout') || raw.contains('timed out')) {
       return 'Connection timed out. Check your network.';
     }
-    if (raw.contains('socket') || raw.contains('connection') || raw.contains('network') || raw.contains('reach')) {
+    if (raw.contains('socket') ||
+        raw.contains('connection') ||
+        raw.contains('network') ||
+        raw.contains('reach')) {
       return 'Cannot reach the server. Check your network.';
     }
-    if (raw.contains('unauthorized') || raw.contains('401') || raw.contains('sign in')) {
+    if (raw.contains('unauthorized') ||
+        raw.contains('401') ||
+        raw.contains('sign in')) {
       return 'Session expired. Please sign in again.';
     }
     if (raw.contains('not found') || raw.contains('404')) {
@@ -110,98 +234,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return 'Could not load data. Pull down to retry.';
   }
 
-  Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final results = await Future.wait([
-        ApiService.getDashboard(),
-        ApiService.getDeviceStatus(),
-        ApiService.getUserMe(),
-      ]);
-
-      final dashboardData = results[0];
-      final deviceData = results[1];
-      final userData = results[2];
-
-      if (!mounted) return;
-
-      final allFailed = dashboardData['error'] == true &&
-          deviceData['error'] == true &&
-          userData['error'] == true;
-      if (allFailed) {
-        throw Exception(dashboardData['message'] ?? 'Could not reach the server');
-      }
-
-      setState(() {
-        if (dashboardData['error'] != true) {
-          _dashboard = dashboardData;
-          _userName = dashboardData['name'] ?? _userName;
-
-          final weeklyInsight = dashboardData['weekly_insight'] ?? {};
-          final newScore = (weeklyInsight['completion_rate_pct'] ?? 0).toDouble();
-          _scoreAnimation = Tween<double>(
-            begin: _scoreAnimation.value,
-            end: newScore / 100,
-          ).animate(
-            CurvedAnimation(parent: _scoreAnimationController, curve: Curves.easeOutCubic),
-          );
-          _scoreAnimationController.forward(from: 0);
-        }
-        if (deviceData['error'] != true) _deviceStatus = deviceData;
-        if (userData['error'] != true) {
-          final name = userData['name'] ?? userData['full_name'] ?? '';
-          if (name.isNotEmpty) _userName = name;
-        }
-        _isLoading = false;
-      });
-
-      _staggerController.forward(from: 0);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = _userFriendlyError(e);
-          _isLoading = false;
-        });
-      }
-    }
-
-    // These load independently — never block the main UI
-    _checkForUpdate();
-    _loadSmartInsight();
-    _loadActivityFeed();
-  }
-
-  Future<void> _loadSmartInsight() async {
-    try {
-      final result = await ApiService.getSmartSleepInsight();
-      if (mounted && result['error'] != true && result['headline'] != null) {
-        setState(() => _smartInsight = result);
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _loadActivityFeed() async {
-    try {
-      final result = await ApiService.getDanaActivityFeed();
-      if (mounted && result['error'] != true) {
-        final items = result['items'];
-        if (items is List) {
-          setState(() {
-            _activityFeed = items.whereType<Map<String, dynamic>>().take(5).toList();
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
   Future<void> _checkForUpdate() async {
     try {
       final String platform = Platform.isIOS ? 'ios' : 'android';
-      final Map<String, dynamic>? info = await ApiService.checkForUpdate(platform);
+      final Map<String, dynamic>? info =
+          await ApiService.checkForUpdate(platform);
       if (info != null && mounted) {
         setState(() => _updateInfo = info);
         if (info['is_required'] == true) _showRequiredUpdateDialog(info);
@@ -212,18 +249,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _showRequiredUpdateDialog(Map<String, dynamic> info) {
     if (!mounted) return;
     final versionRaw = info['version'];
-    final version = (versionRaw is String && RegExp(r'^\d+\.\d+').hasMatch(versionRaw))
-        ? versionRaw
-        : 'a new version';
-    final changelog = (info['changelog'] as List?)?.take(3).join('\n') ?? '';
+    final version =
+        (versionRaw is String && RegExp(r'^\d+\.\d+').hasMatch(versionRaw))
+            ? versionRaw
+            : 'a new version';
+    final changelog =
+        (info['changelog'] as List?)?.take(3).join('\n') ?? '';
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('Update Required'),
-        content: Text(
-          '$version is required to continue.\n\n$changelog'.trim(),
-        ),
+        content: Text('$version is required to continue.\n\n$changelog'.trim()),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -245,56 +282,63 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final String? url = info['store_url'] as String?;
     if (url != null && url.isNotEmpty) {
       final Uri uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  void _handleActionTap(String label) {
-    Widget? screen;
-    switch (label) {
-      case 'Wind-Down':
-        screen = const WindDownJourneyScreen();
-      case 'LED Control':
-        screen = const LedControlScreen();
-      case 'Spotify':
-        screen = const SpotifyScreen();
-      case 'Alarms':
-        screen = const AlarmScreen();
-      case 'Scenes':
-        screen = const ScenesGalleryScreen();
-      case 'Dana Chat':
-        screen = const DanaChatScreen();
-      case 'Achievements':
-        screen = const AchievementsScreen();
-      case 'Journal':
-        screen = const SleepJournalScreen();
-      case 'Health':
-        screen = const HealthDashboardScreen();
-    }
-    if (screen != null) {
-      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen!));
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final dashAsync = ref.watch(homeDashboardProvider);
+    final smartInsight = ref.watch(homeSmartInsightProvider).valueOrNull;
+    final activityFeed =
+        ref.watch(homeActivityFeedProvider).valueOrNull ?? const [];
+
+    // Trigger score + stagger animations when data arrives
+    ref.listen<AsyncValue<_HomeData>>(homeDashboardProvider, (_, next) {
+      next.whenData((data) {
+        final score = (data.dashboard['weekly_insight']
+                    ?['completion_rate_pct'] ??
+                0)
+            .toDouble();
+        _scoreAnim = Tween<double>(
+          begin: _scoreAnim.value,
+          end: score / 100,
+        ).animate(
+          CurvedAnimation(
+              parent: _scoreAnimCtrl, curve: Curves.easeOutCubic),
+        );
+        _scoreAnimCtrl.forward(from: 0);
+        _staggerCtrl.forward(from: 0);
+      });
+    });
+
+    final homeData = dashAsync.valueOrNull;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // Animated gradient background — slow living pulse
+          // Animated gradient background
           AnimatedBuilder(
-            animation: _bgAnimController,
+            animation: _bgAnimCtrl,
             builder: (_, __) => Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color.lerp(const Color(0xFF0A1628), const Color(0xFF0D1F3C),
-                        _bgAnimController.value)!,
-                    Color.lerp(const Color(0xFF0F2040), const Color(0xFF1A1040),
-                        _bgAnimController.value)!,
+                    Color.lerp(
+                      const Color(0xFF0A1628),
+                      const Color(0xFF0D1F3C),
+                      _bgAnimCtrl.value,
+                    )!,
+                    Color.lerp(
+                      const Color(0xFF0F2040),
+                      const Color(0xFF1A1040),
+                      _bgAnimCtrl.value,
+                    )!,
                     const Color(0xFF0A1628),
                   ],
                   stops: const [0.0, 0.5, 1.0],
@@ -305,56 +349,81 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           SafeArea(
             child: Column(
               children: [
-                if (_isLoading)
-                  const LinearProgressIndicator(
-                    minHeight: 2,
-                    color: Color(0xFF00D4FF),
-                    backgroundColor: Colors.transparent,
-                  ),
-                Expanded(
+                const NetworkBanner(),
+                if (dashAsync.isLoading && dashAsync.valueOrNull == null)
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: ShimmerLoader.homeSkeleton(),
+                    ),
+                  )
+                else ...[
+                  if (dashAsync.isLoading)
+                    const LinearProgressIndicator(
+                      minHeight: 2,
+                      color: Color(0xFF00D4FF),
+                      backgroundColor: Colors.transparent,
+                    ),
+                  Expanded(
                   child: RefreshIndicator(
                     color: const Color(0xFF00D4FF),
-                    onRefresh: _loadData,
+                    onRefresh: _onRefresh,
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildTopBar(),
-                          if (_updateInfo != null && _updateInfo!['is_required'] != true) ...[
+                          _buildTopBar(homeData),
+                          if (_updateInfo != null &&
+                              _updateInfo!['is_required'] != true) ...[
                             const SizedBox(height: 10),
                             _buildUpdateBanner(_updateInfo!),
                           ],
-                          if (_errorMessage != null) ...[
+                          if (dashAsync.hasError) ...[
                             const SizedBox(height: 12),
-                            _buildErrorBanner(),
+                            _buildErrorBanner(
+                                _userFriendlyError(dashAsync.error!)),
                           ],
                           const SizedBox(height: 20),
-                          if (_smartInsight != null) ...[
-                            _buildSmartInsightCard()
+                          if (smartInsight != null) ...[
+                            _buildSmartInsightCard(smartInsight)
                                 .animate()
                                 .fadeIn(duration: 350.ms)
-                                .slideY(begin: 0.08, end: 0, duration: 350.ms),
+                                .slideY(
+                                    begin: 0.08,
+                                    end: 0,
+                                    duration: 350.ms),
                             const SizedBox(height: 14),
                           ],
                           _buildDanaGreetingCard()
                               .animate()
                               .fadeIn(duration: 400.ms)
-                              .slideY(begin: 0.1, end: 0, duration: 400.ms),
+                              .slideY(
+                                  begin: 0.1, end: 0, duration: 400.ms),
                           const SizedBox(height: 16),
-                          _buildSleepScoreCircle()
+                          _buildSleepScoreCircle(
+                                  homeData?.dashboard ?? {})
                               .animate()
                               .fadeIn(delay: 100.ms, duration: 400.ms)
-                              .slideY(begin: 0.1, end: 0, delay: 100.ms, duration: 400.ms),
+                              .slideY(
+                                  begin: 0.1,
+                                  end: 0,
+                                  delay: 100.ms,
+                                  duration: 400.ms),
                           const SizedBox(height: 16),
-                          _buildQuickStatsRow()
+                          _buildQuickStatsRow(homeData?.dashboard ?? {})
                               .animate()
                               .fadeIn(delay: 200.ms, duration: 400.ms)
-                              .slideY(begin: 0.1, end: 0, delay: 200.ms, duration: 400.ms),
-                          if (_activityFeed.isNotEmpty) ...[
+                              .slideY(
+                                  begin: 0.1,
+                                  end: 0,
+                                  delay: 200.ms,
+                                  duration: 400.ms),
+                          const SizedBox(height: 16),
+                          const LiveSensorCard(),
+                          if (activityFeed.isNotEmpty) ...[
                             const SizedBox(height: 16),
-                            _buildDanaActivityFeed()
+                            _buildDanaActivityFeed(activityFeed)
                                 .animate()
                                 .fadeIn(delay: 300.ms, duration: 400.ms),
                           ],
@@ -362,9 +431,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           _buildQuickActionsGrid()
                               .animate()
                               .fadeIn(delay: 350.ms, duration: 450.ms)
-                              .slideY(begin: 0.08, end: 0, delay: 350.ms, duration: 450.ms),
+                              .slideY(
+                                  begin: 0.08,
+                                  end: 0,
+                                  delay: 350.ms,
+                                  duration: 450.ms),
                           const SizedBox(height: 20),
-                          _buildIslamicSection()
+                          _buildIslamicSection(homeData?.dashboard ?? {})
                               .animate()
                               .fadeIn(delay: 450.ms, duration: 400.ms),
                         ],
@@ -372,6 +445,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
+                ], // end else
               ],
             ),
           ),
@@ -380,14 +454,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ─── Smart Insight Card (AI bedtime headline) ───────────────────────────────
+  // ─── Smart Insight Card ──────────────────────────────────────────────────
 
-  Widget _buildSmartInsightCard() {
-    final String headline = _smartInsight?['headline'] as String? ?? '';
+  Widget _buildSmartInsightCard(Map<String, dynamic> insight) {
+    final String headline = insight['headline'] as String? ?? '';
     return GlassCard(
       borderRadius: 18,
       padding: const EdgeInsets.all(14),
-      border: Border.all(color: AppColors.accent.withValues(alpha: 0.45), width: 1.5),
+      border:
+          Border.all(color: AppColors.accent.withValues(alpha: 0.45), width: 1.5),
       child: Row(
         children: [
           Container(
@@ -399,7 +474,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ]),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.auto_awesome, color: AppColors.accent, size: 20),
+            child:
+                const Icon(Icons.auto_awesome, color: AppColors.accent, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -418,9 +494,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ─── Dana Activity Feed (horizontal scroll) ────────────────────────────────
+  // ─── Dana Activity Feed ──────────────────────────────────────────────────
 
-  Widget _buildDanaActivityFeed() {
+  Widget _buildDanaActivityFeed(List<Map<String, dynamic>> feed) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -437,16 +513,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           height: 78,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: _activityFeed.length,
+            itemCount: feed.length,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (_, i) {
-              final item = _activityFeed[i];
+              final item = feed[i];
               final status = item['status'] as String? ?? 'info';
               final dotColor = _statusColor(status);
               final eventText = item['event'] as String? ?? '';
               final timeText = item['time'] as String? ?? '';
               return GlassCard(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 borderRadius: 14,
                 child: SizedBox(
                   width: 160,
@@ -459,7 +536,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           Container(
                             width: 7,
                             height: 7,
-                            decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+                            decoration: BoxDecoration(
+                                color: dotColor, shape: BoxShape.circle),
                           ),
                           const SizedBox(width: 6),
                           Text(
@@ -478,14 +556,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ? () => showDialog<void>(
                                   context: context,
                                   builder: (_) => AlertDialog(
-                                    backgroundColor: const Color(0xFF0F2040),
+                                    backgroundColor:
+                                        const Color(0xFF0F2040),
                                     content: Text(
                                       eventText,
-                                      style: const TextStyle(color: AppColors.softWhite, fontSize: 13),
+                                      style: const TextStyle(
+                                          color: AppColors.softWhite,
+                                          fontSize: 13),
                                     ),
                                     actions: [
                                       TextButton(
-                                        onPressed: () => Navigator.of(context).pop(),
+                                        onPressed: () =>
+                                            Navigator.of(context).pop(),
                                         child: const Text('Close'),
                                       ),
                                     ],
@@ -494,7 +576,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             : null,
                         child: Text(
                           eventText,
-                          style: const TextStyle(color: AppColors.softWhite, fontSize: 11, height: 1.4),
+                          style: const TextStyle(
+                              color: AppColors.softWhite,
+                              fontSize: 11,
+                              height: 1.4),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -523,16 +608,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  // ─── Top Bar ───────────────────────────────────────────────────────────────
+  // ─── Top Bar ─────────────────────────────────────────────────────────────
 
-  Widget _buildTopBar() {
+  Widget _buildTopBar(_HomeData? data) {
     final hour = DateTime.now().hour;
     final String greeting = hour < 12
         ? 'Good Morning'
         : hour < 18
             ? 'Good Afternoon'
             : 'Good Evening';
-    final deviceOnline = _deviceStatus['device_online'] == true;
+    final deviceOnline = data?.device['device_online'] == true;
+    final userName = data?.userName ?? 'User';
 
     return Row(
       children: [
@@ -543,7 +629,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Row(
                 children: [
                   Text(
-                    '$greeting, $_userName',
+                    '$greeting, $userName',
                     style: const TextStyle(
                       color: AppColors.white,
                       fontSize: 18,
@@ -551,7 +637,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Icon(Icons.nightlight_round, color: AppColors.softWhite, size: 18),
+                  const Icon(Icons.nightlight_round,
+                      color: AppColors.softWhite, size: 18),
                 ],
               ),
               const SizedBox(height: 4),
@@ -566,7 +653,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       color: deviceOnline ? Colors.green : Colors.red,
                       boxShadow: [
                         BoxShadow(
-                          color: (deviceOnline ? Colors.green : Colors.red).withValues(alpha: 0.5),
+                          color: (deviceOnline ? Colors.green : Colors.red)
+                              .withValues(alpha: 0.5),
                           blurRadius: 6,
                           spreadRadius: 1,
                         ),
@@ -587,13 +675,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ],
           ),
         ),
+        CachedAvatar(
+          imageUrl: data?.profileImageUrl,
+          initial: userName,
+          radius: 20,
+        ),
+        const SizedBox(width: 10),
         GlassCard(
           padding: EdgeInsets.zero,
           borderRadius: 12,
-          border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
+          border:
+              Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
           child: IconButton(
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.nightlight_round, color: AppColors.softWhite),
+            icon: const Icon(Icons.nightlight_round,
+                color: AppColors.softWhite),
             onPressed: () {},
             tooltip: 'Night settings',
           ),
@@ -602,19 +698,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ─── Dana Greeting Card ───────────────────────────────────────────────────
+  // ─── Dana Greeting Card ──────────────────────────────────────────────────
 
   Widget _buildDanaGreetingCard() {
     return GlassCard(
       borderRadius: 20,
       padding: const EdgeInsets.all(16),
-      border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+      border:
+          Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.nightlight_round, color: AppColors.accent, size: 18),
+              const Icon(Icons.nightlight_round,
+                  color: AppColors.accent, size: 18),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
@@ -635,7 +733,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             highlightColor: Colors.white,
             child: const Text(
               'Dana Guide · Active',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              style:
+                  TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -643,22 +742,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ─── Sleep Score Circle with Glow Ring ───────────────────────────────────
+  // ─── Sleep Score Circle ──────────────────────────────────────────────────
 
-  Widget _buildSleepScoreCircle() {
-    final weeklyInsight = _dashboard['weekly_insight'] ?? {};
+  Widget _buildSleepScoreCircle(Map<String, dynamic> dashboard) {
+    final weeklyInsight = dashboard['weekly_insight'] ?? {};
     return AnimatedBuilder(
-      animation: Listenable.merge([_scoreAnimation, _bgAnimController]),
+      animation: Listenable.merge([_scoreAnim, _bgAnimCtrl]),
       builder: (context, child) {
-        final scoreColor = _scoreAnimation.value > 0.7
+        final scoreColor = _scoreAnim.value > 0.7
             ? Colors.green
-            : _scoreAnimation.value > 0.5
+            : _scoreAnim.value > 0.5
                 ? AppColors.accent
                 : AppColors.orange;
         return GlassCard(
           borderRadius: 20,
           padding: const EdgeInsets.all(20),
-          border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
+          border: Border.all(
+              color: AppColors.accent.withValues(alpha: 0.25)),
           child: Column(
             children: [
               const Text(
@@ -676,12 +776,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    // Glow ring behind the progress indicator
                     CustomPaint(
                       size: const Size(160, 160),
                       painter: _GlowRingPainter(
-                        progress: _scoreAnimation.value,
-                        glowOpacity: 0.15 + (_bgAnimController.value * 0.2),
+                        progress: _scoreAnim.value,
+                        glowOpacity:
+                            0.15 + (_bgAnimCtrl.value * 0.2),
                         color: scoreColor,
                       ),
                     ),
@@ -689,17 +789,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       width: 160,
                       height: 160,
                       child: CircularProgressIndicator(
-                        value: _scoreAnimation.value,
+                        value: _scoreAnim.value,
                         strokeWidth: 12,
-                        backgroundColor: AppColors.background.withValues(alpha: 0.6),
-                        valueColor: AlwaysStoppedAnimation<Color>(scoreColor),
+                        backgroundColor:
+                            AppColors.background.withValues(alpha: 0.6),
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(scoreColor),
                       ),
                     ),
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '${(_scoreAnimation.value * 100).toInt()}',
+                          '${(_scoreAnim.value * 100).toInt()}',
                           style: TextStyle(
                             color: scoreColor,
                             fontSize: 48,
@@ -721,9 +823,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               const SizedBox(height: 16),
               Text(
-                weeklyInsight['summary'] ?? 'Keep up the great work!',
+                weeklyInsight['summary'] ??
+                    'Keep up the great work!',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.softWhite, fontSize: 13, height: 1.4),
+                style: const TextStyle(
+                    color: AppColors.softWhite,
+                    fontSize: 13,
+                    height: 1.4),
               ),
             ],
           ),
@@ -732,21 +838,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ─── Quick Stats Row ──────────────────────────────────────────────────────
+  // ─── Quick Stats Row ─────────────────────────────────────────────────────
 
-  Widget _buildQuickStatsRow() {
-    final weeklyInsight = _dashboard['weekly_insight'] ?? {};
-    final nightly = _dashboard['nightly_summary'] ?? {};
+  Widget _buildQuickStatsRow(Map<String, dynamic> dashboard) {
+    final weeklyInsight = dashboard['weekly_insight'] ?? {};
+    final nightly = dashboard['nightly_summary'] ?? {};
 
-    final String lastNight = (nightly['last_night_hours'] ?? '7.2h').toString();
-    final String sleepScore = (weeklyInsight['completion_rate_pct'] ?? '82').toString();
-    final String streak = (weeklyInsight['wind_down_sessions'] ?? '5').toString();
+    final String lastNight =
+        (nightly['last_night_hours'] ?? '7.2h').toString();
+    final String sleepScore =
+        (weeklyInsight['completion_rate_pct'] ?? '82').toString();
+    final String streak =
+        (weeklyInsight['wind_down_sessions'] ?? '5').toString();
 
     return Row(
       children: [
-        Expanded(child: _StatCard(label: 'Last Night', value: lastNight, accentColor: AppColors.accent)),
+        Expanded(
+            child: _StatCard(
+                label: 'Last Night',
+                value: lastNight,
+                accentColor: AppColors.accent)),
         const SizedBox(width: 10),
-        Expanded(child: _StatCard(label: 'Sleep Score', value: sleepScore, accentColor: AppColors.purple)),
+        Expanded(
+            child: _StatCard(
+                label: 'Sleep Score',
+                value: sleepScore,
+                accentColor: AppColors.purple)),
         const SizedBox(width: 10),
         Expanded(
           child: _StatCard(
@@ -760,13 +877,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ─── Quick Actions Grid with Stagger Animation ────────────────────────────
+  // ─── Quick Actions Grid ──────────────────────────────────────────────────
 
   Widget _buildQuickActionsGrid() {
     final List<Widget> items = List.generate(_actions.length, (i) {
       final action = _actions[i];
       return AnimatedBuilder(
-        animation: _staggerController,
+        animation: _staggerCtrl,
         builder: (_, child) => FadeTransition(
           opacity: _cardAnim(i),
           child: SlideTransition(
@@ -781,7 +898,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           icon: action.icon,
           label: action.label,
           color: action.color,
-          onTap: () => _handleActionTap(action.label),
+          onTap: () => context.push(action.route),
         ),
       );
     });
@@ -797,16 +914,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ─── Islamic Section ──────────────────────────────────────────────────────
+  // ─── Islamic Section ─────────────────────────────────────────────────────
 
-  Widget _buildIslamicSection() {
-    final String nextPrayer = (_dashboard['next_prayer'] ?? 'Isha').toString();
-    final String prayerCountdown = (_dashboard['next_prayer_eta'] ?? 'in 45 minutes').toString();
+  Widget _buildIslamicSection(Map<String, dynamic> dashboard) {
+    final String nextPrayer =
+        (dashboard['next_prayer'] ?? 'Isha').toString();
+    final String prayerCountdown =
+        (dashboard['next_prayer_eta'] ?? 'in 45 minutes').toString();
 
     return GlassCard(
       borderRadius: 18,
       padding: const EdgeInsets.all(16),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      border:
+          Border.all(color: Colors.white.withValues(alpha: 0.12)),
       child: Row(
         children: [
           Container(
@@ -815,7 +935,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               color: AppColors.accent.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.mosque_rounded, color: AppColors.softWhite, size: 20),
+            child: const Icon(Icons.mosque_rounded,
+                color: AppColors.softWhite, size: 20),
           ),
           const SizedBox(width: 14),
           Column(
@@ -823,16 +944,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               const Text(
                 'Next Prayer',
-                style: TextStyle(color: AppColors.softWhite, fontSize: 12, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                    color: AppColors.softWhite,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 2),
               Text(
                 nextPrayer,
-                style: const TextStyle(color: AppColors.white, fontSize: 20, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                    color: AppColors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700),
               ),
               Text(
                 prayerCountdown,
-                style: const TextStyle(color: AppColors.accent, fontSize: 13, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                    color: AppColors.accent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -841,34 +971,40 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ─── Banners ──────────────────────────────────────────────────────────────
+  // ─── Banners ─────────────────────────────────────────────────────────────
 
-  Widget _buildErrorBanner() {
+  Widget _buildErrorBanner(String message) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.orange.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.orange.withValues(alpha: 0.35)),
+        border: Border.all(
+            color: AppColors.orange.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.cloud_off_rounded, color: AppColors.orange, size: 18),
+          const Icon(Icons.cloud_off_rounded,
+              color: AppColors.orange, size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              _errorMessage ?? 'Could not load data.',
-              style: const TextStyle(color: AppColors.orange, fontSize: 12),
+              message,
+              style: const TextStyle(
+                  color: AppColors.orange, fontSize: 12),
             ),
           ),
           TextButton(
-            onPressed: _loadData,
+            onPressed: _onRefresh,
             style: TextButton.styleFrom(
               foregroundColor: AppColors.orange,
               visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8),
             ),
-            child: const Text('Retry', style: TextStyle(fontSize: 12)),
+            child: const Text('Retry',
+                style: TextStyle(fontSize: 12)),
           ),
         ],
       ),
@@ -877,15 +1013,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildUpdateBanner(Map<String, dynamic> info) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
         color: const Color(0xFFC79A55).withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFC79A55).withValues(alpha: 0.4)),
+        border: Border.all(
+            color: const Color(0xFFC79A55).withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.system_update_rounded, color: Color(0xFFC79A55), size: 18),
+          const Icon(Icons.system_update_rounded,
+              color: Color(0xFFC79A55), size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -902,7 +1041,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 if ((info['changelog'] as List?)?.isNotEmpty == true)
                   Text(
                     (info['changelog'] as List).first.toString(),
-                    style: const TextStyle(color: Color(0xFF9B7A3A), fontSize: 11),
+                    style: const TextStyle(
+                        color: Color(0xFF9B7A3A), fontSize: 11),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -914,13 +1054,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             style: TextButton.styleFrom(
               foregroundColor: const Color(0xFFC79A55),
               visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8),
             ),
-            child: const Text('Update', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            child: const Text('Update',
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700)),
           ),
           IconButton(
             onPressed: () => setState(() => _updateInfo = null),
-            icon: const Icon(Icons.close, size: 16, color: Color(0xFF9B7A3A)),
+            icon: const Icon(Icons.close,
+                size: 16, color: Color(0xFF9B7A3A)),
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
           ),
@@ -930,7 +1074,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 }
 
-// ─── Glow Ring Painter ─────────────────────────────────────────────────────
+// ─── Glow Ring Painter ────────────────────────────────────────────────────────
 
 class _GlowRingPainter extends CustomPainter {
   const _GlowRingPainter({
@@ -952,7 +1096,7 @@ class _GlowRingPainter extends CustomPainter {
     final sweepAngle = 2 * math.pi * progress;
 
     final glowPaint = Paint()
-      ..color = color.withOpacity(glowOpacity.clamp(0.0, 1.0))
+      ..color = color.withValues(alpha: glowOpacity.clamp(0.0, 1.0))
       ..style = PaintingStyle.stroke
       ..strokeWidth = 24
       ..strokeCap = StrokeCap.round
@@ -969,19 +1113,27 @@ class _GlowRingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_GlowRingPainter old) =>
-      old.progress != progress || old.glowOpacity != glowOpacity || old.color != color;
+      old.progress != progress ||
+      old.glowOpacity != glowOpacity ||
+      old.color != color;
 }
 
-// ─── Action Item Model ────────────────────────────────────────────────────
+// ─── Action Item Model ────────────────────────────────────────────────────────
 
 class _ActionItem {
-  const _ActionItem({required this.icon, required this.label, required this.color});
+  const _ActionItem({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.route,
+  });
   final IconData icon;
   final String label;
   final Color color;
+  final String route;
 }
 
-// ─── Stat Card ────────────────────────────────────────────────────────────
+// ─── Stat Card ────────────────────────────────────────────────────────────────
 
 class _StatCard extends StatelessWidget {
   const _StatCard({
@@ -999,9 +1151,11 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       borderRadius: 14,
-      border: Border.all(color: accentColor.withValues(alpha: 0.2)),
+      border:
+          Border.all(color: accentColor.withValues(alpha: 0.2)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1036,7 +1190,7 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-// ─── Quick Action Card ────────────────────────────────────────────────────
+// ─── Quick Action Card ────────────────────────────────────────────────────────
 
 class _QuickActionCard extends StatelessWidget {
   const _QuickActionCard({
@@ -1053,36 +1207,41 @@ class _QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: GlassCard(
-          padding: const EdgeInsets.all(14),
-          borderRadius: 16,
-          border: Border.all(color: color.withValues(alpha: 0.35), width: 1.5),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: GlassCard(
+            padding: const EdgeInsets.all(14),
+            borderRadius: 16,
+            border: Border.all(
+                color: color.withValues(alpha: 0.35), width: 1.5),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 28),
                 ),
-                child: Icon(icon, color: color, size: 28),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: AppColors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 10),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

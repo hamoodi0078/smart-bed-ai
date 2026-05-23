@@ -61,35 +61,56 @@ def _get_classifier():
 
 EMOTION_KEYWORDS: Dict[str, tuple] = {
     "distressed": (
+        # English
         "overwhelmed", "anxious", "panic", "panic attack", "stressed", "stress",
         "i can't handle", "i am not okay", "burned out", "burn out", "exhausted mentally",
         "can't cope", "freaking out", "terrified", "dread", "doom", "hopeless",
         "falling apart", "breaking down", "losing it", "angry", "furious", "rage",
         "hate this", "so frustrated", "unbearable",
+        # Arabic
+        "ضايج", "قلقان", "متوتر", "مستعجل", "زعلان", "غاضب", "عصبي",
+        "ما قدرت", "ما اقدر", "ضاق صدري", "انقبض قلبي", "خايف", "فزع",
+        "يائس", "مكسور", "منهار", "ماشي وضعي", "عصبت", "ضايقني",
+        "مقدر", "مقدر اتحمل", "شعور سيء", "احساس زفت",
     ),
     "low_energy": (
+        # English
         "tired", "exhausted", "no energy", "sleepy", "drained", "fatigue",
         "fatigued", "sluggish", "groggy", "heavy", "can't move", "worn out",
         "zero energy", "completely drained", "burned out physically",
+        # Arabic
+        "تعبان", "منهك", "ما فيني طاقة", "نوم", "نعسان", "خامل",
+        "ثقيل", "ما اقدر اتحرك", "فيني ركود", "مافي حيل",
     ),
     "motivated": (
+        # English
         "let's do this", "motivated", "ready", "excited", "i can do it",
         "pumped", "energized", "fired up", "can't wait", "let's go",
         "feeling great", "on top of it", "productive", "focused", "determined",
         "inspired", "positive", "optimistic",
+        # Arabic
+        "يلا نسوي", "جاهز", "متحمس", "اقدر", "بقوة", "نشيط",
+        "مستعد", "احساس حلو", "مرتاح", "مبسوط", "فرحان", "واثق",
     ),
     "dream_positive": (
         "beautiful dream", "peaceful dream", "happy dream", "wonderful",
         "amazing dream", "great dream", "lovely dream", "nice dream",
         "had a good dream", "dreamed about paradise",
+        # Arabic
+        "حلم حلو", "حلم جميل", "حلم طيب", "حلم هادئ", "حلم سعيد",
     ),
     "dream_negative": (
         "nightmare", "scary dream", "bad dream", "terrifying dream",
         "horrible dream", "had a nightmare", "woke up scared",
         "dark dream", "disturbing dream",
+        # Arabic
+        "كابوس", "حلم مرعب", "حلم سيء", "حلم فظيع", "صحيت خايف",
+        "حلم مزعج", "حلم كئيب",
     ),
     "neutral": (
         "okay", "fine", "alright", "normal", "usual", "same",
+        # Arabic
+        "تمام", "كويس", "ماشي", "عادي", "نفس الشي", "زي الحال",
     ),
 }
 

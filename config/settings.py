@@ -17,7 +17,9 @@ GPT routing .env setup:
 import logging
 from pathlib import Path
 
-from pydantic import AliasChoices, Field, model_validator
+import os
+
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # project root
@@ -66,6 +68,25 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60
     jwt_refresh_token_expire_days: int = 30
+
+    @field_validator("secret_key")
+    @classmethod
+    def secret_key_must_be_secure(cls, v: str) -> str:
+        _unsafe = {"change-me-in-production", "secret", "changeme", "development", ""}
+        is_production = os.getenv("DANAH_ENV", "development").lower() == "production"
+        if is_production and (v in _unsafe or len(v) < 32):
+            raise ValueError(
+                "SECRET_KEY must be a random string of at least 32 characters in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        if v in _unsafe or len(v) < 16:
+            import warnings
+            warnings.warn(
+                "SECRET_KEY is weak or default — JWT tokens are insecure. "
+                "Set SECRET_KEY in your .env file.",
+                stacklevel=4,
+            )
+        return v
 
     # ── CORS ──────────────────────────────────────────────────────────
     web_allowed_origins_raw: str = Field(
@@ -170,6 +191,12 @@ class Settings(BaseSettings):
     sensor_pressure_active_low: bool = True
     sensor_motion_active_low: bool = False
     sensor_poll_interval_seconds: float = 0.2
+    sensor_temperature_enabled: bool = False
+    sensor_temperature_pin: int = 4
+    sensor_temperature_poll_interval_seconds: float = 5.0
+    sensor_heart_rate_enabled: bool = False
+    sensor_heart_rate_sample_count: int = 100
+    sensor_heart_rate_poll_interval_seconds: float = 5.0
     aec_min_confidence_when_playing: float = 0.72
 
     # ── Spotify ───────────────────────────────────────────────────────
@@ -238,6 +265,38 @@ class Settings(BaseSettings):
     long_term_memory_path: str = ""
     islamic_prayer_cache_path: str = ""
 
+    # ── Database pool ─────────────────────────────────────────────────
+    # Sync pool (psycopg2 / SQLAlchemy QueuePool)
+    db_pool_size: int = Field(
+        10,
+        validation_alias=AliasChoices("DB_POOL_SIZE", "db_pool_size"),
+    )
+    db_max_overflow: int = Field(
+        20,
+        validation_alias=AliasChoices("DB_MAX_OVERFLOW", "db_max_overflow"),
+    )
+    db_pool_timeout: float = Field(
+        30.0,
+        validation_alias=AliasChoices("DB_POOL_TIMEOUT", "db_pool_timeout"),
+    )
+    db_pool_recycle: int = Field(
+        3600,
+        validation_alias=AliasChoices("DB_POOL_RECYCLE", "db_pool_recycle"),
+    )
+    # Async pool (asyncpg)
+    db_async_pool_min: int = Field(
+        2,
+        validation_alias=AliasChoices("DB_ASYNC_POOL_MIN", "db_async_pool_min"),
+    )
+    db_async_pool_max: int = Field(
+        10,
+        validation_alias=AliasChoices("DB_ASYNC_POOL_MAX", "db_async_pool_max"),
+    )
+    db_async_command_timeout: float = Field(
+        30.0,
+        validation_alias=AliasChoices("DB_ASYNC_COMMAND_TIMEOUT", "db_async_command_timeout"),
+    )
+
     # ── Celery / Redis ────────────────────────────────────────────────
     celery_broker_url: str = Field(
         "redis://localhost:6379/0",
@@ -246,6 +305,122 @@ class Settings(BaseSettings):
     celery_result_backend: str = Field(
         "redis://localhost:6379/1",
         validation_alias=AliasChoices("CELERY_RESULT_BACKEND", "celery_result_backend"),
+    )
+    arq_redis_url: str = Field(
+        "redis://localhost:6379/2",
+        validation_alias=AliasChoices("ARQ_REDIS_URL", "arq_redis_url"),
+    )
+
+    # ── Fitbit ────────────────────────────────────────────────────────
+    fitbit_client_id: str = Field(
+        "",
+        validation_alias=AliasChoices("FITBIT_CLIENT_ID", "fitbit_client_id"),
+    )
+    fitbit_client_secret: str = Field(
+        "",
+        validation_alias=AliasChoices("FITBIT_CLIENT_SECRET", "fitbit_client_secret"),
+    )
+    fitbit_redirect_uri: str = Field(
+        "http://127.0.0.1:8000/v1/fitbit/callback",
+        validation_alias=AliasChoices("FITBIT_REDIRECT_URI", "fitbit_redirect_uri"),
+    )
+
+    # ── Garmin Connect ────────────────────────────────────────────────
+    garmin_email: str = Field(
+        "",
+        validation_alias=AliasChoices("GARMIN_EMAIL", "garmin_email"),
+    )
+    garmin_password: str = Field(
+        "",
+        validation_alias=AliasChoices("GARMIN_PASSWORD", "garmin_password"),
+    )
+    garmin_tokenstore_path: str = Field(
+        "",
+        validation_alias=AliasChoices("GARMIN_TOKENSTORE_PATH", "garmin_tokenstore_path"),
+    )
+
+    # ── Google Calendar ───────────────────────────────────────────────
+    google_calendar_client_id: str = Field(
+        "",
+        validation_alias=AliasChoices("GOOGLE_CALENDAR_CLIENT_ID", "google_calendar_client_id"),
+    )
+    google_calendar_client_secret: str = Field(
+        "",
+        validation_alias=AliasChoices("GOOGLE_CALENDAR_CLIENT_SECRET", "google_calendar_client_secret"),
+    )
+    google_calendar_token_uri: str = "https://oauth2.googleapis.com/token"
+    google_calendar_scopes: str = "https://www.googleapis.com/auth/calendar.readonly"
+
+    # ── OpenWeatherMap ────────────────────────────────────────────────
+    owm_api_key: str = Field(
+        "",
+        validation_alias=AliasChoices("OPENWEATHERMAP_API_KEY", "OWM_API_KEY", "owm_api_key"),
+    )
+
+    # ── Firebase / FCM ────────────────────────────────────────────────
+    firebase_credentials_path: str = Field(
+        "",
+        validation_alias=AliasChoices("FIREBASE_CREDENTIALS_PATH", "firebase_credentials_path"),
+    )
+    firebase_credentials_json: str = Field(
+        "",
+        validation_alias=AliasChoices("FIREBASE_CREDENTIALS_JSON", "firebase_credentials_json"),
+    )
+
+    # ── Sentry ────────────────────────────────────────────────────────
+    sentry_dsn: str = Field(
+        "",
+        validation_alias=AliasChoices("SENTRY_DSN", "sentry_dsn"),
+    )
+    sentry_environment: str = Field(
+        "production",
+        validation_alias=AliasChoices("SENTRY_ENVIRONMENT", "sentry_environment"),
+    )
+    sentry_release: str = Field(
+        "",
+        validation_alias=AliasChoices("SENTRY_RELEASE", "sentry_release"),
+    )
+    sentry_traces_sample_rate: float = Field(
+        0.1,
+        validation_alias=AliasChoices("SENTRY_TRACES_SAMPLE_RATE", "sentry_traces_sample_rate"),
+    )
+    sentry_profiles_sample_rate: float = Field(
+        0.1,
+        validation_alias=AliasChoices("SENTRY_PROFILES_SAMPLE_RATE", "sentry_profiles_sample_rate"),
+    )
+
+    # ── AWS ───────────────────────────────────────────────────────────
+    aws_region: str = Field(
+        "us-east-1",
+        validation_alias=AliasChoices("AWS_REGION", "aws_region"),
+    )
+    aws_access_key_id: str = Field(
+        "",
+        validation_alias=AliasChoices("AWS_ACCESS_KEY_ID", "aws_access_key_id"),
+    )
+    aws_secret_access_key: str = Field(
+        "",
+        validation_alias=AliasChoices("AWS_SECRET_ACCESS_KEY", "aws_secret_access_key"),
+    )
+    aws_s3_bucket: str = Field(
+        "",
+        validation_alias=AliasChoices("AWS_S3_BUCKET", "aws_s3_bucket"),
+    )
+    aws_s3_reports_prefix: str = Field(
+        "reports/",
+        validation_alias=AliasChoices("AWS_S3_REPORTS_PREFIX", "aws_s3_reports_prefix"),
+    )
+    aws_ses_from_email: str = Field(
+        "",
+        validation_alias=AliasChoices("AWS_SES_FROM_EMAIL", "aws_ses_from_email"),
+    )
+    aws_ses_from_name: str = Field(
+        "Danah Smart Bed",
+        validation_alias=AliasChoices("AWS_SES_FROM_NAME", "aws_ses_from_name"),
+    )
+    aws_s3_presigned_url_expiry_seconds: int = Field(
+        3600,
+        validation_alias=AliasChoices("AWS_S3_PRESIGNED_URL_EXPIRY_SECONDS", "aws_s3_presigned_url_expiry_seconds"),
     )
 
     # ── Islamic ───────────────────────────────────────────────────────
@@ -284,6 +459,31 @@ settings = Settings()
 def enforce_sensitive_data_path_guard() -> None:
     _assert_safe_sensitive_json_path("SUBSCRIPTION_DB_PATH", Path(settings.subscription_db_path))
     _assert_safe_sensitive_json_path("USER_PROFILE_PATH", Path(settings.user_profile_path))
+
+
+def validate_production_secrets() -> list[str]:
+    """Check all required secrets are configured for production.
+
+    Returns a list of warning messages (empty = all good).
+    Call this from the app lifespan or CLI startup command.
+    """
+    is_production = os.getenv("DANAH_ENV", "development").lower() == "production"
+    warnings: list[str] = []
+
+    _unsafe_key = {"change-me-in-production", "secret", "changeme", "development", ""}
+
+    if settings.secret_key in _unsafe_key:
+        warnings.append("SECRET_KEY is not set or uses the insecure default")
+    if not settings.deepgram_api_key and is_production:
+        warnings.append("DEEPGRAM_API_KEY not set — voice features unavailable")
+    if not settings.anthropic_api_key and is_production:
+        warnings.append("ANTHROPIC_API_KEY not set — AI chat unavailable")
+    if not settings.paypal_client_id and is_production:
+        warnings.append("PAYPAL_CLIENT_ID not set — billing unavailable")
+    if not settings.aws_ses_from_email and is_production:
+        warnings.append("AWS_SES_FROM_EMAIL not set — email notifications unavailable")
+
+    return warnings
 
 
 enforce_sensitive_data_path_guard()

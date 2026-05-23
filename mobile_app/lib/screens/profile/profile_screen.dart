@@ -1,4 +1,7 @@
+﻿import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
 import '../achievements/achievements_screen.dart';
@@ -14,11 +17,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
   Map<String, dynamic> _userData = {};
   Map<String, dynamic> _stats = {};
+  File? _localAvatar;
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
+  }
+
+  Future<void> _pickProfileImage() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 85,
+    );
+    if (picked != null && mounted) {
+      setState(() => _localAvatar = File(picked.path));
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -67,7 +83,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            AppColors.accent.withOpacity(0.2),
+                            AppColors.accent.withValues(alpha: 0.2),
                             AppColors.background,
                           ],
                         ),
@@ -76,31 +92,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Container(
-                              width: 100,
-                              height: 100,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  colors: [
-                                    AppColors.accent,
-                                    AppColors.purple,
-                                  ],
-                                ),
-                                border: Border.all(
-                                  color: AppColors.white,
-                                  width: 3,
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  userName[0].toUpperCase(),
-                                  style: const TextStyle(
-                                    color: AppColors.white,
-                                    fontSize: 42,
-                                    fontWeight: FontWeight.w700,
+                            GestureDetector(
+                              onTap: _pickProfileImage,
+                              child: Stack(
+                                children: [
+                                  Container(
+                                    width: 100,
+                                    height: 100,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: LinearGradient(
+                                        colors: [AppColors.accent, AppColors.purple],
+                                      ),
+                                      border: Border.all(color: AppColors.white, width: 3),
+                                      image: _localAvatar != null
+                                          ? DecorationImage(
+                                              image: FileImage(_localAvatar!),
+                                              fit: BoxFit.cover,
+                                            )
+                                          : null,
+                                    ),
+                                    child: _localAvatar == null
+                                        ? Center(
+                                            child: Text(
+                                              userName[0].toUpperCase(),
+                                              style: const TextStyle(
+                                                color: AppColors.white,
+                                                fontSize: 42,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          )
+                                        : null,
                                   ),
-                                ),
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(5),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.accent,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.camera_alt_rounded,
+                                        color: AppColors.white,
+                                        size: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -116,7 +157,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Text(
                               userEmail,
                               style: TextStyle(
-                                color: AppColors.softWhite.withOpacity(0.8),
+                                color: AppColors.softWhite.withValues(alpha: 0.8),
                                 fontSize: 14,
                               ),
                             ),
@@ -349,7 +390,7 @@ class _StatCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         color: AppColors.cardBg,
         border: Border.all(
-          color: color.withOpacity(0.3),
+          color: color.withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -370,7 +411,7 @@ class _StatCard extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: AppColors.softWhite.withOpacity(0.7),
+              color: AppColors.softWhite.withValues(alpha: 0.7),
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
@@ -403,16 +444,16 @@ class _AchievementBadge extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: isUnlocked
-            ? color.withOpacity(0.2)
-            : AppColors.softWhite.withOpacity(0.05),
+            ? color.withValues(alpha: 0.2)
+            : AppColors.softWhite.withValues(alpha: 0.05),
         border: Border.all(
-          color: isUnlocked ? color : AppColors.softWhite.withOpacity(0.2),
+          color: isUnlocked ? color : AppColors.softWhite.withValues(alpha: 0.2),
           width: 2,
         ),
       ),
       child: Icon(
         icon,
-        color: isUnlocked ? color : AppColors.softWhite.withOpacity(0.3),
+        color: isUnlocked ? color : AppColors.softWhite.withValues(alpha: 0.3),
         size: 32,
       ),
     );
@@ -452,8 +493,8 @@ class _ActionTile extends StatelessWidget {
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: isDestructive
-                        ? Colors.red.withOpacity(0.1)
-                        : AppColors.accent.withOpacity(0.1),
+                        ? Colors.red.withValues(alpha: 0.1)
+                        : AppColors.accent.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
@@ -479,7 +520,7 @@ class _ActionTile extends StatelessWidget {
                       Text(
                         subtitle,
                         style: TextStyle(
-                          color: AppColors.softWhite.withOpacity(0.6),
+                          color: AppColors.softWhite.withValues(alpha: 0.6),
                           fontSize: 12,
                         ),
                       ),
@@ -488,7 +529,7 @@ class _ActionTile extends StatelessWidget {
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: AppColors.softWhite.withOpacity(0.4),
+                  color: AppColors.softWhite.withValues(alpha: 0.4),
                 ),
               ],
             ),

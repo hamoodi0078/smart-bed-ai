@@ -17,9 +17,11 @@ output_audio/
 .pytest_cache/
 test_results.txt
 test_audit_unittest.log
-mobile_app/build/
-mobile_app/.dart_tool/
-mobile_app/.venv/
+mobile_app/
+local_music/
+tests/
+docs/
+.github/
 *.log
 desktop.ini
 .claude/

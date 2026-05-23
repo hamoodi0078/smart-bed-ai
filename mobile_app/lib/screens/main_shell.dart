@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'home/home_screen.dart';
 import 'islamic/islamic_screen.dart';
@@ -81,7 +81,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
                     boxShadow: [
                       BoxShadow(
                         color: const Color(0xFF7B68EE)
-                            .withOpacity(0.3 + _pulseCtrl.value * 0.35),
+                            .withValues(alpha: 0.3 + _pulseCtrl.value * 0.35),
                         blurRadius: 20,
                         spreadRadius: 4,
                       ),
@@ -100,7 +100,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
           color: const Color(0xFF0F2040),
           border: Border(
             top: BorderSide(
-              color: const Color(0xFF00D4FF).withOpacity(0.2),
+              color: const Color(0xFF00D4FF).withValues(alpha: 0.2),
               width: 1,
             ),
           ),

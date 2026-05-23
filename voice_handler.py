@@ -552,15 +552,7 @@ def build_pilot_go_no_go(profile: dict, health_report: str) -> str:
         return "Pilot signoff -> HOLD. Resolve WARN items before onboarding testers. " + checklist
     return "Pilot signoff -> GO. Core readiness checks are passing. " + checklist
 
-def normalize_for_intent(text: str) -> str:
-    return re.sub(
-        r"\s+",
-        " ",
-        re.sub(r"[^a-z0-9#(),\s'\u0600-\u06ff]+", " ", (text or "").lower()),
-    ).strip()
-
-def has_any(text: str, words: tuple[str, ...]) -> bool:
-    return any(w in text for w in words)
+from core.text_utils import normalize_for_intent, has_any  # noqa: E402
 
 def _is_llm_fallback_response(text: str) -> bool:
     value = str(text or "").strip()

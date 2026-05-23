@@ -8,6 +8,7 @@ import secrets
 from urllib.parse import urlencode
 
 import qrcode
+from core.arabic_utils import render_arabic_on_image
 
 
 QR_CODE_DIR = Path(__file__).resolve().parent
@@ -54,7 +55,24 @@ def _safe_int(value: object, fallback: int = 0) -> int:
         return int(fallback)
 
 
-def generate_qr_code(device_id: str, output_path: str, *, claim_token: str = "") -> str:
+def generate_qr_code(
+    device_id: str,
+    output_path: str,
+    *,
+    claim_token: str = "",
+    label: str = "",
+    label_arabic: str = "",
+) -> str:
+    """Generate a QR code image.
+
+    Args:
+        device_id:     Device identifier encoded into the deep link.
+        output_path:   Where to save the PNG.
+        claim_token:   Optional pairing token appended to the deep link.
+        label:         Optional Latin/English label drawn below the QR code.
+        label_arabic:  Optional Arabic label drawn below the QR code.
+                       Automatically reshaped for correct PIL rendering.
+    """
     params = {"device_id": str(device_id)}
     token = str(claim_token or "").strip()
     if token:
@@ -68,7 +86,38 @@ def generate_qr_code(device_id: str, output_path: str, *, claim_token: str = "")
     )
     qr.add_data(deep_link)
     qr.make(fit=True)
-    image = qr.make_image(fill_color="black", back_color="white")
+    image = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+
+    latin_label = str(label or "").strip()
+    arabic_label = str(label_arabic or "").strip()
+
+    if latin_label or arabic_label:
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+
+            label_height = 0
+            if latin_label:
+                label_height += 30
+            if arabic_label:
+                label_height += 30
+
+            w, h = image.size
+            canvas = Image.new("RGB", (w, h + label_height), "white")
+            canvas.paste(image, (0, 0))
+
+            y_offset = h + 4
+            draw = ImageDraw.Draw(canvas)
+
+            if latin_label:
+                draw.text((w // 2, y_offset), latin_label, fill=(0, 0, 0), anchor="mt")
+                y_offset += 26
+
+            if arabic_label:
+                render_arabic_on_image(canvas, arabic_label, (w // 2, y_offset), fill=(0, 0, 0))
+
+            image = canvas
+        except Exception:
+            pass  # label rendering is best-effort; QR is still saved
 
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)

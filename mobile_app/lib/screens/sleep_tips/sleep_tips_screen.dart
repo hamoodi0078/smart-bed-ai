@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 
 class SleepTipsScreen extends StatefulWidget {
@@ -120,7 +120,7 @@ class _SleepTipsScreenState extends State<SleepTipsScreen> with SingleTickerProv
           isScrollable: true,
           indicatorColor: AppColors.accent,
           labelColor: AppColors.accent,
-          unselectedLabelColor: AppColors.softWhite.withOpacity(0.6),
+          unselectedLabelColor: AppColors.softWhite.withValues(alpha: 0.6),
           tabs: const [
             Tab(text: 'All'),
             Tab(text: 'Routine'),
@@ -169,7 +169,7 @@ class _TipCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         color: AppColors.cardBg,
         border: Border.all(
-          color: tip.color.withOpacity(0.3),
+          color: tip.color.withValues(alpha: 0.3),
         ),
       ),
       child: Material(
@@ -187,7 +187,7 @@ class _TipCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: tip.color.withOpacity(0.2),
+                    color: tip.color.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -220,7 +220,7 @@ class _TipCard extends StatelessWidget {
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                color: AppColors.accent.withOpacity(0.2),
+                                color: AppColors.accent.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: AppColors.accent,
@@ -241,7 +241,7 @@ class _TipCard extends StatelessWidget {
                       Text(
                         tip.category,
                         style: TextStyle(
-                          color: tip.color.withOpacity(0.8),
+                          color: tip.color.withValues(alpha: 0.8),
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -250,7 +250,7 @@ class _TipCard extends StatelessWidget {
                       Text(
                         tip.description,
                         style: TextStyle(
-                          color: AppColors.softWhite.withOpacity(0.8),
+                          color: AppColors.softWhite.withValues(alpha: 0.8),
                           fontSize: 14,
                           height: 1.4,
                         ),
@@ -262,7 +262,7 @@ class _TipCard extends StatelessWidget {
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: AppColors.softWhite.withOpacity(0.4),
+                  color: AppColors.softWhite.withValues(alpha: 0.4),
                 ),
               ],
             ),
@@ -290,7 +290,7 @@ class _TipCard extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.softWhite.withOpacity(0.3),
+                color: AppColors.softWhite.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -303,7 +303,7 @@ class _TipCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: tip.color.withOpacity(0.2),
+                        color: tip.color.withValues(alpha: 0.2),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -328,7 +328,7 @@ class _TipCard extends StatelessWidget {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: tip.color.withOpacity(0.2),
+                        color: tip.color.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -344,7 +344,7 @@ class _TipCard extends StatelessWidget {
                     Text(
                       tip.description,
                       style: TextStyle(
-                        color: AppColors.softWhite.withOpacity(0.9),
+                        color: AppColors.softWhite.withValues(alpha: 0.9),
                         fontSize: 16,
                         height: 1.6,
                       ),

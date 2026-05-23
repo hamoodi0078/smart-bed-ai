@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
@@ -92,12 +92,12 @@ class PremiumGate extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppColors.gold.withOpacity(0.2),
-            AppColors.orange.withOpacity(0.1),
+            AppColors.gold.withValues(alpha: 0.2),
+            AppColors.orange.withValues(alpha: 0.1),
           ],
         ),
         border: Border.all(
-          color: AppColors.gold.withOpacity(0.5),
+          color: AppColors.gold.withValues(alpha: 0.5),
           width: 2,
         ),
       ),
@@ -108,7 +108,7 @@ class PremiumGate extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.gold.withOpacity(0.2),
+              color: AppColors.gold.withValues(alpha: 0.2),
               border: Border.all(
                 color: AppColors.gold,
                 width: 2,
@@ -146,7 +146,7 @@ class PremiumGate extends StatelessWidget {
               description!,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: AppColors.softWhite.withOpacity(0.8),
+                color: AppColors.softWhite.withValues(alpha: 0.8),
                 fontSize: 14,
                 height: 1.4,
               ),
@@ -205,7 +205,7 @@ class _PremiumUpgradeSheet extends StatelessWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.softWhite.withOpacity(0.3),
+              color: AppColors.softWhite.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -245,7 +245,7 @@ class _PremiumUpgradeSheet extends StatelessWidget {
                     'Unlock all features and personalize your sleep experience',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: AppColors.softWhite.withOpacity(0.8),
+                      color: AppColors.softWhite.withValues(alpha: 0.8),
                       fontSize: 16,
                       height: 1.4,
                     ),
@@ -286,7 +286,7 @@ class _PremiumUpgradeSheet extends StatelessWidget {
                     '7 days free, then \$4.99/month',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: AppColors.softWhite.withOpacity(0.6),
+                      color: AppColors.softWhite.withValues(alpha: 0.6),
                       fontSize: 12,
                     ),
                   ),
@@ -379,7 +379,7 @@ class _FeatureItem extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.gold.withOpacity(0.1),
+              color: AppColors.gold.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: AppColors.gold, size: 24),
@@ -401,7 +401,7 @@ class _FeatureItem extends StatelessWidget {
                 Text(
                   description,
                   style: TextStyle(
-                    color: AppColors.softWhite.withOpacity(0.7),
+                    color: AppColors.softWhite.withValues(alpha: 0.7),
                     fontSize: 13,
                   ),
                 ),
@@ -445,10 +445,10 @@ class _PricingCard extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           color: isPopular
-              ? AppColors.gold.withOpacity(0.1)
+              ? AppColors.gold.withValues(alpha: 0.1)
               : AppColors.cardBg,
           border: Border.all(
-            color: isPopular ? AppColors.gold : AppColors.softWhite.withOpacity(0.2),
+            color: isPopular ? AppColors.gold : AppColors.softWhite.withValues(alpha: 0.2),
             width: isPopular ? 2 : 1,
           ),
         ),
@@ -496,7 +496,7 @@ class _PricingCard extends StatelessWidget {
             Text(
               period,
               style: TextStyle(
-                color: AppColors.softWhite.withOpacity(0.6),
+                color: AppColors.softWhite.withValues(alpha: 0.6),
                 fontSize: 12,
               ),
             ),

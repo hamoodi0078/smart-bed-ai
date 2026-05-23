@@ -89,10 +89,7 @@ def _redis_del_session(token: str) -> None:
     except Exception as exc:
         _log.warning("Redis del_session failed: %s", exc)
 
-try:
-    import bcrypt
-except ImportError:
-    bcrypt = None
+from core.security import hash_password as _hash_password, verify_password as _verify_password, needs_rehash as _needs_rehash
 
 
 DB_PATH = SUBSCRIPTION_DB_PATH
@@ -309,33 +306,12 @@ class SubscriptionStore:
             _log.debug("Subscription DB sync skipped (non-critical)", exc_info=True)
 
     @staticmethod
-    def _is_legacy_sha256_hash(password_hash: str) -> bool:
-        text = (password_hash or "").strip().lower()
-        return len(text) == 64 and all(ch in "0123456789abcdef" for ch in text)
-
-    @staticmethod
     def hash_password(password: str) -> str:
-        if bcrypt is None:
-            raise RuntimeError("bcrypt is required for secure password hashing")
-        # bcrypt embeds a random per-password salt in the encoded hash value.
-        secret = (password or "").encode("utf-8")
-        return bcrypt.hashpw(secret, bcrypt.gensalt()).decode("utf-8")
+        return _hash_password(password)
 
     @staticmethod
     def check_password(password: str, stored_hash: str) -> bool:
-        secret = (password or "").encode("utf-8")
-        text = (stored_hash or "").strip()
-        if not text:
-            return False
-        if SubscriptionStore._is_legacy_sha256_hash(text):
-            legacy = hashlib.sha256(secret).hexdigest()
-            return hmac.compare_digest(text.lower(), legacy)
-        if bcrypt is None:
-            return False
-        try:
-            return bcrypt.checkpw(secret, text.encode("utf-8"))
-        except Exception:
-            return False
+        return _verify_password(password, stored_hash)
 
     def create_user(self, email: str, password: str, name: str = "") -> dict:
         email_norm = (email or "").strip().lower()
@@ -455,9 +431,8 @@ class SubscriptionStore:
             stored_hash = str(user.get("password_hash", ""))
             if not self.check_password(password, stored_hash):
                 continue
-            # Migration path: keep legacy SHA-256 login working, then replace the
-            # stored hash with bcrypt so future logins use the stronger scheme.
-            if self._is_legacy_sha256_hash(stored_hash) and bcrypt is not None:
+            # Upgrade legacy SHA-256 or deprecated bcrypt rounds on successful login.
+            if _needs_rehash(stored_hash):
                 user["password_hash"] = self.hash_password(password)
                 self.save()
                 return user

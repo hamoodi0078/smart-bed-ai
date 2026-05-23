@@ -3,11 +3,16 @@ from __future__ import annotations
 import datetime
 import json
 import os
+from uuid import uuid4
 
 from notifications.expo_sender import ExpoPushSender
 from notifications.notification_types import NotificationType
 from notifications.whatsapp_notifier import WhatsAppNotifier
-from tasks.notification_tasks import send_push_notification, send_whatsapp_notification
+from tasks.notification_tasks import (
+    send_push_notification,
+    send_weekly_report_notification,
+    send_whatsapp_notification,
+)
 
 
 class NotificationScheduler:
@@ -70,7 +75,8 @@ class NotificationScheduler:
         if days_inactive < int(threshold_days):
             return {"triggered": False, "days_inactive": days_inactive}
 
-        expo_task = send_push_notification.delay(
+        expo_job_id = str(uuid4())
+        send_push_notification(
             user_id=user_id,
             notification_type=NotificationType.DANA_CHECKIN.value,
             template_vars={"days": days_inactive, "user_name": str(user_id)},
@@ -81,21 +87,22 @@ class NotificationScheduler:
         user_entry = scheduled.get(str(user_id), {})
         if isinstance(user_entry, dict):
             phone = str(user_entry.get("phone", "")).strip()
-        whatsapp_task = (
-            send_whatsapp_notification.delay(
+
+        whatsapp_job_id = None
+        if phone:
+            whatsapp_job_id = str(uuid4())
+            send_whatsapp_notification(
                 method="dana_checkin",
                 phone=phone,
                 user_id=user_id,
                 extra={"days_inactive": days_inactive},
             )
-            if phone
-            else None
-        )
+
         return {
             "triggered": True,
             "days_inactive": days_inactive,
-            "expo_task_id": expo_task.id,
-            "whatsapp_task_id": whatsapp_task.id if whatsapp_task else None,
+            "expo_task_id": expo_job_id,
+            "whatsapp_task_id": whatsapp_job_id,
         }
 
     def check_streak(self, user_id: str, streak_days: int, phone: str = None) -> dict:
@@ -104,34 +111,37 @@ class NotificationScheduler:
         if streak_value not in milestones:
             return {"triggered": False, "streak_days": streak_value}
 
-        expo_task = send_push_notification.delay(
+        expo_job_id = str(uuid4())
+        send_push_notification(
             user_id=user_id,
             notification_type=NotificationType.STREAK_ACHIEVEMENT.value,
             template_vars={"streak": streak_value, "user_name": str(user_id)},
         )
-        whatsapp_task = (
-            send_whatsapp_notification.delay(
+
+        whatsapp_job_id = None
+        if phone:
+            whatsapp_job_id = str(uuid4())
+            send_whatsapp_notification(
                 method="streak_message",
                 phone=phone,
                 user_id=user_id,
                 extra={"streak_days": streak_value},
             )
-            if phone
-            else None
-        )
+
         return {
             "triggered": True,
             "streak_days": streak_value,
-            "expo_task_id": expo_task.id,
-            "whatsapp_task_id": whatsapp_task.id if whatsapp_task else None,
+            "expo_task_id": expo_job_id,
+            "whatsapp_task_id": whatsapp_job_id,
         }
 
     def send_weekly_report_notification(self, user_id: str) -> dict:
-        return self.expo_sender.send_to_user(
+        job_id = str(uuid4())
+        send_weekly_report_notification(
             user_id=user_id,
-            notification_type=NotificationType.WEEKLY_REPORT,
             template_vars={"user_name": str(user_id)},
         )
+        return {"task_id": job_id, "queued": True, "user_id": user_id}
 
     def get_scheduled(self, user_id: str) -> dict:
         scheduled = self._read_scheduled()

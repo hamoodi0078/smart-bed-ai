@@ -1,63 +1,107 @@
 # ── Core web framework ──────────────────────────────────────────────
-fastapi>=0.110.0
-uvicorn>=0.29.0
-requests>=2.31.0
-httpx>=0.27.0          # Async HTTP client — non-blocking inside FastAPI handlers
+fastapi==0.115.0
+uvicorn==0.30.0
+sse-starlette==2.1.0           # Server-Sent Events for streaming AI chat responses
+websockets==13.0               # WebSocket transport used by uvicorn + async WS client helpers
+pyowm==3.3.0                   # OpenWeatherMap client — typed weather objects, caching, geocoding
+hijri-converter==2.3.0         # Offline Gregorian ↔ Hijri conversion — no network required
+pyarabic==0.6.15               # Arabic text processing — strip diacritics, normalize, detect Arabic
+arabic-reshaper==3.0.0         # Reshape Arabic ligatures for PIL/image rendering (joins letters correctly)
+google-api-python-client==2.131.0  # Google Calendar v3 API — server-side event pull
+garminconnect==0.2.19              # Garmin Connect API — pull sleep, HRV, steps, body battery
+fitbit==0.3.1                      # Fitbit Web API — pull sleep stages, heart rate, SpO2, steps
+reportlab==4.2.0                   # PDF generation — weekly health report export
+requests==2.32.3
+httpx==0.27.0          # Async HTTP client — non-blocking inside FastAPI handlers
 
 # ── Database ────────────────────────────────────────────────────────
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.9
-alembic>=1.13.0
-redis>=5.0.0           # Pub/sub for multi-device sync + notification queue
-aiofiles>=23.2.0       # Async file I/O for Storage/io.py
+sqlalchemy==2.0.35
+psycopg2-binary==2.9.9            # sync driver (existing routes)
+asyncpg==0.29.0                   # async driver — used by AsyncDatabaseConnection + SQLAlchemy asyncio extension
+alembic==1.13.1
+redis==5.0.8           # Pub/sub for multi-device sync + notification queue
+aiofiles==24.1.0       # Async file I/O for Storage/io.py
 
 # ── Auth & security ─────────────────────────────────────────────────
-bcrypt>=4.1.3
-python-dotenv>=1.0.1
-python-jose[cryptography]>=3.3.0   # RS256 JWT signing
+bcrypt==4.1.3
+firebase-admin==6.5.0              # FCM push notifications + Firebase Auth token verification
+passlib[bcrypt]==1.7.4             # CryptContext — cleaner bcrypt API, auto-rehash, scheme migration
+python-dotenv==1.0.1
+authlib==1.3.1                      # JWT signing/verification (replaces python-jose)
 
 # ── Config ──────────────────────────────────────────────────────────
-pydantic-settings>=2.3.0           # Typed env-var config (replaces untyped config.py)
+pydantic-settings==2.5.0           # Typed env-var config (replaces untyped config.py)
 
 # ── Logging ─────────────────────────────────────────────────────────
-loguru>=0.7.0                      # Structured logging across all AI modules
+loguru==0.7.2                      # Structured logging across all AI modules
 
 # ── Retry & resilience ──────────────────────────────────────────────
-tenacity>=8.3.0                    # Retry with backoff (replaces custom circuit breaker)
+tenacity==8.3.0                    # Retry with backoff (replaces custom circuit breaker)
 
 # ── Scheduling ──────────────────────────────────────────────────────
-APScheduler>=3.10.0                # Cron-based scheduler (replaces manual hour/min windows)
+APScheduler==3.10.4                # Cron-based scheduler (replaces manual hour/min windows)
+croniter==2.0.5                    # Cron expression parsing — next/prev fire times for automations
 
 # ── Task queue ──────────────────────────────────────────────────────
-celery>=5.4.0                      # Background tasks: notifications, report generation
+arq==0.26.1                        # Async job queue (asyncio-native, replaces Celery)
+
+# ── Speaker diarization ─────────────────────────────────────────────
+pyannote.audio==3.3.0             # Who-spoke-when diarization (requires HF_TOKEN + model accept)
 
 # ── Analytics & AI ──────────────────────────────────────────────────
-pandas>=2.2.0                      # Sleep trend analysis, weekly report aggregations
-numpy>=1.26.0                      # Math for restlessness scores, sleep stage ratios
-scikit-learn>=1.4.0                # Sleep anomaly detection, pattern clustering
-sentence-transformers>=3.0.0       # Embed messages/memories for semantic search
-chromadb>=0.5.0                    # Vector store for long-term memory (replaces 400-item JSON)
+pandas==2.2.2                      # Sleep trend analysis, weekly report aggregations
+numpy==1.26.4                      # Math for restlessness scores, sleep stage ratios
+scikit-learn==1.5.0                # Sleep anomaly detection, pattern clustering
+antropy==0.1.6                     # Signal entropy measures (sample_entropy, perm_entropy) for sleep-depth scoring
+statsmodels==0.14.2                # Time-series: Holt-Winters forecast, seasonal decompose, ADF stationarity test
+sentence-transformers==3.0.1       # Embed messages/memories for semantic search
+chromadb==0.5.3                    # Vector store for long-term memory (replaces 400-item JSON)
+pgvector==0.3.2                    # PostgreSQL vector similarity — replaces ChromaDB for async routes
+
+# ── Claude / Anthropic AI ────────────────────────────────────────────
+anthropic==0.40.0                 # Claude API client — prompt caching + streaming + adaptive thinking
+instructor==1.4.3                 # Structured LLM outputs via Pydantic — wraps any LLM client
+litellm==1.83.0                   # Universal LLM router — one interface for 100+ providers (Anthropic, OpenAI, Gemini…)
+langchain-core==1.0.0             # LangChain core abstractions: typed messages, PromptTemplate, output parsers, LCEL runnables
 
 # ── Voice / AI ──────────────────────────────────────────────────────
-SpeechRecognition>=3.10.0
-faster-whisper>=1.0.3
-deepgram-sdk>=3.7.0
+SpeechRecognition==3.10.4
+faster-whisper==1.0.3
+deepgram-sdk==3.7.7
+webrtcvad-wheels==2.0.14          # WebRTC Voice Activity Detection — gates mic frames before STT
+noisereduce==3.0.2                # Spectral-gate noise reduction applied to WAV before STT
+pyloudnorm==0.1.1                 # ITU-R BS.1770 loudness normalisation (EBU R128) applied after denoising
+sounddevice==0.4.7                # PortAudio mic capture — fallback when PyAudio/SpeechRecognition absent
 
 # ── API rate limiting ────────────────────────────────────────────────
-slowapi>=0.1.9                     # Battle-tested FastAPI rate limiter
+slowapi==0.1.9                     # Battle-tested FastAPI rate limiter
 
 # ── Observability ───────────────────────────────────────────────────
-prometheus-client>=0.20.0
-opentelemetry-sdk>=1.24.0                          # Distributed tracing (spans)
-opentelemetry-instrumentation-fastapi>=0.45b0      # FastAPI auto-instrumentation
+prometheus-client==0.21.0
+opentelemetry-sdk==1.25.0                          # Distributed tracing (spans)
+opentelemetry-instrumentation-fastapi==0.46b0      # FastAPI auto-instrumentation
+sentry-sdk[fastapi]==2.8.0                         # Error tracking + performance monitoring (FastAPI + SQLAlchemy + logging integrations)
+
+# ── AWS ─────────────────────────────────────────────────────────────
+boto3==1.34.144                    # AWS SDK — S3 report storage, SES email delivery
+
+# ── Data visualisation ──────────────────────────────────────────────
+plotly==5.22.0                     # Interactive charts — sleep trend, activity, automation effectiveness
+weasyprint==62.3                   # HTML/CSS → PDF renderer — weekly report HTML template export
 
 # ── Utilities ───────────────────────────────────────────────────────
-qrcode[pil]>=7.4.2
-tzdata>=2024.1
+qrcode[pil]==7.4.2
+tzdata==2024.1
 
-# ── Monitoring (optional) ───────────────────────────────────────────
-psutil>=5.9.0
+# ── Raspberry Pi sensors (optional — only needed on the Pi) ────
+adafruit-circuitpython-dht>=3.7.0   # AM2301A / DHT22 temperature + humidity
+max30102>=0.1.0                      # MAX30102 heart-rate + SpO2 (I2C)
+hrcalc>=1.0                          # Heart-rate calculation from MAX30102 IR/Red data
+
+# ── Monitoring (optional) ───────────────────────────────────────
+psutil==5.9.8
 
 # ── Dev / test ──────────────────────────────────────────────────────
-pytest-asyncio>=0.23.0             # Async test support for FastAPI endpoints
-freezegun>=1.4.0                   # Freeze time in automation trigger tests
+pytest-asyncio==0.23.8             # Async test support for FastAPI endpoints
+freezegun==1.4.0                   # Freeze time in automation trigger tests
+hypothesis==6.104.2                # Property-based testing — generates edge-case inputs automatically

@@ -7,12 +7,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import requests
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+import logging
 
-from config import settings
-from loguru import logger
-from Storage.io import async_read_json_simple, async_write_json_simple
+import requests
+
+from config import RUNTIME_DATA_DIR
+
+
+logger = logging.getLogger(__name__)
 
 
 class HadithService:
@@ -42,7 +44,7 @@ class HadithService:
     }
     
     def __init__(self, cache_dir: Optional[Path] = None):
-        self.cache_dir = cache_dir or Path(settings.runtime_data_dir) / "hadith_cache"
+        self.cache_dir = cache_dir or RUNTIME_DATA_DIR / "hadith_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.timeout = 15
 
@@ -105,28 +107,15 @@ class HadithService:
         
         return book_key, hadith_number
     
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type(requests.RequestException),
-        reraise=True,
-        before_sleep=lambda rs: logger.debug(
-            "Hadith API retry attempt {}/3", rs.attempt_number
-        ),
-    )
-    def _http_get(self, url: str) -> requests.Response:
-        response = requests.get(url, timeout=self.timeout)
-        response.raise_for_status()
-        return response
-
     def _fetch_from_hadith_api(self, book_key: str, number: int) -> Optional[dict]:
         """Fetch hadith from hadithapi.com."""
         try:
             book_slug = self.BOOKS[book_key]
             url = f"{self.HADITH_API_BASE}/{book_slug}/hadiths/{number}"
 
-            logger.debug("Fetching hadith from {}", url)
-            response = self._http_get(url)
+            logger.debug(f"Fetching hadith from {url}")
+            response = requests.get(url, timeout=self.timeout)
+            response.raise_for_status()
             data = response.json()
             
             if data.get("status") == 200 and "hadith" in data:
@@ -141,13 +130,14 @@ class HadithService:
                     "api_source": "hadithapi.com"
                 }
         except Exception as e:
-            logger.debug("hadithapi.com fetch failed: {}", e)
+            logger.debug(f"hadithapi.com fetch failed: {e}")
         return None
     
     def _fetch_from_random_api(self) -> Optional[dict]:
         """Fetch random hadith from random-hadith-generator."""
         try:
-            response = self._http_get(self.RANDOM_HADITH_API)
+            response = requests.get(self.RANDOM_HADITH_API, timeout=self.timeout)
+            response.raise_for_status()
             payload = response.json()
             
             data = payload.get("data", {}) if isinstance(payload, dict) else {}
@@ -170,7 +160,7 @@ class HadithService:
                     "api_source": "random-hadith-generator"
                 }
         except Exception as e:
-            logger.debug("random-hadith-generator fetch failed: {}", e)
+            logger.debug(f"random-hadith-generator fetch failed: {e}")
         return None
     
     def _get_local_fallback(self) -> dict:
@@ -239,13 +229,15 @@ class HadithService:
         hadith = self._fetch_from_hadith_api(book_key, number)
         if hadith:
             logger.info("Fetched from hadithapi.com: {}", hadith['source'])
+            hadith = self._enrich_with_grade(hadith)
             self._write_cache(cache_path, hadith)
             return hadith
-        
+
         # Try fallback API
         hadith = self._fetch_from_random_api()
         if hadith:
             logger.info("Fetched from random-hadith-generator")
+            hadith = self._enrich_with_grade(hadith)
             self._write_cache(cache_path, hadith)
             return hadith
         
@@ -253,41 +245,187 @@ class HadithService:
         logger.warning("All APIs failed, using local fallback hadith")
         hadith = self._get_local_fallback()
         self._write_cache(cache_path, hadith)
+        return self._enrich_with_grade(hadith)
+
+    # ── Authenticity rating ───────────────────────────────────────────────────
+
+    _SAHIH_SOURCES = frozenset({
+        "sahih al-bukhari", "sahih bukhari", "bukhari", "sahih-bukhari",
+        "sahih muslim", "muslim", "sahih-muslim",
+        "sahih al-bukhari & sahih muslim", "sahih bukhari & muslim",
+        "sahih al-bukhari & muslim",
+    })
+    _HASAN_SOURCES = frozenset({
+        "al-tirmidhi", "tirmidhi", "sunan al-tirmidhi",
+        "sunan abi dawud", "sunan abu dawood", "abu dawud", "abudawud",
+    })
+    _AUTHENTICATED_SOURCES = frozenset({
+        "sunan an-nasai", "al-nasai", "nasai",
+        "sunan ibn majah", "ibn majah", "ibnmajah",
+    })
+
+    @classmethod
+    def _grade_hadith(cls, source: str) -> dict:
+        """Return an authenticity grade for a hadith based on its source collection.
+
+        This is a collection-level approximation, not a per-hadith chain analysis.
+        Bukhari and Muslim are the two most rigorously authenticated collections;
+        their hadiths are generally considered Sahih.
+
+        Returns
+        -------
+        dict with keys:
+          grade (str)        — 'Sahih' | 'Hasan' | 'Authenticated' | 'Unknown'
+          grade_arabic (str) — Arabic transliteration of the grade
+          confidence (str)   — 'high' | 'medium' | 'low'
+          note (str)         — human-readable explanation
+        """
+        src_lower = str(source or "").strip().lower()
+        if src_lower in cls._SAHIH_SOURCES:
+            return {
+                "grade": "Sahih",
+                "grade_arabic": "صحيح",
+                "confidence": "high",
+                "note": "From the most rigorously authenticated hadith collections.",
+            }
+        if src_lower in cls._HASAN_SOURCES:
+            return {
+                "grade": "Hasan",
+                "grade_arabic": "حسن",
+                "confidence": "medium",
+                "note": "From a well-regarded collection — generally reliable.",
+            }
+        if src_lower in cls._AUTHENTICATED_SOURCES:
+            return {
+                "grade": "Authenticated",
+                "grade_arabic": "موثق",
+                "confidence": "medium",
+                "note": "From an authenticated Sunan collection.",
+            }
+        return {
+            "grade": "Unknown",
+            "grade_arabic": "غير محدد",
+            "confidence": "low",
+            "note": "Source not in the known authentic collections index.",
+        }
+
+    def _enrich_with_grade(self, hadith: dict) -> dict:
+        """Add authenticity grade metadata to a hadith dict."""
+        if "authenticity" not in hadith:
+            hadith["authenticity"] = self._grade_hadith(hadith.get("source", ""))
         return hadith
 
-    def get_sleep_hadith(self) -> dict:
-        hadiths = [
+    # ── Context-aware selection ───────────────────────────────────────────────
+
+    _CONTEXT_HADITHS: dict[str, list[dict]] = {
+        "sleep": [
             {
                 "hadith": "When you go to bed, perform ablution as you do for prayer, then lie on your right side.",
-                "source": "Sahih al-Bukhari & Sahih Muslim",
+                "source": "Sahih al-Bukhari & Muslim",
+                "narrator": "Al-Bara' ibn 'Azib (RA)",
             },
             {
                 "hadith": "Whoever recites Ayat al-Kursi at night will have a protector from Allah until morning.",
                 "source": "Sahih al-Bukhari",
+                "narrator": "Abu Hurairah (RA)",
             },
             {
                 "hadith": "When the Prophet ﷺ went to bed, he gathered his palms, recited Al-Ikhlas, Al-Falaq, and An-Nas, then wiped his body.",
                 "source": "Sahih al-Bukhari",
-            },
-            {
-                "hadith": "The Prophet ﷺ disliked sleeping before the night prayer and talking after it.",
-                "source": "Sahih al-Bukhari",
+                "narrator": "Aisha (RA)",
             },
             {
                 "hadith": "He would say at bedtime: 'Bismika Allahumma amutu wa ahya' (In Your name, O Allah, I die and I live).",
                 "source": "Sahih al-Bukhari",
+                "narrator": "Hudhaifa (RA)",
+            },
+            {
+                "hadith": "The Prophet ﷺ disliked sleeping before the night prayer and talking after it.",
+                "source": "Sahih al-Bukhari",
+                "narrator": "Ibn Mas'ud (RA)",
             },
             {
                 "hadith": "The Prophet ﷺ forbade lying on the stomach and called it a posture Allah dislikes.",
                 "source": "Sunan Abi Dawud",
+                "narrator": "Takhfa al-Ghifari (RA)",
+            },
+        ],
+        "morning": [
+            {
+                "hadith": "Whoever prays Fajr in congregation is under the protection of Allah until evening.",
+                "source": "Sahih Muslim",
+                "narrator": "Jundub (RA)",
             },
             {
-                "hadith": "If one of you gets up from sleep and performs prayer at night, that is among the blessed acts of worship.",
-                "source": "Sahih Muslim",
+                "hadith": "O Allah, bless my nation in its early mornings — the Prophet ﷺ would say this after Fajr.",
+                "source": "Sunan Abi Dawud",
+                "narrator": "Sakhr al-Ghamidi (RA)",
             },
-        ]
-        index = datetime.today().weekday() % len(hadiths)
-        return hadiths[index]
+            {
+                "hadith": "Two rak'at of Fajr prayer are better than this world and all it contains.",
+                "source": "Sahih Muslim",
+                "narrator": "Aisha (RA)",
+            },
+        ],
+        "tahajjud": [
+            {
+                "hadith": "The best prayer after the obligatory prayers is the night prayer.",
+                "source": "Sahih Muslim",
+                "narrator": "Abu Hurairah (RA)",
+            },
+            {
+                "hadith": "Our Lord descends each night to the lowest heaven when the last third of the night remains and says: Who calls on Me?",
+                "source": "Sahih al-Bukhari & Muslim",
+                "narrator": "Abu Hurairah (RA)",
+            },
+            {
+                "hadith": "Stick to night prayers; it was the practice of the righteous before you and it brings you closer to your Lord.",
+                "source": "Al-Tirmidhi",
+                "narrator": "Bilal (RA)",
+            },
+        ],
+        "gratitude": [
+            {
+                "hadith": "Whoever does not thank people does not thank Allah.",
+                "source": "Sunan Abi Dawud",
+                "narrator": "Abu Hurairah (RA)",
+            },
+            {
+                "hadith": "Allah is pleased with a servant who eats and praises Him, or drinks and praises Him.",
+                "source": "Sahih Muslim",
+                "narrator": "Anas ibn Malik (RA)",
+            },
+        ],
+    }
+
+    def get_context_hadith(self, context: str) -> dict:
+        """Return a hadith appropriate for the given life/sleep context.
+
+        Parameters
+        ----------
+        context:
+            One of 'sleep', 'morning', 'tahajjud', 'gratitude', or any string.
+            Falls back to daily hadith when context is not recognised.
+
+        Returns
+        -------
+        Hadith dict enriched with ``authenticity`` grade.
+        """
+        ctx = str(context or "").strip().lower()
+        pool = self._CONTEXT_HADITHS.get(ctx)
+        if pool:
+            index = datetime.today().day % len(pool)
+            hadith = pool[index].copy()
+            hadith["context"] = ctx
+            return self._enrich_with_grade(hadith)
+        # Unknown context — fall back to daily hadith
+        hadith = self.get_daily_hadith()
+        hadith["context"] = "daily"
+        return self._enrich_with_grade(hadith)
+
+    def get_sleep_hadith(self) -> dict:
+        """Return a sleep-context hadith with authenticity rating."""
+        return self.get_context_hadith("sleep")
 
     def get_morning_dua(self) -> dict:
         return {

@@ -2,17 +2,7 @@
 
 from __future__ import annotations
 
-import re
-
-def normalize_for_intent(text: str) -> str:
-    return re.sub(
-        r"\s+",
-        " ",
-        re.sub(r"[^a-z0-9#(),\s'\u0600-\u06ff]+", " ", (text or "").lower()),
-    ).strip()
-
-def has_any(text: str, words: tuple[str, ...]) -> bool:
-    return any(w in text for w in words)
+from core.text_utils import normalize_for_intent, has_any
 
 def _scene_payload_from_key(scene_key: str, slots: dict) -> dict:
     key = str(scene_key or "").strip().lower()

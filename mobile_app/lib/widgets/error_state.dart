@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class ErrorState extends StatelessWidget {
@@ -95,7 +95,7 @@ class EmptyState extends StatelessWidget {
             Icon(
               icon,
               size: 80,
-              color: AppColors.softWhite.withOpacity(0.3),
+              color: AppColors.softWhite.withValues(alpha: 0.3),
             ),
             const SizedBox(height: 20),
             Text(

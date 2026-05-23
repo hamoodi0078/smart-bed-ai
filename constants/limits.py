@@ -17,8 +17,10 @@ class RateLimits:
     """Per-endpoint rate limits (requests per minute)."""
 
     AUTH_PER_MINUTE: int = _env_int("RATE_LIMIT_AUTH_PER_MINUTE", 10)
-    # OTP endpoints are stricter than general auth to prevent SMS flood/brute-force.
-    OTP_PER_MINUTE: int = _env_int("RATE_LIMIT_OTP_PER_MINUTE", 5)
+    # Login/register are stricter than general auth to prevent credential brute-force.
+    AUTH_LOGIN_PER_MINUTE: int = _env_int("RATE_LIMIT_AUTH_LOGIN_PER_MINUTE", 5)
+    # OTP endpoints are the strictest to prevent SMS flood/brute-force.
+    OTP_PER_MINUTE: int = _env_int("RATE_LIMIT_OTP_PER_MINUTE", 3)
     CHAT_PER_MINUTE: int = _env_int("RATE_LIMIT_CHAT_PER_MINUTE", 30)
     GENERAL_PER_MINUTE: int = _env_int("RATE_LIMIT_GENERAL_PER_MINUTE", 60)
     ADMIN_PER_MINUTE: int = _env_int("RATE_LIMIT_ADMIN_PER_MINUTE", 30)

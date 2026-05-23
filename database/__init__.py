@@ -1,5 +1,6 @@
-from .connection import DatabaseConnection
+from .connection import AsyncDatabaseConnection, DatabaseConnection
 from .models import (
+    Alarm,
     AppVersion,
     Base,
     Bed,
@@ -13,23 +14,38 @@ from .models import (
     MobileCommandFeedback,
     MobileCommandRecord,
     NightlySummaryFeedbackProgress,
+    OtpRequest,
     SceneRecord,
     SleepSession,
+    SpotifyToken,
     User,
     UserFeatureOverride,
+    UserPhoneAuth,
+    UserProfilePrefs,
+    UserRoutine,
+    UserSocialIdentity,
 )
 from .repositories import (
+    AlarmRepository,
+    AsyncEventRepository,
+    OtpRepository,
+    ProfileRepository,
+    AsyncSleepSessionRepository,
+    AsyncUserRepository,
     BetaProgressRepository,
     EventRepository,
     FeatureFlagRepository,
     MobileAuthRepository,
     MobileCommandRepository,
     SleepSessionRepository,
+    SpotifyTokenRepository,
     UpdateRepository,
     UserRepository,
 )
 
 __all__ = [
+    # Models
+    "Alarm",
     "Base",
     "User",
     "Bed",
@@ -47,7 +63,18 @@ __all__ = [
     "FirmwareVersion",
     "FeatureFlag",
     "UserFeatureOverride",
+    "UserRoutine",
+    "UserProfilePrefs",
+    "UserSocialIdentity",
+    "UserPhoneAuth",
+    "OtpRequest",
+    "SpotifyToken",
+    # Sync DB + repositories
     "DatabaseConnection",
+    "AlarmRepository",
+    "OtpRepository",
+    "ProfileRepository",
+    "SpotifyTokenRepository",
     "UserRepository",
     "BetaProgressRepository",
     "EventRepository",
@@ -56,4 +83,9 @@ __all__ = [
     "SleepSessionRepository",
     "UpdateRepository",
     "FeatureFlagRepository",
+    # Async DB + repositories (asyncpg-backed)
+    "AsyncDatabaseConnection",
+    "AsyncUserRepository",
+    "AsyncSleepSessionRepository",
+    "AsyncEventRepository",
 ]

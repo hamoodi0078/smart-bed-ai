@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
@@ -24,6 +24,9 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(50), nullable=False, default="user", index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     timezone: Mapped[str] = mapped_column(String(50), nullable=False, default="Asia/Kuwait")
     locale: Mapped[str] = mapped_column(String(10), nullable=False, default="en")
     subscription_status: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
@@ -33,8 +36,27 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
 
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    __table_args__ = (
+        Index("idx_refresh_tokens_user", "user_id"),
+        Index("idx_refresh_tokens_token", "token"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
 class Bed(Base):
     __tablename__ = "beds"
+    __table_args__ = (
+        Index("idx_beds_primary_user", "primary_user_id"),
+        Index("idx_beds_partner_user", "partner_user_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
     device_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
@@ -49,7 +71,7 @@ class Bed(Base):
     def is_stale(self) -> bool:
         if self.last_seen is None:
             return True
-        delta = (datetime.utcnow() - self.last_seen.replace(tzinfo=None)).total_seconds()
+        delta = (datetime.now(timezone.utc) - self.last_seen.astimezone(timezone.utc)).total_seconds()
         return delta > 3600
 
 
@@ -108,7 +130,7 @@ class MobileCommandRecord(Base):
     __tablename__ = "mobile_command_records"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     command_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     action: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
@@ -127,7 +149,7 @@ class MobileCommandFeedback(Base):
     __table_args__ = (UniqueConstraint("user_id", "command_id", name="uq_mobile_command_feedback_user_command"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     command_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     action: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     vote: Mapped[str] = mapped_column(String(20), nullable=False, default="")
@@ -142,7 +164,7 @@ class MobileAuthSession(Base):
     __tablename__ = "mobile_auth_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     client_name: Mapped[str] = mapped_column(String(80), nullable=False, default="flutter_app")
     access_token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     refresh_token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
@@ -159,7 +181,7 @@ class FirstThreeNightsProgress(Base):
     __tablename__ = "first_three_nights_progress"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    user_id: Mapped[str] = mapped_column(String(191), unique=True, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
     signup_completed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     first_scene_preview_completed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     first_automation_completed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -173,12 +195,12 @@ class NightlySummaryFeedbackProgress(Base):
     __tablename__ = "nightly_summary_feedback_progress"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    user_id: Mapped[str] = mapped_column(String(191), unique=True, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
     helpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     not_helpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_vote: Mapped[str | None] = mapped_column(String(20), nullable=True)
     last_vote_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_summary_generated_at_utc: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    last_summary_generated_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -187,7 +209,7 @@ class BetaMetricsSnapshot(Base):
     __tablename__ = "beta_metrics_snapshots"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    user_id: Mapped[str] = mapped_column(String(191), unique=True, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
     window_days: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
     activation_progress_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     first_3_nights_completed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -210,7 +232,7 @@ class BetaCohortMember(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
     cohort_key: Mapped[str] = mapped_column(String(80), nullable=False, default="kuwait_beta", index=True)
-    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     country_code: Mapped[str] = mapped_column(String(8), nullable=False, default="KW")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     source: Mapped[str] = mapped_column(String(40), nullable=False, default="admin_manual")
@@ -272,7 +294,7 @@ class UserFeatureOverride(Base):
     __table_args__ = (UniqueConstraint("user_id", "flag_key", name="uq_user_feature_overrides_user_flag"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     flag_key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     override_value: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -315,7 +337,7 @@ class UserPushToken(Base):
     __tablename__ = "user_push_tokens"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    user_id: Mapped[str] = mapped_column(String(191), unique=True, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
     expo_token: Mapped[str] = mapped_column(String(255), nullable=False)
     platform: Mapped[str] = mapped_column(String(20), nullable=False, default="android")
     registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
@@ -327,7 +349,7 @@ class SubscriptionRecord(Base):
     __tablename__ = "subscription_records"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    user_id: Mapped[str] = mapped_column(String(191), unique=True, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
     tier: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     interval: Mapped[str] = mapped_column(String(20), nullable=False, default="monthly")
@@ -341,6 +363,122 @@ class SubscriptionRecord(Base):
     started_at: Mapped[str] = mapped_column(String(40), nullable=False, default="")
     last_payment_at: Mapped[str] = mapped_column(String(40), nullable=False, default="")
     cancelled_at: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class Alarm(Base):
+    __tablename__ = "alarms"
+    __table_args__ = (Index("idx_alarms_user_id", "user_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    time: Mapped[str] = mapped_column(String(5), nullable=False)  # "HH:MM"
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    days_of_week: Mapped[list] = mapped_column(JSON, nullable=False, default=list)  # [0..6], empty = one-shot
+    wake_style: Mapped[str] = mapped_column(String(30), nullable=False, default="gentle_light")
+    smart_window_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0 = disabled
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class UserRoutine(Base):
+    """Replaces profile JSON 'web_routines' section."""
+    __tablename__ = "user_routines"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    bedtime: Mapped[str] = mapped_column(String(5), nullable=False, default="22:30")   # "HH:MM"
+    wake: Mapped[str] = mapped_column(String(5), nullable=False, default="07:00")      # "HH:MM"
+    weekends: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class UserProfilePrefs(Base):
+    """Replaces profile JSON 'web_profile_prefs' section."""
+    __tablename__ = "user_profile_prefs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Asia/Kuwait")
+    push_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    email_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    location_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="auto")  # "auto" | "manual"
+    country_code: Mapped[str] = mapped_column(String(8), nullable=False, default="KW")
+    city: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    theme_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="system")  # "system" | "dark" | "light"
+    # Bed-behaviour settings stored together with profile prefs to avoid a join.
+    settings_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class UserSocialIdentity(Base):
+    """Replaces profile JSON 'mobile_social_identities' section."""
+    __tablename__ = "user_social_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_user_id", name="uq_social_provider_uid"),
+        Index("idx_social_identities_user_id", "user_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)                    # "google" | "apple" | "facebook"
+    provider_user_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    email: Mapped[str] = mapped_column(String(254), nullable=False, default="")
+    email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    verification_method: Mapped[str] = mapped_column(String(40), nullable=False, default="token_verified")
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class UserPhoneAuth(Base):
+    """Replaces profile JSON 'mobile_phone_users' section."""
+    __tablename__ = "user_phone_auth"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    phone_number: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class OtpRequest(Base):
+    """Short-lived OTP record — replaces profile JSON 'mobile_phone_otp_requests' section."""
+    __tablename__ = "otp_requests"
+    __table_args__ = (Index("idx_otp_requests_phone", "phone_number"),)
+
+    request_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    phone_number: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    otp_digest: Mapped[str] = mapped_column(String(128), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    client_name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    delivery_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    delivery_status: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    delivery_message_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class SpotifyToken(Base):
+    """Persistent Spotify OAuth token — replaces profile JSON 'spotify_tokens' section."""
+    __tablename__ = "spotify_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_key: Mapped[str] = mapped_column(String(256), unique=True, nullable=False, index=True)
+    access_token: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    scope: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    spotify_user_id: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    display_name: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    spotify_email: Mapped[str] = mapped_column(String(254), nullable=False, default="")
+    expires_at: Mapped[str] = mapped_column(String(40), nullable=False, default="")  # ISO string
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -367,4 +505,11 @@ __all__ = [
     "UserDailyEvent",
     "UserPushToken",
     "SubscriptionRecord",
+    "Alarm",
+    "UserRoutine",
+    "UserProfilePrefs",
+    "UserSocialIdentity",
+    "UserPhoneAuth",
+    "OtpRequest",
+    "SpotifyToken",
 ]

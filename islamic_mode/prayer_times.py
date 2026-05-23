@@ -19,6 +19,43 @@ class PrayerTimesService:
     CITY_API_URL = "http://api.aladhan.com/v1/timingsByCity"
     COORDS_API_URL = "http://api.aladhan.com/v1/timings"
 
+    # Aladhan API calculation method IDs mapped to human-readable names
+    CALCULATION_METHODS: dict[int, str] = {
+        1:  "University of Islamic Sciences, Karachi (Hanafi)",
+        2:  "Islamic Society of North America (ISNA)",
+        3:  "Muslim World League (MWL)",
+        4:  "Umm Al-Qura University, Makkah",
+        5:  "Egyptian General Authority of Survey",
+        7:  "Institute of Geophysics, Tehran",
+        8:  "Gulf Region",
+        9:  "Kuwait",
+        10: "Qatar",
+        11: "Majlis Ugama Islam Singapura (MUIS)",
+        12: "Union Organization Islamique de France (UOIF)",
+        13: "Diyanet İşleri Başkanlığı, Turkey",
+        14: "Spiritual Administration of Muslims of Russia",
+        15: "Moonsighting Committee Worldwide (Shafi'i/Hanbali)",
+    }
+
+    # Fiqh school shortcuts → (calculation_method_id, asr_method)
+    # asr_method: 0 = Standard (Shafi'i/Maliki/Hanbali, shadow=1×), 1 = Hanafi (shadow=2×)
+    FIQH_SCHOOL_PRESETS: dict[str, tuple[int, int]] = {
+        "hanafi":   (1, 1),   # Karachi method + Hanafi Asr
+        "shafii":   (3, 0),   # MWL method + Standard Asr
+        "maliki":   (3, 0),   # Same as Shafi'i for Asr
+        "hanbali":  (3, 0),   # Same as Shafi'i for Asr
+        "mwl":      (3, 0),   # Muslim World League
+        "isna":     (2, 0),   # North America
+        "egypt":    (5, 0),   # Egyptian method
+        "makkah":   (4, 0),   # Umm Al-Qura
+        "kuwait":   (9, 0),   # Kuwait
+        "qatar":    (10, 0),  # Qatar
+        "turkey":   (13, 0),  # Turkey
+        "france":   (12, 0),  # France
+        "russia":   (14, 0),  # Russia
+        "gulf":     (8, 0),   # Gulf Region
+    }
+
     def __init__(
         self,
         city: Optional[str] = None,
@@ -28,6 +65,8 @@ class PrayerTimesService:
         longitude: Optional[float] = None,
         date: str = "",
         auto_detect_location: Optional[bool] = None,
+        fiqh_school: Optional[str] = None,
+        asr_method: Optional[int] = None,
     ):
         """
         Initialize PrayerTimesService with location settings.
@@ -37,11 +76,27 @@ class PrayerTimesService:
         """
         # Use config defaults if not provided
         self.auto_detect = auto_detect_location if auto_detect_location is not None else settings.islamic_prayer_auto_location
-        self.method = method if method is not None else settings.islamic_prayer_method
         self.date = str(date or "").strip()
         self.timeout_seconds = settings.islamic_prayer_timeout_seconds
         self.cache_path = settings.islamic_prayer_cache_path
-        
+
+        # Fiqh school — resolves method and asr_method together when given
+        if fiqh_school:
+            preset = self.FIQH_SCHOOL_PRESETS.get(str(fiqh_school).strip().lower())
+            if preset:
+                preset_method, preset_asr = preset
+                self.method = method if method is not None else preset_method
+                self.asr_method = asr_method if asr_method is not None else preset_asr
+                self.fiqh_school = str(fiqh_school).strip().lower()
+            else:
+                self.method = method if method is not None else settings.islamic_prayer_method
+                self.asr_method = asr_method if asr_method is not None else 0
+                self.fiqh_school = "unknown"
+        else:
+            self.method = method if method is not None else settings.islamic_prayer_method
+            self.asr_method = asr_method if asr_method is not None else 0
+            self.fiqh_school = None
+
         # Location setup
         self._setup_location(city, country, latitude, longitude)
 
@@ -210,8 +265,37 @@ class PrayerTimesService:
         response.raise_for_status()
         return response
 
+    def set_fiqh_school(self, school: str) -> bool:
+        """Update the Fiqh school at runtime.
+
+        Returns True if the school is recognised, False otherwise (no change made).
+        """
+        preset = self.FIQH_SCHOOL_PRESETS.get(str(school).strip().lower())
+        if preset is None:
+            logger.warning("Unknown Fiqh school '{}'. Valid options: {}", school, list(self.FIQH_SCHOOL_PRESETS))
+            return False
+        self.method, self.asr_method = preset
+        self.fiqh_school = str(school).strip().lower()
+        logger.info("Fiqh school set to '{}': method={}, asr_method={}", self.fiqh_school, self.method, self.asr_method)
+        return True
+
+    def get_fiqh_info(self) -> dict:
+        """Return the current Fiqh school and calculation method info."""
+        method_name = self.CALCULATION_METHODS.get(int(self.method), f"Method {self.method}")
+        asr_desc = "Hanafi (shadow = 2× object)" if int(self.asr_method or 0) == 1 else "Standard (shadow = 1× object)"
+        return {
+            "fiqh_school": self.fiqh_school or "custom",
+            "calculation_method_id": self.method,
+            "calculation_method_name": method_name,
+            "asr_juristic_method": int(self.asr_method or 0),
+            "asr_juristic_method_name": asr_desc,
+            "available_schools": list(self.FIQH_SCHOOL_PRESETS.keys()),
+        }
+
     def _request_payload(self) -> dict:
-        params = {"method": self.method}
+        params: dict = {"method": self.method}
+        if self.asr_method:
+            params["school"] = int(self.asr_method)
         if self.date:
             params["date"] = self.date
 

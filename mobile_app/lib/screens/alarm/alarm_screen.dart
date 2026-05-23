@@ -1,161 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
+import '../../src/core/network_status_service.dart';
+import '../../widgets/network_banner.dart';
+import '../../widgets/shimmer_loader.dart';
 
-class AlarmScreen extends StatefulWidget {
+final alarmsProvider = FutureProvider.autoDispose<List<_Alarm>>((ref) async {
+  final response = await ApiService.getAlarms();
+  if (response['error'] == true) {
+    throw Exception(response['message'] ?? 'Failed to load alarms');
+  }
+  final list = response['alarms'] as List<dynamic>? ?? [];
+  return list
+      .whereType<Map<String, dynamic>>()
+      .map(_Alarm.fromJson)
+      .toList();
+});
+
+class AlarmScreen extends ConsumerWidget {
   const AlarmScreen({super.key});
 
   @override
-  State<AlarmScreen> createState() => _AlarmScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final alarmsAsync = ref.watch(alarmsProvider);
 
-class _AlarmScreenState extends State<AlarmScreen> {
-  List<_Alarm> _alarms = [];
-  bool _isLoading = true;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadAlarms();
-  }
-
-  Future<void> _loadAlarms() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final response = await ApiService.getAlarms();
-      if (response['error'] == true) {
-        throw Exception(response['message'] ?? 'Failed to load alarms');
-      }
-
-      final alarmsList = response['alarms'] as List<dynamic>? ?? [];
-      if (mounted) {
-        setState(() {
-          _alarms = alarmsList.map((data) => _Alarm.fromJson(data)).toList();
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _addAlarm() async {
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: AppColors.accent,
-              surface: AppColors.cardBg,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (pickedTime != null) {
-      try {
-        final timeString = '${pickedTime.hour.toString().padLeft(2, '0')}:${pickedTime.minute.toString().padLeft(2, '0')}';
-        final response = await ApiService.createAlarm(
-          time: timeString,
-          days: [],
-          label: '',
-          enabled: true,
-          wakeStyle: 'led_sunrise',
-        );
-
-        if (response['error'] != true) {
-          _loadAlarms();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Alarm created successfully'),
-                backgroundColor: AppColors.accent,
-              ),
-            );
-          }
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to create alarm: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-  }
-
-  void _toggleAlarm(String id) {
-    setState(() {
-      final index = _alarms.indexWhere((a) => a.id == id);
-      if (index != -1) {
-        _alarms[index] = _alarms[index].copyWith(
-          isEnabled: !_alarms[index].isEnabled,
-        );
-      }
-    });
-  }
-
-  Future<void> _deleteAlarm(String id) async {
-    try {
-      await ApiService.deleteAlarm(id);
-      _loadAlarms();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Alarm deleted'),
-            backgroundColor: AppColors.accent,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to delete alarm: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  void _editAlarm(_Alarm alarm) {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => _AlarmEditScreen(
-          alarm: alarm,
-          onSave: (updated) {
-            setState(() {
-              final index = _alarms.indexWhere((a) => a.id == alarm.id);
-              if (index != -1) {
-                _alarms[index] = updated;
-              }
-            });
-          },
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -167,94 +36,176 @@ class _AlarmScreenState extends State<AlarmScreen> {
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.accent,
+      body: Column(
+        children: [
+          const NetworkBanner(),
+          Expanded(
+            child: alarmsAsync.when(
+              loading: () => Padding(
+                padding: const EdgeInsets.all(16),
+                child: ShimmerLoader.cardList(count: 4, cardHeight: 88),
               ),
-            )
-          : _errorMessage != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: AppColors.orange,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _errorMessage!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: AppColors.softWhite,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: _loadAlarms,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.accent,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : _alarms.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.alarm_rounded,
-                    size: 64,
-                    color: AppColors.softWhite.withValues(alpha: 0.3),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'No alarms set',
-                    style: TextStyle(
-                      color: AppColors.softWhite,
-                      fontSize: 16,
+              error: (err, _) => Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: AppColors.orange,
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Tap + to create your first alarm',
-                    style: TextStyle(
-                      color: AppColors.softWhite,
-                      fontSize: 13,
+                    const SizedBox(height: 16),
+                    Text(
+                      err.toString().replaceAll('Exception: ', ''),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.softWhite,
+                        fontSize: 14,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () => ref.invalidate(alarmsProvider),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _alarms.length,
-              itemBuilder: (context, index) {
-                final alarm = _alarms[index];
-                return _AlarmCard(
-                  alarm: alarm,
-                  onToggle: () => _toggleAlarm(alarm.id),
-                  onDelete: () => _deleteAlarm(alarm.id),
-                  onEdit: () => _editAlarm(alarm),
-                );
-              },
+              data: (alarms) => alarms.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.alarm_rounded,
+                            size: 64,
+                            color: AppColors.softWhite.withValues(alpha: 0.3),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'No alarms set',
+                            style: TextStyle(
+                              color: AppColors.softWhite,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Tap + to create your first alarm',
+                            style: TextStyle(
+                              color: AppColors.softWhite,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      color: AppColors.accent,
+                      onRefresh: () async => ref.invalidate(alarmsProvider),
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: alarms.length,
+                        itemBuilder: (context, index) {
+                          final alarm = alarms[index];
+                          return _AlarmCard(
+                            alarm: alarm,
+                            onToggle: () async {
+                              if (!ref.read(isOnlineProvider)) {
+                                _showOfflineSnack(context);
+                                return;
+                              }
+                              await ApiService.updateAlarm(
+                                alarmId: alarm.id,
+                                time: alarm.timeString,
+                                days: alarm.days.toList(),
+                                label: alarm.label,
+                                enabled: !alarm.isEnabled,
+                                wakeStyle: alarm.wakeStyle.apiKey,
+                              );
+                              ref.invalidate(alarmsProvider);
+                            },
+                            onDelete: () async {
+                              if (!ref.read(isOnlineProvider)) {
+                                _showOfflineSnack(context);
+                                return;
+                              }
+                              await ApiService.deleteAlarm(alarm.id);
+                              ref.invalidate(alarmsProvider);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Alarm deleted'),
+                                    backgroundColor: AppColors.accent,
+                                  ),
+                                );
+                              }
+                            },
+                            onEdit: () async {
+                              await Navigator.of(context).push<void>(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      _AlarmEditScreen(alarm: alarm),
+                                ),
+                              );
+                              ref.invalidate(alarmsProvider);
+                            },
+                          );
+                        },
+                      ),
+                    ),
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addAlarm,
-        backgroundColor: AppColors.accent,
-        foregroundColor: AppColors.background,
-        child: const Icon(Icons.add_rounded, size: 28),
+          ),
+        ],
+      ),
+      floatingActionButton: Semantics(
+        button: true,
+        label: 'Add new alarm',
+        child: FloatingActionButton(
+          onPressed: () async {
+            if (!ref.read(isOnlineProvider)) {
+              _showOfflineSnack(context);
+              return;
+            }
+            await Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => _AlarmEditScreen(
+                  alarm: _Alarm(
+                    id: '',
+                    time: TimeOfDay.now(),
+                    label: '',
+                    days: const {},
+                    isEnabled: true,
+                    wakeStyle: _WakeStyle.ledSunrise,
+                  ),
+                ),
+              ),
+            );
+            ref.invalidate(alarmsProvider);
+          },
+          backgroundColor: AppColors.accent,
+          foregroundColor: AppColors.background,
+          child: const Icon(Icons.add_rounded, size: 28),
+        ),
+      ),
+    );
+  }
+
+  void _showOfflineSnack(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No internet connection'),
+        backgroundColor: AppColors.orange,
       ),
     );
   }
 }
+
+// ─── Alarm card ──────────────────────────────────────────────────────────────
 
 class _AlarmCard extends StatelessWidget {
   const _AlarmCard({
@@ -269,21 +220,13 @@ class _AlarmCard extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onEdit;
 
-  String _formatTime(TimeOfDay time) {
-    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
-    final minute = time.minute.toString().padLeft(2, '0');
-    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
-    return '$hour:$minute $period';
-  }
-
   String _formatDays(Set<int> days) {
-    if (days.isEmpty) return 'Never';
+    if (days.isEmpty) return 'Once';
     if (days.length == 7) return 'Every day';
     if (days.containsAll([1, 2, 3, 4, 5]) && days.length == 5) {
       return 'Weekdays';
     }
     if (days.containsAll([6, 7]) && days.length == 2) return 'Weekends';
-
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final sorted = days.toList()..sort();
     return sorted.map((d) => dayNames[d - 1]).join(', ');
@@ -291,86 +234,104 @@ class _AlarmCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final timeLabel = alarm.displayTime;
+    final daysLabel = _formatDays(alarm.days);
+    final semanticLabel =
+        '${alarm.isEnabled ? 'Enabled' : 'Disabled'} alarm at $timeLabel, $daysLabel'
+        '${alarm.label.isNotEmpty ? ', ${alarm.label}' : ''}';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Dismissible(
-        key: Key(alarm.id),
-        direction: DismissDirection.endToStart,
-        background: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 20),
-          decoration: BoxDecoration(
-            color: Colors.red,
-            borderRadius: BorderRadius.circular(16),
+      child: Semantics(
+        label: semanticLabel,
+        child: Dismissible(
+          key: Key(alarm.id),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20),
+            decoration: BoxDecoration(
+              color: Colors.red,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.delete_rounded, color: Colors.white),
           ),
-          child: const Icon(Icons.delete_rounded, color: Colors.white),
-        ),
-        onDismissed: (_) => onDelete(),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: onEdit,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: alarm.isEnabled
-                      ? AppColors.accent.withValues(alpha: 0.3)
-                      : Colors.transparent,
+          onDismissed: (_) => onDelete(),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: onEdit,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: alarm.isEnabled
+                        ? AppColors.accent.withValues(alpha: 0.3)
+                        : Colors.transparent,
+                  ),
                 ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _formatTime(alarm.time),
-                          style: TextStyle(
-                            color: alarm.isEnabled
-                                ? AppColors.white
-                                : AppColors.softWhite.withValues(alpha: 0.5),
-                            fontSize: 32,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (alarm.label.isNotEmpty) ...[
-                          const SizedBox(height: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            alarm.label,
+                            timeLabel,
                             style: TextStyle(
                               color: alarm.isEnabled
-                                  ? AppColors.accent
-                                  : AppColors.softWhite.withValues(alpha: 0.5),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                                  ? AppColors.white
+                                  : AppColors.softWhite
+                                      .withValues(alpha: 0.5),
+                              fontSize: 32,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (alarm.label.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              alarm.label,
+                              style: TextStyle(
+                                color: alarm.isEnabled
+                                    ? AppColors.accent
+                                    : AppColors.softWhite
+                                        .withValues(alpha: 0.5),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 4),
+                          Text(
+                            daysLabel,
+                            style: TextStyle(
+                              color: alarm.isEnabled
+                                  ? AppColors.softWhite
+                                  : AppColors.softWhite.withValues(alpha: 0.4),
+                              fontSize: 12,
                             ),
                           ),
                         ],
-                        const SizedBox(height: 4),
-                        Text(
-                          _formatDays(alarm.days),
-                          style: TextStyle(
-                            color: alarm.isEnabled
-                                ? AppColors.softWhite
-                                : AppColors.softWhite.withValues(alpha: 0.4),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  Switch(
-                    value: alarm.isEnabled,
-                    onChanged: (_) => onToggle(),
-                    activeColor: AppColors.accent,
-                    activeTrackColor: AppColors.accent.withValues(alpha: 0.4),
-                  ),
-                ],
+                    Semantics(
+                      toggled: alarm.isEnabled,
+                      label:
+                          '${alarm.isEnabled ? 'Disable' : 'Enable'} alarm',
+                      excludeSemantics: true,
+                      child: Switch(
+                        value: alarm.isEnabled,
+                        onChanged: (_) => onToggle(),
+                        activeColor: AppColors.accent,
+                        activeTrackColor:
+                            AppColors.accent.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -380,44 +341,103 @@ class _AlarmCard extends StatelessWidget {
   }
 }
 
-class _AlarmEditScreen extends StatefulWidget {
-  const _AlarmEditScreen({
-    required this.alarm,
-    required this.onSave,
-  });
+// ─── Edit / Create screen ─────────────────────────────────────────────────────
+
+class _AlarmEditScreen extends ConsumerStatefulWidget {
+  const _AlarmEditScreen({required this.alarm});
 
   final _Alarm alarm;
-  final void Function(_Alarm) onSave;
 
   @override
-  State<_AlarmEditScreen> createState() => _AlarmEditScreenState();
+  ConsumerState<_AlarmEditScreen> createState() => _AlarmEditScreenState();
 }
 
-class _AlarmEditScreenState extends State<_AlarmEditScreen> {
+class _AlarmEditScreenState extends ConsumerState<_AlarmEditScreen> {
   late TimeOfDay _time;
-  late String _label;
   late Set<int> _days;
   late _WakeStyle _wakeStyle;
+  late TextEditingController _labelCtrl;
+  bool _isSaving = false;
+
+  bool get _isNew => widget.alarm.id.isEmpty;
 
   @override
   void initState() {
     super.initState();
     _time = widget.alarm.time;
-    _label = widget.alarm.label;
     _days = Set.from(widget.alarm.days);
     _wakeStyle = widget.alarm.wakeStyle;
+    _labelCtrl = TextEditingController(text: widget.alarm.label);
   }
 
-  void _save() {
-    widget.onSave(
-      widget.alarm.copyWith(
-        time: _time,
-        label: _label,
-        days: _days,
-        wakeStyle: _wakeStyle,
-      ),
-    );
-    Navigator.of(context).pop();
+  @override
+  void dispose() {
+    _labelCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!ref.read(isOnlineProvider)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No internet connection'),
+          backgroundColor: AppColors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      final timeStr =
+          '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}';
+      final label = _labelCtrl.text.trim();
+
+      Map<String, dynamic> response;
+      if (_isNew) {
+        response = await ApiService.createAlarm(
+          time: timeStr,
+          days: _days.toList(),
+          label: label,
+          enabled: true,
+          wakeStyle: _wakeStyle.apiKey,
+        );
+      } else {
+        response = await ApiService.updateAlarm(
+          alarmId: widget.alarm.id,
+          time: timeStr,
+          days: _days.toList(),
+          label: label,
+          enabled: widget.alarm.isEnabled,
+          wakeStyle: _wakeStyle.apiKey,
+        );
+      }
+
+      if (response['error'] == true) {
+        throw Exception(response['message'] ?? 'Failed to save alarm');
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isNew ? 'Alarm created' : 'Alarm updated'),
+            backgroundColor: AppColors.accent,
+          ),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _pickTime() async {
@@ -436,11 +456,7 @@ class _AlarmEditScreenState extends State<_AlarmEditScreen> {
         );
       },
     );
-    if (picked != null) {
-      setState(() {
-        _time = picked;
-      });
-    }
+    if (picked != null) setState(() => _time = picked);
   }
 
   @override
@@ -455,19 +471,31 @@ class _AlarmEditScreenState extends State<_AlarmEditScreen> {
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.white,
         elevation: 0,
-        title: const Text('Edit Alarm'),
+        title: Text(_isNew ? 'New Alarm' : 'Edit Alarm'),
         actions: [
-          TextButton(
-            onPressed: _save,
-            child: const Text(
-              'Save',
-              style: TextStyle(
-                color: AppColors.accent,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          _isSaving
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                )
+              : TextButton(
+                  onPressed: _save,
+                  child: const Text(
+                    'Save',
+                    style: TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
         ],
       ),
       body: SingleChildScrollView(
@@ -475,33 +503,37 @@ class _AlarmEditScreenState extends State<_AlarmEditScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            GestureDetector(
-              onTap: _pickTime,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBg,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      '$hour:$minute',
-                      style: const TextStyle(
-                        color: AppColors.accent,
-                        fontSize: 56,
-                        fontWeight: FontWeight.w700,
+            Semantics(
+              button: true,
+              label: 'Change alarm time, currently $hour:$minute $period',
+              child: GestureDetector(
+                onTap: _pickTime,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBg,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '$hour:$minute',
+                        style: const TextStyle(
+                          color: AppColors.accent,
+                          fontSize: 56,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    Text(
-                      period,
-                      style: const TextStyle(
-                        color: AppColors.softWhite,
-                        fontSize: 20,
+                      Text(
+                        period,
+                        style: const TextStyle(
+                          color: AppColors.softWhite,
+                          fontSize: 20,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -516,8 +548,7 @@ class _AlarmEditScreenState extends State<_AlarmEditScreen> {
             ),
             const SizedBox(height: 8),
             TextField(
-              controller: TextEditingController(text: _label),
-              onChanged: (val) => _label = val,
+              controller: _labelCtrl,
               style: const TextStyle(color: AppColors.white),
               decoration: InputDecoration(
                 hintText: 'Alarm name',
@@ -574,71 +605,85 @@ class _AlarmEditScreenState extends State<_AlarmEditScreen> {
               final isSelected = _wakeStyle == style;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: () => setState(() => _wakeStyle = style),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBg,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isSelected
-                              ? AppColors.accent
-                              : Colors.transparent,
-                          width: 2,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            style.icon,
+                child: Semantics(
+                  button: true,
+                  selected: isSelected,
+                  label: '${style.name}: ${style.description}',
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () => setState(() => _wakeStyle = style),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBg,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
                             color: isSelected
                                 ? AppColors.accent
-                                : AppColors.softWhite,
+                                : Colors.transparent,
+                            width: 2,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  style.name,
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? AppColors.white
-                                        : AppColors.softWhite,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  style.description,
-                                  style: TextStyle(
-                                    color: AppColors.softWhite
-                                        .withValues(alpha: 0.7),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              style.icon,
+                              color: isSelected
+                                  ? AppColors.accent
+                                  : AppColors.softWhite,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    style.name,
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? AppColors.white
+                                          : AppColors.softWhite,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    style.description,
+                                    style: TextStyle(
+                                      color: AppColors.softWhite
+                                          .withValues(alpha: 0.7),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (isSelected)
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: AppColors.accent,
+                                size: 20,
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               );
             }),
+            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
 }
+
+// ─── Day chip ─────────────────────────────────────────────────────────────────
 
 class _DayChip extends StatelessWidget {
   const _DayChip({
@@ -654,25 +699,30 @@ class _DayChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.accent : AppColors.cardBg,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isSelected ? AppColors.accent : AppColors.softWhite,
+    return Semantics(
+      button: true,
+      toggled: isSelected,
+      label: dayLabels[day - 1],
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.accent : AppColors.cardBg,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: isSelected ? AppColors.accent : AppColors.softWhite,
+            ),
           ),
-        ),
-        child: Center(
-          child: Text(
-            dayLabels[day - 1],
-            style: TextStyle(
-              color: isSelected ? AppColors.background : AppColors.softWhite,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          child: Center(
+            child: Text(
+              dayLabels[day - 1],
+              style: TextStyle(
+                color: isSelected ? AppColors.background : AppColors.softWhite,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),
@@ -680,6 +730,8 @@ class _DayChip extends StatelessWidget {
     );
   }
 }
+
+// ─── Wake style enum ──────────────────────────────────────────────────────────
 
 enum _WakeStyle {
   ledSunrise,
@@ -718,7 +770,20 @@ enum _WakeStyle {
         return Icons.record_voice_over_rounded;
     }
   }
+
+  String get apiKey {
+    switch (this) {
+      case _WakeStyle.ledSunrise:
+        return 'led_sunrise';
+      case _WakeStyle.gentle:
+        return 'gentle';
+      case _WakeStyle.voiceOnly:
+        return 'voice_only';
+    }
+  }
 }
+
+// ─── Alarm data model ─────────────────────────────────────────────────────────
 
 class _Alarm {
   const _Alarm({
@@ -737,14 +802,27 @@ class _Alarm {
   final bool isEnabled;
   final _WakeStyle wakeStyle;
 
+  String get timeString =>
+      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+
+  String get displayTime {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
   factory _Alarm.fromJson(Map<String, dynamic> json) {
     final timeStr = json['time'] as String? ?? '07:00';
     final timeParts = timeStr.split(':');
     final hour = int.tryParse(timeParts[0]) ?? 7;
-    final minute = timeParts.length > 1 ? int.tryParse(timeParts[1]) ?? 0 : 0;
+    final minute =
+        timeParts.length > 1 ? int.tryParse(timeParts[1]) ?? 0 : 0;
 
     final daysList = json['days'] as List<dynamic>? ?? [];
-    final daysSet = daysList.map((d) => d as int).toSet();
+    final daysSet = daysList
+        .map((d) => d is int ? d : int.tryParse(d.toString()) ?? 0)
+        .toSet();
 
     final wakeStyleStr = json['wake_style'] as String? ?? 'led_sunrise';
     _WakeStyle wakeStyle = _WakeStyle.ledSunrise;

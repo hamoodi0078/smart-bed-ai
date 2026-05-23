@@ -1,17 +1,20 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../src/core/network_status_service.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
+import '../../widgets/network_banner.dart';
 
-class DanaChatScreen extends StatefulWidget {
+class DanaChatScreen extends ConsumerStatefulWidget {
   const DanaChatScreen({super.key});
 
   @override
-  State<DanaChatScreen> createState() => _DanaChatScreenState();
+  ConsumerState<DanaChatScreen> createState() => _DanaChatScreenState();
 }
 
-class _DanaChatScreenState extends State<DanaChatScreen> {
+class _DanaChatScreenState extends ConsumerState<DanaChatScreen> {
   static const String _historyKey = 'dana_chat_history';
   static const int _maxStoredMessages = 50;
 
@@ -91,6 +94,7 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
   }
 
   void _addDanaMessage(String text) {
+    if (!mounted) return;
     setState(() {
       _messages.add(_Message(
         text: text,
@@ -129,23 +133,38 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
 
   void _sendMessage() async {
     final text = _messageController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _isTyping) return;
+
+    final isOnline = ref.read(isOnlineProvider);
+    if (!isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No internet connection. Please check your network.'),
+          backgroundColor: AppColors.orange,
+        ),
+      );
+      return;
+    }
 
     _addUserMessage(text);
     _messageController.clear();
+    setState(() => _isTyping = true);
 
-    setState(() {
-      _isTyping = true;
-    });
-
-    final personalityKey = _currentPersonality.apiKey;
-    final response = await ApiService.sendMessage(text, personality: personalityKey);
-
-    if (mounted) {
-      setState(() {
-        _isTyping = false;
-      });
-      _addDanaMessage(response);
+    try {
+      final personalityKey = _currentPersonality.apiKey;
+      final response =
+          await ApiService.sendMessage(text, personality: personalityKey);
+      if (mounted) {
+        setState(() => _isTyping = false);
+        _addDanaMessage(response);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isTyping = false);
+        _addDanaMessage(
+          "Sorry, I couldn't respond right now. Please try again. 🌙",
+        );
+      }
     }
   }
 
@@ -273,6 +292,7 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
       ),
       body: Column(
         children: [
+          const NetworkBanner(),
           Expanded(
             child: _messages.isEmpty
                 ? Center(
@@ -332,12 +352,16 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
         top: false,
         child: Row(
           children: [
-            IconButton(
-              onPressed: _startVoiceInput,
-              icon: const Icon(Icons.mic_rounded),
-              color: AppColors.accent,
-              iconSize: 28,
-              tooltip: 'Voice input',
+            Semantics(
+              button: true,
+              label: 'Voice input',
+              child: IconButton(
+                onPressed: _startVoiceInput,
+                icon: const Icon(Icons.mic_rounded),
+                color: AppColors.accent,
+                iconSize: 28,
+                tooltip: 'Voice input',
+              ),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -363,23 +387,27 @@ class _DanaChatScreenState extends State<DanaChatScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.accent,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.accent.withValues(alpha: 0.4),
-                    blurRadius: 12,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: IconButton(
-                onPressed: _sendMessage,
-                icon: const Icon(Icons.send_rounded),
-                color: AppColors.background,
-                iconSize: 22,
+            Semantics(
+              button: true,
+              label: 'Send message',
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.accent,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.accent.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: IconButton(
+                  onPressed: _sendMessage,
+                  icon: const Icon(Icons.send_rounded),
+                  color: AppColors.background,
+                  iconSize: 22,
+                ),
               ),
             ),
           ],
@@ -396,62 +424,88 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment:
-            message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!message.isUser) ...[
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: message.personality?.color.withValues(alpha: 0.2) ??
-                    AppColors.accent.withValues(alpha: 0.2),
-              ),
-              child: Center(
-                child: Text(
-                  message.personality?.emoji ?? '🤖',
-                  style: const TextStyle(fontSize: 18),
+    final timeStr =
+        '${message.timestamp.hour.toString().padLeft(2, '0')}:'
+        '${message.timestamp.minute.toString().padLeft(2, '0')}';
+
+    return Semantics(
+      label: '${message.isUser ? 'You' : 'Dana'}: ${message.text}. Sent at $timeStr',
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(
+          mainAxisAlignment:
+              message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!message.isUser) ...[
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: message.personality?.color.withValues(alpha: 0.2) ??
+                      AppColors.accent.withValues(alpha: 0.2),
+                ),
+                child: Center(
+                  child: Text(
+                    message.personality?.emoji ?? '🤖',
+                    style: const TextStyle(fontSize: 18),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: message.isUser
-                    ? AppColors.accent
-                    : AppColors.cardBg,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(message.isUser ? 16 : 4),
-                  bottomRight: Radius.circular(message.isUser ? 4 : 16),
-                ),
-                border: message.isUser
-                    ? null
-                    : Border.all(
-                        color: message.personality?.color.withValues(alpha: 0.3) ??
-                            AppColors.accent.withValues(alpha: 0.3),
+              const SizedBox(width: 8),
+            ],
+            Flexible(
+              child: GestureDetector(
+                onLongPress: () {
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      backgroundColor: AppColors.cardBg,
+                      content: Text(
+                        timeStr,
+                        style: const TextStyle(
+                            color: AppColors.softWhite, fontSize: 13),
+                        textAlign: TextAlign.center,
                       ),
-              ),
-              child: Text(
-                message.text,
-                style: TextStyle(
-                  color: message.isUser ? AppColors.background : AppColors.white,
-                  fontSize: 14,
-                  height: 1.4,
+                    ),
+                  );
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: message.isUser ? AppColors.accent : AppColors.cardBg,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(16),
+                      topRight: const Radius.circular(16),
+                      bottomLeft: Radius.circular(message.isUser ? 16 : 4),
+                      bottomRight: Radius.circular(message.isUser ? 4 : 16),
+                    ),
+                    border: message.isUser
+                        ? null
+                        : Border.all(
+                            color: message.personality
+                                    ?.color
+                                    .withValues(alpha: 0.3) ??
+                                AppColors.accent.withValues(alpha: 0.3),
+                          ),
+                  ),
+                  child: Text(
+                    message.text,
+                    style: TextStyle(
+                      color: message.isUser
+                          ? AppColors.background
+                          : AppColors.white,
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

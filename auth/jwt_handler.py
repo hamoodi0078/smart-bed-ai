@@ -1,34 +1,51 @@
-"""JWT signing and verification using python-jose (HS256).
+"""JWT signing and verification using authlib (HS256).
 
-Design:
-  - The DB stores only the opaque JTI (token_urlsafe(32), 43 chars) for revocation.
-  - The client receives a signed JWT that embeds the JTI as the `jti` claim.
-  - Validation: decode JWT → extract jti → single DB revocation check.
-  - Legacy opaque tokens (no dots) fall back to direct DB lookup in repositories.py.
+Public API is identical to the python-jose version — all callers unchanged.
+
+Authlib encode/decode flow:
+  jwt.encode(header, claims, key) → bytes
+  jwt.decode(token, key)          → JWTClaims (dict-like, not yet validated)
+  claims.validate()               → raises JoseError / ExpiredTokenError if bad
 """
 
 from __future__ import annotations
 
+import base64
+import json
 from datetime import datetime, timezone
 from typing import Any
 
-from jose import JWTError, jwt
-from jose.exceptions import ExpiredSignatureError
+from authlib.jose import JsonWebToken, OctKey
+from authlib.jose import JoseError
+from authlib.jose.errors import ExpiredTokenError
 
 from config import settings
 
 _ALGORITHM = settings.jwt_algorithm
+_jwt = JsonWebToken([_ALGORITHM])
+
+# ── Exception aliases — preserve python-jose names used by all callers ────────
+JWTError = JoseError
+ExpiredSignatureError = ExpiredTokenError
 
 
-def _secret() -> str:
-    key = settings.secret_key
-    if not key or key == "change-me-in-production":
+def _key() -> OctKey:
+    import os
+    secret = settings.secret_key
+    _unsafe = {"change-me-in-production", "secret", "changeme", "development", ""}
+    is_production = os.getenv("DANAH_ENV", "development").lower() == "production"
+    if is_production and (secret in _unsafe or len(secret) < 32):
+        raise RuntimeError(
+            "Refusing to sign JWT tokens with a weak SECRET_KEY in production. "
+            "Set SECRET_KEY to a random 32+ character string in your .env file."
+        )
+    if secret in _unsafe:
         import warnings
         warnings.warn(
-            "SECRET_KEY is not set — JWT tokens are NOT secure. Set SECRET_KEY in .env.",
+            "SECRET_KEY is default/weak — JWT tokens are NOT secure. Set SECRET_KEY in .env.",
             stacklevel=3,
         )
-    return key
+    return OctKey.import_key(secret.encode("utf-8"))
 
 
 def create_access_token(
@@ -52,12 +69,16 @@ def create_access_token(
         claims["email"] = email
     if client_name:
         claims["client"] = client_name
-    return jwt.encode(claims, _secret(), algorithm=_ALGORITHM)
+    token_bytes: bytes = _jwt.encode({"alg": _ALGORITHM}, claims, _key())
+    return token_bytes.decode("utf-8")
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
-    """Verify and return claims. Raises JWTError on invalid/expired tokens."""
-    return jwt.decode(token, _secret(), algorithms=[_ALGORITHM])
+    """Verify signature and validate claims. Raises JWTError on failure."""
+    raw = token.encode("utf-8") if isinstance(token, str) else token
+    claims = _jwt.decode(raw, _key())
+    claims.validate()
+    return dict(claims)
 
 
 def is_jwt(token: str) -> bool:
@@ -72,12 +93,16 @@ def decode_unverified(token: str) -> dict[str, Any]:
     extract claims before the upstream verification step.
     """
     raw = str(token or "").strip()
-    if not raw:
+    if not raw or raw.count(".") != 2:
         return {}
     try:
-        # jose's get_unverified_claims raises JWTError on malformed tokens
-        return jwt.get_unverified_claims(raw)
-    except JWTError:
+        _, payload_b64, _ = raw.split(".")
+        # Restore standard base64 padding before decoding
+        remainder = len(payload_b64) % 4
+        if remainder:
+            payload_b64 += "=" * (4 - remainder)
+        return json.loads(base64.urlsafe_b64decode(payload_b64))
+    except Exception:
         return {}
 
 

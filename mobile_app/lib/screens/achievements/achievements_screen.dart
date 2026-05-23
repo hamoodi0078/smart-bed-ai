@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:confetti/confetti.dart';
 import '../../theme/app_theme.dart';
 
@@ -185,7 +185,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
           ],
         ),
         border: Border.all(
-          color: AppColors.accent.withOpacity(0.3),
+          color: AppColors.accent.withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -217,7 +217,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
           Container(
             width: 1,
             height: 40,
-            color: AppColors.softWhite.withOpacity(0.2),
+            color: AppColors.softWhite.withValues(alpha: 0.2),
           ),
           const SizedBox(width: 20),
           Expanded(
@@ -270,11 +270,11 @@ class _AchievementCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           color: achievement.isUnlocked
               ? AppColors.cardBg
-              : AppColors.cardBg.withOpacity(0.3),
+              : AppColors.cardBg.withValues(alpha: 0.3),
           border: Border.all(
             color: achievement.isUnlocked
-                ? achievement.color.withOpacity(0.5)
-                : AppColors.softWhite.withOpacity(0.1),
+                ? achievement.color.withValues(alpha: 0.5)
+                : AppColors.softWhite.withValues(alpha: 0.1),
           ),
         ),
         child: Row(
@@ -285,14 +285,14 @@ class _AchievementCard extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: achievement.isUnlocked
-                    ? achievement.color.withOpacity(0.2)
-                    : AppColors.softWhite.withOpacity(0.05),
+                    ? achievement.color.withValues(alpha: 0.2)
+                    : AppColors.softWhite.withValues(alpha: 0.05),
               ),
               child: Icon(
                 achievement.icon,
                 color: achievement.isUnlocked
                     ? achievement.color
-                    : AppColors.softWhite.withOpacity(0.3),
+                    : AppColors.softWhite.withValues(alpha: 0.3),
                 size: 28,
               ),
             ),
@@ -309,7 +309,7 @@ class _AchievementCard extends StatelessWidget {
                           style: TextStyle(
                             color: achievement.isUnlocked
                                 ? AppColors.white
-                                : AppColors.softWhite.withOpacity(0.5),
+                                : AppColors.softWhite.withValues(alpha: 0.5),
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
@@ -322,8 +322,8 @@ class _AchievementCard extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: achievement.isUnlocked
-                              ? AppColors.gold.withOpacity(0.2)
-                              : AppColors.softWhite.withOpacity(0.05),
+                              ? AppColors.gold.withValues(alpha: 0.2)
+                              : AppColors.softWhite.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -331,7 +331,7 @@ class _AchievementCard extends StatelessWidget {
                           style: TextStyle(
                             color: achievement.isUnlocked
                                 ? AppColors.gold
-                                : AppColors.softWhite.withOpacity(0.3),
+                                : AppColors.softWhite.withValues(alpha: 0.3),
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
@@ -343,7 +343,7 @@ class _AchievementCard extends StatelessWidget {
                   Text(
                     achievement.description,
                     style: TextStyle(
-                      color: AppColors.softWhite.withOpacity(
+                      color: AppColors.softWhite.withValues(alpha: 
                         achievement.isUnlocked ? 0.8 : 0.3,
                       ),
                       fontSize: 13,
@@ -356,9 +356,9 @@ class _AchievementCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
                         value: achievement.progress / achievement.maxProgress,
-                        backgroundColor: AppColors.softWhite.withOpacity(0.1),
+                        backgroundColor: AppColors.softWhite.withValues(alpha: 0.1),
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          achievement.color.withOpacity(0.5),
+                          achievement.color.withValues(alpha: 0.5),
                         ),
                         minHeight: 6,
                       ),
@@ -367,7 +367,7 @@ class _AchievementCard extends StatelessWidget {
                     Text(
                       '${achievement.progress} / ${achievement.maxProgress}',
                       style: TextStyle(
-                        color: AppColors.softWhite.withOpacity(0.5),
+                        color: AppColors.softWhite.withValues(alpha: 0.5),
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -378,7 +378,7 @@ class _AchievementCard extends StatelessWidget {
                     Text(
                       'Unlocked ${_formatDate(achievement.unlockedAt!)}',
                       style: TextStyle(
-                        color: achievement.color.withOpacity(0.7),
+                        color: achievement.color.withValues(alpha: 0.7),
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -429,16 +429,16 @@ class _AchievementUnlockedDialog extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: [
               AppColors.cardBg,
-              AppColors.cardBg.withOpacity(0.8),
+              AppColors.cardBg.withValues(alpha: 0.8),
             ],
           ),
           border: Border.all(
-            color: achievement.color.withOpacity(0.5),
+            color: achievement.color.withValues(alpha: 0.5),
             width: 2,
           ),
           boxShadow: [
             BoxShadow(
-              color: achievement.color.withOpacity(0.3),
+              color: achievement.color.withValues(alpha: 0.3),
               blurRadius: 30,
               spreadRadius: 10,
             ),
@@ -452,7 +452,7 @@ class _AchievementUnlockedDialog extends StatelessWidget {
               height: 100,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: achievement.color.withOpacity(0.2),
+                color: achievement.color.withValues(alpha: 0.2),
                 border: Border.all(
                   color: achievement.color,
                   width: 3,
@@ -489,7 +489,7 @@ class _AchievementUnlockedDialog extends StatelessWidget {
               achievement.description,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: AppColors.softWhite.withOpacity(0.8),
+                color: AppColors.softWhite.withValues(alpha: 0.8),
                 fontSize: 14,
                 height: 1.4,
               ),
@@ -501,7 +501,7 @@ class _AchievementUnlockedDialog extends StatelessWidget {
                 vertical: 8,
               ),
               decoration: BoxDecoration(
-                color: AppColors.gold.withOpacity(0.2),
+                color: AppColors.gold.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: AppColors.gold,

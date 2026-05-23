@@ -1,0 +1,123 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "Danah Smart Bed",
+  "appTitleShort": "Danah",
+
+  "greetingMorning": "Good Morning",
+  "greetingAfternoon": "Good Afternoon",
+  "greetingEvening": "Good Evening",
+
+  "bedOnline": "Bed Online",
+  "bedOffline": "Bed Offline",
+
+  "weeklySleepScore": "Weekly Sleep Score",
+  "lastNight": "Last Night",
+  "sleepScore": "Sleep Score",
+  "streak": "Streak",
+
+  "danaActivity": "Dana Activity",
+  "keepUpGreatWork": "Keep up the great work!",
+
+  "nextPrayer": "Next Prayer",
+  "prayerCalendar": "Prayer Calendar",
+  "todaysPrayers": "Today's Prayers",
+  "todaysHadith": "Today's Hadith",
+  "sunnahTip": "Tonight's Sunnah Tip",
+  "islamicMode": "Islamic Mode",
+  "ramadanKareem": "Ramadan Kareem 🌙",
+
+  "prayerFajr": "Fajr",
+  "prayerDhuhr": "Dhuhr",
+  "prayerAsr": "Asr",
+  "prayerMaghrib": "Maghrib",
+  "prayerIsha": "Isha",
+
+  "quickActionWindDown": "Wind-Down",
+  "quickActionLed": "LED Control",
+  "quickActionSpotify": "Spotify",
+  "quickActionAlarms": "Alarms",
+  "quickActionScenes": "Scenes",
+  "quickActionDanaChat": "Dana Chat",
+  "quickActionAchievements": "Achievements",
+  "quickActionJournal": "Journal",
+  "quickActionHealth": "Health",
+
+  "updateAvailable": "Update available — v{version}",
+  "@updateAvailable": {
+    "placeholders": {
+      "version": { "type": "String" }
+    }
+  },
+  "updateRequired": "Update Required",
+  "updateNow": "Update Now",
+  "updateLater": "Later",
+
+  "retry": "Retry",
+  "close": "Close",
+  "cancel": "Cancel",
+  "save": "Save",
+
+  "errorConnectionTimeout": "Connection timed out. Check your network.",
+  "errorCannotReach": "Cannot reach the server. Check your network.",
+  "errorSessionExpired": "Session expired. Please sign in again.",
+  "errorNotAvailable": "Data not available. Pull down to retry.",
+  "errorServer": "Server error. Please try again later.",
+  "errorDefault": "Could not load data. Pull down to retry.",
+
+  "showingCachedData": "Showing cached data — {error}",
+  "@showingCachedData": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "peaceBeWithYou": "Peace be with you. Ready for a restful night?",
+  "danaGuideActive": "Dana Guide · Active",
+  "spotifyPauseNote": "Spotify will pause automatically 🎵",
+  "ledPreview": "LED Preview",
+
+  "alarmTitle": "Alarms",
+  "addAlarm": "Add Alarm",
+  "editAlarm": "Edit Alarm",
+  "deleteAlarm": "Delete Alarm",
+  "smartAlarm": "Smart Alarm",
+  "alarmLabel": "Label",
+  "alarmTime": "Time",
+  "alarmRepeat": "Repeat",
+
+  "scenesTitle": "Scenes",
+  "ledTitle": "LED Control",
+  "soundsTitle": "Sleep Sounds",
+
+  "partnerMode": "Partner Mode",
+  "partnerLinked": "Partner Linked",
+  "partnerNotLinked": "No Partner Linked",
+
+  "subscriptionTitle": "Subscription",
+  "subscribePremium": "Go Premium",
+  "subscriptionFree": "Free",
+  "subscriptionPremium": "Premium",
+
+  "settingsTitle": "Settings",
+  "profileTitle": "Profile",
+
+  "sleepReport": "Sleep Report",
+  "weeklyReport": "Weekly Report",
+  "sleepTips": "Sleep Tips",
+  "achievements": "Achievements",
+  "journal": "Sleep Journal",
+  "health": "Health Dashboard",
+
+  "connectBed": "Connect Bed",
+  "bedConnected": "Bed Connected",
+  "bedNotConnected": "Bed Not Connected",
+  "scanQR": "Scan QR Code",
+
+  "onboardingWelcome": "Welcome to Danah",
+  "onboardingSubtitle": "Your AI-powered sleep companion",
+  "getStarted": "Get Started",
+  "signIn": "Sign In",
+  "signOut": "Sign Out",
+  "createAccount": "Create Account"
+}

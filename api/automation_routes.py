@@ -207,6 +207,42 @@ async def get_feature_adoption(request: Request, user_id: str = "", days: int = 
     return eng.feature_adoption(user_id, days)
 
 
+@router.get("/analytics/charts/sleep-trend")
+async def chart_sleep_trend(request: Request, user_id: str = "", days: int = 30):
+    """Plotly figure JSON for sleep hours + score over the last N days."""
+    eng = _get_service(request, "analytics_engine")
+    trend = eng.sleep_trend(user_id, days)
+    from reports.chart_generator import sleep_trend_chart
+    return sleep_trend_chart(trend)
+
+
+@router.get("/analytics/charts/daily-activity")
+async def chart_daily_activity(request: Request, user_id: str = "", days: int = 30):
+    """Plotly figure JSON for daily event counts over the last N days."""
+    eng = _get_service(request, "analytics_engine")
+    daily = eng.daily_active_events(user_id=user_id, days=days)
+    from reports.chart_generator import daily_activity_chart
+    return daily_activity_chart(daily)
+
+
+@router.get("/analytics/charts/automation-effectiveness")
+async def chart_automation_effectiveness(request: Request, user_id: str = "", days: int = 30):
+    """Plotly figure JSON for automation acceptance vs decline donut chart."""
+    eng = _get_service(request, "analytics_engine")
+    data = eng.automation_effectiveness(user_id, days)
+    from reports.chart_generator import automation_effectiveness_chart
+    return automation_effectiveness_chart(data)
+
+
+@router.get("/analytics/charts/feature-adoption")
+async def chart_feature_adoption(request: Request, user_id: str = "", days: int = 30):
+    """Plotly figure JSON for per-feature usage horizontal bar chart."""
+    eng = _get_service(request, "analytics_engine")
+    data = eng.feature_adoption(user_id, days)
+    from reports.chart_generator import feature_adoption_chart
+    return feature_adoption_chart(data)
+
+
 # ===================================================================
 # PHASE 2: Sleep Intelligence
 # ===================================================================

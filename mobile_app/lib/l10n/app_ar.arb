@@ -1,0 +1,123 @@
+{
+  "@@locale": "ar",
+
+  "appTitle": "سرير دانة الذكي",
+  "appTitleShort": "دانة",
+
+  "greetingMorning": "صباح الخير",
+  "greetingAfternoon": "مساء الخير",
+  "greetingEvening": "مساء النور",
+
+  "bedOnline": "السرير متصل",
+  "bedOffline": "السرير غير متصل",
+
+  "weeklySleepScore": "تقييم النوم الأسبوعي",
+  "lastNight": "الليلة الماضية",
+  "sleepScore": "تقييم النوم",
+  "streak": "سلسلة الأيام",
+
+  "danaActivity": "نشاط دانة",
+  "keepUpGreatWork": "أحسنت! واصل هذا النظام.",
+
+  "nextPrayer": "الصلاة القادمة",
+  "prayerCalendar": "تقويم الصلاة",
+  "todaysPrayers": "صلوات اليوم",
+  "todaysHadith": "حديث اليوم",
+  "sunnahTip": "نصيحة سنّة الليلة",
+  "islamicMode": "الوضع الإسلامي",
+  "ramadanKareem": "رمضان كريم 🌙",
+
+  "prayerFajr": "الفجر",
+  "prayerDhuhr": "الظهر",
+  "prayerAsr": "العصر",
+  "prayerMaghrib": "المغرب",
+  "prayerIsha": "العشاء",
+
+  "quickActionWindDown": "الاسترخاء",
+  "quickActionLed": "إضاءة LED",
+  "quickActionSpotify": "سبوتيفاي",
+  "quickActionAlarms": "المنبهات",
+  "quickActionScenes": "المشاهد",
+  "quickActionDanaChat": "محادثة دانة",
+  "quickActionAchievements": "الإنجازات",
+  "quickActionJournal": "يوميات النوم",
+  "quickActionHealth": "الصحة",
+
+  "updateAvailable": "تحديث متاح — v{version}",
+  "@updateAvailable": {
+    "placeholders": {
+      "version": { "type": "String" }
+    }
+  },
+  "updateRequired": "تحديث مطلوب",
+  "updateNow": "تحديث الآن",
+  "updateLater": "لاحقاً",
+
+  "retry": "إعادة المحاولة",
+  "close": "إغلاق",
+  "cancel": "إلغاء",
+  "save": "حفظ",
+
+  "errorConnectionTimeout": "انتهت مهلة الاتصال. تحقق من شبكتك.",
+  "errorCannotReach": "تعذر الوصول إلى الخادم. تحقق من شبكتك.",
+  "errorSessionExpired": "انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى.",
+  "errorNotAvailable": "البيانات غير متاحة. اسحب للأسفل للمحاولة.",
+  "errorServer": "خطأ في الخادم. يرجى المحاولة مرة أخرى.",
+  "errorDefault": "تعذر تحميل البيانات. اسحب للأسفل للمحاولة.",
+
+  "showingCachedData": "عرض البيانات المخزنة — {error}",
+  "@showingCachedData": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "peaceBeWithYou": "السلام عليكم. هل أنت مستعد لليلة هانئة؟",
+  "danaGuideActive": "دليل دانة · نشط",
+  "spotifyPauseNote": "سيتوقف سبوتيفاي تلقائياً 🎵",
+  "ledPreview": "معاينة الإضاءة",
+
+  "alarmTitle": "المنبهات",
+  "addAlarm": "إضافة منبه",
+  "editAlarm": "تعديل المنبه",
+  "deleteAlarm": "حذف المنبه",
+  "smartAlarm": "منبه ذكي",
+  "alarmLabel": "التسمية",
+  "alarmTime": "الوقت",
+  "alarmRepeat": "التكرار",
+
+  "scenesTitle": "المشاهد",
+  "ledTitle": "التحكم في الإضاءة",
+  "soundsTitle": "أصوات النوم",
+
+  "partnerMode": "وضع الشريك",
+  "partnerLinked": "الشريك مرتبط",
+  "partnerNotLinked": "لا يوجد شريك مرتبط",
+
+  "subscriptionTitle": "الاشتراك",
+  "subscribePremium": "الترقية إلى Premium",
+  "subscriptionFree": "مجاني",
+  "subscriptionPremium": "مميز",
+
+  "settingsTitle": "الإعدادات",
+  "profileTitle": "الملف الشخصي",
+
+  "sleepReport": "تقرير النوم",
+  "weeklyReport": "التقرير الأسبوعي",
+  "sleepTips": "نصائح النوم",
+  "achievements": "الإنجازات",
+  "journal": "يوميات النوم",
+  "health": "لوحة الصحة",
+
+  "connectBed": "ربط السرير",
+  "bedConnected": "السرير مرتبط",
+  "bedNotConnected": "السرير غير مرتبط",
+  "scanQR": "مسح رمز QR",
+
+  "onboardingWelcome": "مرحباً بك في دانة",
+  "onboardingSubtitle": "رفيقك الذكي للنوم",
+  "getStarted": "ابدأ الآن",
+  "signIn": "تسجيل الدخول",
+  "signOut": "تسجيل الخروج",
+  "createAccount": "إنشاء حساب"
+}

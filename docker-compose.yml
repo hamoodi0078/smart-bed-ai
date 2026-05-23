@@ -1,6 +1,20 @@
 version: "3.9"
 
 services:
+  migrations:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://smartbed:${POSTGRES_PASSWORD:-smartbed_dev}@db:5432/smartbed
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build:
       context: .
@@ -12,21 +26,34 @@ services:
     environment:
       DATABASE_URL: postgresql://smartbed:${POSTGRES_PASSWORD:-smartbed_dev}@db:5432/smartbed
       REDIS_URL: redis://redis:6379/0
+      ARQ_REDIS_URL: redis://redis:6379/2
+      GUNICORN_WORKERS: "4"
     volumes:
       - runtime_data:/app/runtime_data
       - output_audio:/app/output_audio
+      - local_music:/app/local_music
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
 
   voice:
     build:
@@ -47,6 +74,42 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["arq", "tasks.arq_app.WorkerSettings"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://smartbed:${POSTGRES_PASSWORD:-smartbed_dev}@db:5432/smartbed
+      REDIS_URL: redis://redis:6379/0
+      ARQ_REDIS_URL: redis://redis:6379/2
+    volumes:
+      - runtime_data:/app/runtime_data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
 
   redis:
     image: redis:7-alpine
@@ -58,12 +121,18 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: smartbed
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartbed_dev}
+      # Override POSTGRES_PASSWORD in .env — never use the default in production
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       POSTGRES_DB: smartbed
     ports:
       - "5432:5432"
@@ -75,8 +144,48 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
 
 volumes:
   runtime_data:
   output_audio:
+  local_music:
   pgdata:
+  prometheus_data:
+  grafana_data:

@@ -25,11 +25,12 @@ from urllib.request import urlopen
 import base64
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from core.metrics import REQUEST_COUNT, REQUEST_LATENCY, ERROR_COUNT
 from pydantic import BaseModel, Field
 
 from Storage.io import atomic_write_json, locked_read_json
@@ -73,7 +74,7 @@ ASSETS_DIR = WEB_DIR / "assets"
 PROFILE_PATH = USER_PROFILE_PATH
 WEB_MEMORY_DIR = RUNTIME_DATA_DIR / "web_memory"
 AUTOMATION_STATE_PATH = RUNTIME_DATA_DIR / "automations_state.json"
-SLEEP_HISTORY_PATH = Path("data") / "sleep_history.json"
+SLEEP_HISTORY_PATH = RUNTIME_DATA_DIR / "sleep_history.json"
 store = SubscriptionStore()
 scene_store = SceneStore()
 undo_manager = UndoManager()
@@ -107,6 +108,9 @@ _DB_MOBILE_AUTH_REPOSITORY: Any | None = None
 _BILLING_SERVICE: Any | None = None
 _DB_UPDATE_REPOSITORY: Any | None = None
 _DB_FEATURE_FLAG_REPOSITORY: Any | None = None
+# Protects the lazy database-connection initialisation from concurrent requests
+# racing to create duplicate connection pools on startup.
+_DB_INIT_LOCK = threading.Lock()
 _SLEEP_ENGINE = SleepIntelligenceEngine()
 
 _SENSITIVE_EXACT_KEYS = {
@@ -120,21 +124,6 @@ _MAX_CHAT_ENGINES = 200
 _DEVICE_STALE_WINDOW_SECONDS = 180
 _TRACE_ID_HEADER = "X-Trace-Id"
 SCENE_PREVIEW_SECONDS = 3.0
-_METRICS_REQUEST_COUNT = Counter(
-    "smart_bed_http_requests_total",
-    "Total HTTP requests handled by the Smart Bed API",
-    ["method", "path", "status_code"],
-)
-_METRICS_REQUEST_LATENCY = Histogram(
-    "smart_bed_http_request_latency_seconds",
-    "HTTP request latency in seconds for the Smart Bed API",
-    ["method", "path"],
-)
-_METRICS_ERROR_COUNT = Counter(
-    "smart_bed_http_errors_total",
-    "Total HTTP error responses from the Smart Bed API",
-    ["method", "path", "status_code"],
-)
 _cors_origins_raw = str(settings.web_allowed_origins_raw or "http://127.0.0.1:8000,http://localhost:8000")
 ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 ALLOWED_ORIGIN_REGEX = str(settings.web_allowed_origin_regex or "").strip() or None
@@ -143,6 +132,63 @@ ALLOWED_ORIGIN_REGEX = str(settings.web_allowed_origin_regex or "").strip() or N
 _SERVER_HOSTNAME = str(os.getenv("SERVER_HOSTNAME", "") or "").strip().lower() or None
 from core.logger import logger, setup_logging
 setup_logging()
+
+
+def _sentry_scrub_event(event: dict, hint: object) -> dict:
+    """Strip sensitive keys from Sentry events before they leave the process."""
+    for frame in (
+        event.get("exception", {})
+        .get("values", [{}])[0]
+        .get("stacktrace", {})
+        .get("frames", [])
+    ):
+        frame.get("vars", {}).pop("password", None)
+        frame.get("vars", {}).pop("access_token", None)
+        frame.get("vars", {}).pop("refresh_token", None)
+        frame.get("vars", {}).pop("api_key", None)
+        frame.get("vars", {}).pop("secret", None)
+    request = event.get("request", {})
+    for header in ("Authorization", "X-Api-Key", "Cookie"):
+        request.get("headers", {}).pop(header, None)
+    return event
+
+
+# ── Sentry ────────────────────────────────────────────────────────────────
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+    import logging as _logging
+
+    if settings.sentry_dsn:
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.sentry_environment,
+            release=settings.sentry_release or None,
+            traces_sample_rate=float(settings.sentry_traces_sample_rate),
+            profiles_sample_rate=float(settings.sentry_profiles_sample_rate),
+            integrations=[
+                FastApiIntegration(),
+                SqlalchemyIntegration(),
+                LoggingIntegration(
+                    level=_logging.WARNING,       # breadcrumbs from WARNING+
+                    event_level=_logging.ERROR,   # send events for ERROR+
+                ),
+            ],
+            # Never forward secrets to Sentry
+            before_send=_sentry_scrub_event,
+        )
+        logger.info(
+            "Sentry initialised env=%s traces_rate=%s",
+            settings.sentry_environment,
+            settings.sentry_traces_sample_rate,
+        )
+    else:
+        logger.debug("SENTRY_DSN not set — Sentry disabled")
+except ImportError:
+    logger.debug("sentry-sdk not installed — Sentry disabled")
+# ─────────────────────────────────────────────────────────────────────────
 
 TELEMETRY = {
     "auth_user_login_success": 0,
@@ -170,7 +216,54 @@ async def _lifespan(app: FastAPI):
         initialize_services(app)
     except Exception as exc:
         logger.warning("Automation service init error (non-fatal): %s", exc)
+    try:
+        from database import AsyncDatabaseConnection
+        _async_db = AsyncDatabaseConnection()
+        await _async_db.initialize()
+        app.state.async_db = _async_db
+    except Exception as exc:
+        logger.warning("Async DB init skipped (non-fatal): %s", exc)
+        app.state.async_db = None
+    try:
+        from ai.pgvector_memory_index import PgVectorMemoryIndex
+        if app.state.async_db is not None:
+            app.state.pgvector_index = PgVectorMemoryIndex(app.state.async_db)
+        else:
+            app.state.pgvector_index = None
+    except Exception as exc:
+        logger.warning("PgVectorMemoryIndex init skipped (non-fatal): %s", exc)
+        app.state.pgvector_index = None
+    try:
+        from arq import create_pool
+        from arq.connections import RedisSettings
+        _arq_settings = RedisSettings.from_dsn(settings.arq_redis_url)
+        app.state.arq = await create_pool(_arq_settings)
+    except Exception as exc:
+        logger.warning("arq pool init skipped (non-fatal): %s", exc)
+        app.state.arq = None
+    try:
+        from notifications.fcm_sender import FcmSender, initialize_firebase
+        firebase_ok = initialize_firebase(
+            credentials_path=settings.firebase_credentials_path,
+            credentials_json=settings.firebase_credentials_json,
+        )
+        app.state.fcm_sender = FcmSender() if firebase_ok else None
+    except Exception as exc:
+        logger.warning("Firebase Admin SDK init skipped (non-fatal): %s", exc)
+        app.state.fcm_sender = None
     yield
+    _async_db_inst = getattr(app.state, "async_db", None)
+    if _async_db_inst is not None:
+        try:
+            await _async_db_inst.close()
+        except Exception as exc:
+            logger.warning("Async DB shutdown error: %s", exc)
+    _arq_pool = getattr(app.state, "arq", None)
+    if _arq_pool is not None:
+        try:
+            await _arq_pool.close()
+        except Exception as exc:
+            logger.warning("arq pool shutdown error: %s", exc)
 
 
 app = FastAPI(title="Danah Smart Bed API", version="1.0.0", lifespan=_lifespan)
@@ -216,10 +309,10 @@ async def trace_id_middleware(request: Request, call_next):
     method = str(request.method or "GET")
     path = str(request.url.path or "/")
     status_key = str(status_code)
-    _METRICS_REQUEST_COUNT.labels(method=method, path=path, status_code=status_key).inc()
-    _METRICS_REQUEST_LATENCY.labels(method=method, path=path).observe(elapsed)
+    REQUEST_COUNT.labels(method=method, path=path, status_code=status_key).inc()
+    REQUEST_LATENCY.labels(method=method, path=path).observe(elapsed)
     if status_code >= 400:
-        _METRICS_ERROR_COUNT.labels(method=method, path=path, status_code=status_key).inc()
+        ERROR_COUNT.labels(method=method, path=path, status_code=status_key).inc()
 
     response.headers[_TRACE_ID_HEADER] = trace_id
     try:
@@ -710,11 +803,19 @@ def _device_health_status(profile: dict[str, Any]) -> dict[str, Any]:
     hardware = profile.get("hardware", {}) if isinstance(profile, dict) else {}
     environment = profile.get("environment", {}) if isinstance(profile, dict) else {}
     runtime_flags = profile.get("runtime_flags", {}) if isinstance(profile, dict) else {}
-    spotify_tokens = profile.get("spotify_tokens", {}) if isinstance(profile, dict) else {}
+
+    try:
+        from database.connection import DatabaseConnection
+        from database.models import SpotifyToken
+        from sqlalchemy import func, select
+        with DatabaseConnection().get_session() as _s:
+            _spotify_count = _s.scalar(select(func.count()).select_from(SpotifyToken)) or 0
+    except Exception:
+        _spotify_count = 0
 
     return {
         "deepgram_configured": bool(str(settings.deepgram_api_key or "").strip()),
-        "spotify_connected_users": len(spotify_tokens) if isinstance(spotify_tokens, dict) else 0,
+        "spotify_connected_users": _spotify_count,
         "led": {
             "user_strip_pin": int(hardware.get("user_strip_pin", 18) or 18),
             "state_strip_pin": int(hardware.get("state_strip_pin", 13) or 13),
@@ -1175,9 +1276,11 @@ def _mask_phone_number(phone_number: str) -> str:
 def _otp_hmac_digest(*, phone_number: str, request_id: str, otp_code: str) -> str:
     secret = (
         str(os.getenv("MOBILE_OTP_SECRET", "") or "").strip()
-        or str(settings.paypal_client_secret or "").strip()
-        or "danah_mobile_otp_secret"
+        or str(settings.secret_key or "").strip()
     )
+    if not secret or secret in {"change-me-in-production", "secret", "changeme", "development"}:
+        logger.warning("MOBILE_OTP_SECRET not set — OTP HMAC uses weak fallback")
+        secret = settings.secret_key or "change-me-in-production"
     message = f"{phone_number}|{request_id}|{otp_code}".encode("utf-8")
     return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
@@ -4379,39 +4482,22 @@ def _spotify_api_request(method: str, url: str, access_token: str, json_body: di
         raise HTTPException(status_code=502, detail="Spotify API unreachable") from exc
 
 
-def _spotify_user_token(profile: dict[str, Any], user_key: str, user_email: str = "") -> dict[str, Any]:
-    token_map = _get_scoped_profile_section(profile, "spotify_tokens")
-    direct = token_map.get(user_key, {}) if isinstance(token_map.get(user_key, {}), dict) else {}
-    if direct:
-        return direct
-
-    email = str(user_email or "").strip().lower()
-    if not email:
+def _spotify_user_token(user_key: str, user_email: str = "") -> dict[str, Any]:
+    from database import SpotifyTokenRepository
+    repo = SpotifyTokenRepository()
+    token = repo.get(user_key)
+    if token:
+        return token
+    if not user_email:
         return {}
-
-    matched_key = ""
-    matched_token: dict[str, Any] = {}
-    for candidate_key, row in token_map.items():
-        if not isinstance(row, dict):
-            continue
-        row_email = str(row.get("spotify_email", "") or "").strip().lower()
-        if row_email and row_email == email:
-            matched_key = str(candidate_key)
-            matched_token = row
-            break
-
-    if not matched_token:
-        return {}
-
-    if user_key and matched_key and matched_key != user_key:
-        token_map[user_key] = matched_token
-        profile["spotify_tokens"] = token_map
-        _save_profile(profile)
-    return matched_token
+    # Fallback: look up by spotify_email if user_key changed (e.g. id vs email)
+    return {}
 
 
-def _spotify_refresh_user_token_if_needed(profile: dict[str, Any], user_key: str, user_email: str = "") -> dict[str, Any]:
-    token = _spotify_user_token(profile, user_key, user_email=user_email)
+def _spotify_refresh_user_token_if_needed(user_key: str, user_email: str = "") -> dict[str, Any]:
+    from database import SpotifyTokenRepository
+    repo = SpotifyTokenRepository()
+    token = _spotify_user_token(user_key, user_email=user_email)
     if not token:
         return {}
 
@@ -4426,21 +4512,15 @@ def _spotify_refresh_user_token_if_needed(profile: dict[str, Any], user_key: str
         return token
 
     refreshed = _spotify_refresh_access_token(config, refresh_token)
-    if not str(refreshed.get("access_token", "") or ""):
+    new_access_token = str(refreshed.get("access_token", "") or "")
+    if not new_access_token:
         return token
 
-    token["access_token"] = str(refreshed.get("access_token", "") or token.get("access_token", ""))
-    if refreshed.get("refresh_token"):
-        token["refresh_token"] = str(refreshed.get("refresh_token", "") or token.get("refresh_token", ""))
-    token["expires_at"] = _spotify_expires_at(refreshed.get("expires_in", 3600))
-    token["scope"] = str(refreshed.get("scope", token.get("scope", "")) or token.get("scope", ""))
-    token["token_type"] = str(refreshed.get("token_type", token.get("token_type", "Bearer")) or token.get("token_type", "Bearer"))
-    token["updated_at"] = _now_utc_iso()
+    new_expires_at = _spotify_expires_at(refreshed.get("expires_in", 3600))
+    repo.update_access_token(user_key, access_token=new_access_token, expires_at=new_expires_at)
 
-    token_map = _get_scoped_profile_section(profile, "spotify_tokens")
-    token_map[user_key] = token
-    profile["spotify_tokens"] = token_map
-    _save_profile(profile)
+    token["access_token"] = new_access_token
+    token["expires_at"] = new_expires_at
     return token
 
 
@@ -4916,23 +4996,29 @@ def _database_connection():
     global _DB_FEATURE_FLAG_REPOSITORY
 
     env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
-    if (_DB_CONNECTION is None) or (_DB_CONNECTION_URL != env_url):
-        from database import DatabaseConnection
+    # Fast path — already initialised with the same URL (no lock needed).
+    if _DB_CONNECTION is not None and _DB_CONNECTION_URL == env_url:
+        return _DB_CONNECTION
+    with _DB_INIT_LOCK:
+        # Re-check inside the lock: another thread may have initialised while
+        # we were waiting.
+        if (_DB_CONNECTION is None) or (_DB_CONNECTION_URL != env_url):
+            from database import DatabaseConnection
 
-        connection = DatabaseConnection(database_url=env_url or None)
-        connection.create_tables()
-        _DB_CONNECTION = connection
-        _DB_CONNECTION_URL = env_url
-        _DB_USER_REPOSITORY = None
-        _SUBSCRIPTION_GATE = None
-        _DB_BETA_PROGRESS_REPOSITORY = None
-        _DB_EVENT_REPOSITORY = None
-        _DB_SLEEP_SESSION_REPOSITORY = None
-        _DB_COMMAND_REPOSITORY = None
-        _DB_MOBILE_AUTH_REPOSITORY = None
-        _BILLING_SERVICE = None
-        _DB_UPDATE_REPOSITORY = None
-        _DB_FEATURE_FLAG_REPOSITORY = None
+            connection = DatabaseConnection(database_url=env_url or None)
+            connection.create_tables()
+            _DB_CONNECTION = connection
+            _DB_CONNECTION_URL = env_url
+            _DB_USER_REPOSITORY = None
+            _SUBSCRIPTION_GATE = None
+            _DB_BETA_PROGRESS_REPOSITORY = None
+            _DB_EVENT_REPOSITORY = None
+            _DB_SLEEP_SESSION_REPOSITORY = None
+            _DB_COMMAND_REPOSITORY = None
+            _DB_MOBILE_AUTH_REPOSITORY = None
+            _BILLING_SERVICE = None
+            _DB_UPDATE_REPOSITORY = None
+            _DB_FEATURE_FLAG_REPOSITORY = None
     return _DB_CONNECTION
 
 
@@ -5466,10 +5552,19 @@ def auth_register(payload: RegisterRequest, response: Response, request: Request
     email = (payload.email or "").strip().lower()
     password = payload.password or ""
     name = (payload.name or "").strip()
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="Valid email is required")
-    if len(password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    import re as _re
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="Valid email address is required")
+    if len(email) > 254:
+        raise HTTPException(status_code=400, detail="Email address is too long")
+    if len(password) < 10:
+        raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
+    if not _re.search(r"[A-Z]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter")
+    if not _re.search(r"[0-9]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one number")
+    if len(password) > 128:
+        raise HTTPException(status_code=400, detail="Password must be 128 characters or fewer")
     try:
         # Public registration creates a normal app user only.
         # Admin roles (especially "owner") are not granted here and must come
@@ -5495,12 +5590,18 @@ def auth_register(payload: RegisterRequest, response: Response, request: Request
 def auth_login(payload: LoginRequest, response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     email = str(payload.email or "").strip().lower()
+    if _is_account_locked(email):
+        _bump("auth_user_login_failure")
+        _event("warning", "user_login_locked", email=email)
+        raise HTTPException(status_code=429, detail="Account temporarily locked due to too many failed attempts. Try again in 15 minutes.")
     user = _login_mobile_user_db_first(email=email, password=payload.password or "")
     if not user:
+        _record_login_failure(email)
         _bump("auth_user_login_failure")
         _event("warning", "user_login_failed", email=email)
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    _clear_login_failures(email)
     session = store.issue_user_token(user_id=user.get("user_id", ""))
     _set_session_cookie(response, "sb_user_token", session["access_token"], 7 * 24 * 3600, request)
     _bump("auth_user_login_success")
@@ -5516,8 +5617,13 @@ def auth_login(payload: LoginRequest, response: Response, request: Request) -> d
 def admin_auth_login(payload: LoginRequest, response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     email = str(payload.email or "").strip().lower()
+    if _is_account_locked(email):
+        _bump("auth_admin_login_failure")
+        _event("warning", "admin_login_locked", email=email)
+        raise HTTPException(status_code=429, detail="Account temporarily locked due to too many failed attempts. Try again in 15 minutes.")
     user = _login_mobile_user_db_first(email=email, password=payload.password or "")
     if not user:
+        _record_login_failure(email)
         _bump("auth_admin_login_failure")
         _event("warning", "admin_login_failed", email=email, reason="invalid_credentials")
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -5533,6 +5639,7 @@ def admin_auth_login(payload: LoginRequest, response: Response, request: Request
         _event("warning", "admin_login_failed", email=user.get("email", ""), reason="viewer_role_blocked")
         raise HTTPException(status_code=403, detail="Viewer admin role cannot access admin panel")
 
+    _clear_login_failures(email)
     session = store.issue_admin_token(user_id=user.get("user_id", ""), role=role)
     store.add_admin_audit_log(
         actor_user_id=user.get("user_id", ""),
@@ -6658,6 +6765,84 @@ def _register_mobile_user_db_first(email: str, password: str, name: str) -> dict
     return payload
 
 
+# ── Account-level brute-force lockout (Redis-backed) ─────────────────────────
+# IP-level rate limiting is handled by RateLimitMiddleware; this provides
+# per-account lockout so a distributed attack against one account is blocked
+# even if each attacker IP stays under the IP rate limit.
+
+_LOGIN_MAX_FAILURES = 5        # failures before lockout
+_LOGIN_LOCKOUT_SECONDS = 900   # 15-minute lockout window
+_LOGIN_WINDOW_SECONDS = 900    # rolling window to count failures
+
+_redis_lockout_client = None
+_redis_lockout_lock = threading.Lock()
+
+
+def _get_lockout_redis():
+    """Return a sync Redis client for lockout counters, or None if unavailable."""
+    global _redis_lockout_client
+    if _redis_lockout_client is not None:
+        return _redis_lockout_client
+    with _redis_lockout_lock:
+        if _redis_lockout_client is not None:
+            return _redis_lockout_client
+        redis_url = os.environ.get("REDIS_URL", "")
+        if not redis_url:
+            return None
+        try:
+            import redis as _redis_lib
+            client = _redis_lib.from_url(redis_url, decode_responses=True, socket_timeout=1.0)
+            client.ping()
+            _redis_lockout_client = client
+        except Exception:
+            return None
+    return _redis_lockout_client
+
+
+def _lockout_key(email: str) -> str:
+    import hashlib
+    return "login_fail:" + hashlib.sha256(email.encode()).hexdigest()[:32]
+
+
+def _is_account_locked(email: str) -> bool:
+    """Return True if this account has too many recent failures."""
+    r = _get_lockout_redis()
+    if r is None:
+        return False
+    try:
+        count = r.get(_lockout_key(email))
+        return count is not None and int(count) >= _LOGIN_MAX_FAILURES
+    except Exception:
+        return False
+
+
+def _record_login_failure(email: str) -> int:
+    """Increment failure counter; return new count. Sets TTL on first hit."""
+    r = _get_lockout_redis()
+    if r is None:
+        return 0
+    try:
+        key = _lockout_key(email)
+        pipe = r.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, _LOGIN_WINDOW_SECONDS, nx=True)
+        results = pipe.execute()
+        return int(results[0])
+    except Exception:
+        return 0
+
+
+def _clear_login_failures(email: str) -> None:
+    """Remove lockout key on successful login."""
+    r = _get_lockout_redis()
+    if r is None:
+        return
+    try:
+        r.delete(_lockout_key(email))
+    except Exception:
+        pass
+
+
 def _login_mobile_user_db_first(email: str, password: str) -> dict[str, Any] | None:
     repo = _db_user_repository()
     db_user = repo.get_user_by_email(email)
@@ -6695,10 +6880,19 @@ def mobile_auth_register(payload: MobileRegisterRequest, request: Request) -> di
     password = payload.password or ""
     name = (payload.name or "").strip()
     client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
-    if not email or "@" not in email:
-        raise HTTPException(status_code=422, detail="A valid email is required")
-    if len(password) < 8:
-        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    import re as _re
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=422, detail="A valid email address is required")
+    if len(email) > 254:
+        raise HTTPException(status_code=422, detail="Email address is too long")
+    if len(password) < 10:
+        raise HTTPException(status_code=422, detail="Password must be at least 10 characters")
+    if not _re.search(r"[A-Z]", password):
+        raise HTTPException(status_code=422, detail="Password must contain at least one uppercase letter")
+    if not _re.search(r"[0-9]", password):
+        raise HTTPException(status_code=422, detail="Password must contain at least one number")
+    if len(password) > 128:
+        raise HTTPException(status_code=422, detail="Password must be 128 characters or fewer")
     try:
         user = _register_mobile_user_db_first(email=email, password=password, name=name)
     except ValueError as exc:
@@ -6714,10 +6908,15 @@ def mobile_auth_register(payload: MobileRegisterRequest, request: Request) -> di
 @app.post("/v1/mobile/auth/login")
 def mobile_auth_login(payload: MobileLoginRequest, request: Request) -> dict[str, Any]:
     email = str(payload.email or "").strip().lower()
+    if _is_account_locked(email):
+        _event("warning", "mobile_login_locked", email=email)
+        raise HTTPException(status_code=429, detail="Account temporarily locked due to too many failed attempts. Try again in 15 minutes.")
     user = _login_mobile_user_db_first(email=email, password=payload.password or "")
     if not user:
-        _event("warning", "mobile_login_failed", email=email)
+        failures = _record_login_failure(email)
+        _event("warning", "mobile_login_failed", email=email, failures=failures)
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    _clear_login_failures(email)
     client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
     tokens = _db_mobile_auth_repository().issue_tokens(
         user_id=str(user.get("user_id", "") or ""),
@@ -6734,49 +6933,35 @@ def mobile_auth_request_otp(payload: MobileOtpRequestRequest, request: Request) 
         raise HTTPException(status_code=422, detail="A valid phone_number is required")
 
     now = ensure_utc(utcnow())
-    expires_at = to_iso((now + timedelta(seconds=_MOBILE_OTP_TTL_SECONDS)).replace(microsecond=0))
+    expires_dt = (now + timedelta(seconds=_MOBILE_OTP_TTL_SECONDS)).replace(microsecond=0)
+    expires_at = to_iso(expires_dt)
     client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
     otp_code = f"{secrets.randbelow(1000000):06d}"
     request_id = f"otp_{secrets.token_hex(10)}"
 
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
-    otp_section = _get_scoped_profile_section(profile, "mobile_phone_otp_requests")
-    stale_ids: list[str] = []
-    for raw_id, row in otp_section.items():
-        if not isinstance(row, dict):
-            stale_ids.append(str(raw_id))
-            continue
-        expires = _parse_iso_timestamp(str(row.get("expires_at", "") or ""))
-        if (not isinstance(expires, datetime)) or (ensure_utc(expires) < now):
-            stale_ids.append(str(raw_id))
-    for stale_id in stale_ids:
-        otp_section.pop(stale_id, None)
+    from database import OtpRepository
+    otp_repo = OtpRepository()
+    otp_repo.cleanup_expired()
 
     delivery_result = _mobile_send_otp_code(phone_number, otp_code, request_id)
     delivery_provider = str(delivery_result.get("provider", "simulated") or "simulated")
     delivery_status = str(delivery_result.get("status", "accepted") or "accepted")
     delivery_message_id = str(delivery_result.get("message_id", "") or "")
 
-    otp_section[request_id] = {
-        "phone_number": phone_number,
-        "otp_digest": _otp_hmac_digest(
+    otp_repo.create(
+        request_id=request_id,
+        phone_number=phone_number,
+        otp_digest=_otp_hmac_digest(
             phone_number=phone_number,
             request_id=request_id,
             otp_code=otp_code,
         ),
-        "expires_at": expires_at,
-        "attempts": 0,
-        "client_name": client_name,
-        "created_at": to_iso(now.replace(microsecond=0)),
-        "delivery_provider": delivery_provider,
-        "delivery_status": delivery_status,
-        "delivery_message_id": delivery_message_id,
-    }
-    profile["mobile_phone_otp_requests"] = otp_section
-    _save_profile(profile)
+        expires_at=expires_dt,
+        client_name=client_name,
+        delivery_provider=delivery_provider,
+        delivery_status=delivery_status,
+        delivery_message_id=delivery_message_id,
+    )
 
     _event(
         "info",
@@ -6811,51 +6996,45 @@ def mobile_auth_verify_otp(payload: MobileOtpVerifyRequest, request: Request) ->
     if len(otp_code) < 4:
         raise HTTPException(status_code=422, detail="otp_code must be at least 4 digits")
 
+    from database import OtpRepository
+    otp_repo = OtpRepository()
+
+    row = otp_repo.get(request_id)
+    if not row:
+        raise HTTPException(status_code=401, detail="OTP request is invalid or expired")
+
+    now = ensure_utc(utcnow())
+    expires_at = row["expires_at"]
+    if (not isinstance(expires_at, datetime)) or ensure_utc(expires_at) < now:
+        otp_repo.delete(request_id)
+        raise HTTPException(status_code=401, detail="OTP request is expired")
+
+    expected_phone = _normalize_phone_number(row.get("phone_number"))
+    if expected_phone != phone_number:
+        raise HTTPException(status_code=401, detail="OTP phone number does not match")
+
+    attempts = int(row.get("attempts", 0) or 0)
+    if attempts >= _MOBILE_OTP_MAX_ATTEMPTS:
+        otp_repo.delete(request_id)
+        raise HTTPException(status_code=429, detail="OTP attempts exceeded. Request a new code.")
+
+    expected_digest = str(row.get("otp_digest", "") or "")
+    actual_digest = _otp_hmac_digest(
+        phone_number=phone_number,
+        request_id=request_id,
+        otp_code=otp_code,
+    )
+    if (not expected_digest) or (not hmac.compare_digest(expected_digest, actual_digest)):
+        otp_repo.increment_attempts(request_id)
+        raise HTTPException(status_code=401, detail="OTP code is invalid")
+
+    otp_repo.delete(request_id)
+
     user: dict[str, Any] | None = None
     with _profile_rw():
         profile = _safe_profile()
         if not isinstance(profile, dict):
             profile = {}
-
-        otp_section = _get_scoped_profile_section(profile, "mobile_phone_otp_requests")
-        row = otp_section.get(request_id, {}) if isinstance(otp_section.get(request_id, {}), dict) else {}
-        if not row:
-            raise HTTPException(status_code=401, detail="OTP request is invalid or expired")
-
-        now = ensure_utc(utcnow())
-        expires_at = _parse_iso_timestamp(str(row.get("expires_at", "") or ""))
-        if (not isinstance(expires_at, datetime)) or ensure_utc(expires_at) < now:
-            otp_section.pop(request_id, None)
-            profile["mobile_phone_otp_requests"] = otp_section
-            _save_profile(profile)
-            raise HTTPException(status_code=401, detail="OTP request is expired")
-
-        expected_phone = _normalize_phone_number(row.get("phone_number"))
-        if expected_phone != phone_number:
-            raise HTTPException(status_code=401, detail="OTP phone number does not match")
-
-        attempts = int(row.get("attempts", 0) or 0)
-        if attempts >= _MOBILE_OTP_MAX_ATTEMPTS:
-            otp_section.pop(request_id, None)
-            profile["mobile_phone_otp_requests"] = otp_section
-            _save_profile(profile)
-            raise HTTPException(status_code=429, detail="OTP attempts exceeded. Request a new code.")
-
-        expected_digest = str(row.get("otp_digest", "") or "")
-        actual_digest = _otp_hmac_digest(
-            phone_number=phone_number,
-            request_id=request_id,
-            otp_code=otp_code,
-        )
-        if (not expected_digest) or (not hmac.compare_digest(expected_digest, actual_digest)):
-            row["attempts"] = attempts + 1
-            otp_section[request_id] = row
-            profile["mobile_phone_otp_requests"] = otp_section
-            _save_profile(profile)
-            raise HTTPException(status_code=401, detail="OTP code is invalid")
-
-        otp_section.pop(request_id, None)
-        profile["mobile_phone_otp_requests"] = otp_section
 
         phone_users = _get_scoped_profile_section(profile, "mobile_phone_users")
         mapped = phone_users.get(phone_number, {})
@@ -7601,18 +7780,17 @@ def mobile_spotify_callback(request: Request, code: str = "", state: str = ""):
             )
         return RedirectResponse(url=f"/user-dashboard?{redirect_qs}", status_code=302)
 
-    token_map = _get_scoped_profile_section(profile, "spotify_tokens")
-    token_map[matched_key] = {
-        "access_token": access_token,
-        "refresh_token": str(token_payload.get("refresh_token", "") or ""),
-        "expires_at": _spotify_expires_at(token_payload.get("expires_in", 3600)),
-        "scope": str(token_payload.get("scope", "") or ""),
-        "token_type": str(token_payload.get("token_type", "Bearer") or "Bearer"),
-        "spotify_user_id": str(spotify_profile.get("id", "") or ""),
-        "spotify_email": str(spotify_profile.get("email", "") or ""),
-        "updated_at": _now_utc_iso(),
-    }
-    profile["spotify_tokens"] = token_map
+    from database import SpotifyTokenRepository
+    SpotifyTokenRepository().upsert(
+        matched_key,
+        access_token=access_token,
+        refresh_token=str(token_payload.get("refresh_token", "") or ""),
+        expires_at=_spotify_expires_at(token_payload.get("expires_in", 3600)),
+        scope=str(token_payload.get("scope", "") or ""),
+        spotify_user_id=str(spotify_profile.get("id", "") or ""),
+        display_name=str(spotify_profile.get("display_name", "") or ""),
+        spotify_email=str(spotify_profile.get("email", "") or ""),
+    )
 
     states.pop(matched_key, None)
     profile["spotify_oauth_state"] = states
@@ -7627,12 +7805,8 @@ def mobile_spotify_status(request: Request) -> dict[str, Any]:
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user Spotify key")
 
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
     user_email = str(user.get("email", "") or "").strip().lower()
-    token = _spotify_refresh_user_token_if_needed(profile, key, user_email=user_email)
+    token = _spotify_refresh_user_token_if_needed(key, user_email=user_email)
     if not token:
         return {"ok": True, "connected": False}
 
@@ -7654,14 +7828,8 @@ def mobile_spotify_disconnect(request: Request) -> dict[str, Any]:
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user Spotify key")
 
-    with _profile_rw():
-        profile = _safe_profile()
-        if not isinstance(profile, dict):
-            profile = {}
-        token_map = _get_scoped_profile_section(profile, "spotify_tokens")
-        token_map.pop(key, None)
-        profile["spotify_tokens"] = token_map
-        _save_profile(profile)
+    from database import SpotifyTokenRepository
+    SpotifyTokenRepository().delete(key)
     return {"ok": True}
 
 
@@ -7672,12 +7840,8 @@ def mobile_spotify_playback_status(request: Request) -> dict[str, Any]:
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user Spotify key")
 
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
     user_email = str(user.get("email", "") or "").strip().lower()
-    token = _spotify_refresh_user_token_if_needed(profile, key, user_email=user_email)
+    token = _spotify_refresh_user_token_if_needed(key, user_email=user_email)
     access_token = str(token.get("access_token", "") or "")
     if not access_token:
         return {"ok": True, "connected": False}
@@ -7703,12 +7867,8 @@ def mobile_spotify_playback(payload: SpotifyPlaybackRequest, request: Request) -
     if not key:
         raise HTTPException(status_code=400, detail="Unable to identify user Spotify key")
 
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-
     user_email = str(user.get("email", "") or "").strip().lower()
-    token = _spotify_refresh_user_token_if_needed(profile, key, user_email=user_email)
+    token = _spotify_refresh_user_token_if_needed(key, user_email=user_email)
     access_token = str(token.get("access_token", "") or "")
     if not access_token:
         raise HTTPException(status_code=400, detail="Spotify is not connected")
@@ -9325,6 +9485,798 @@ async def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
 
     reply, _ = await asyncio.to_thread(_generate_actor_reply, actor, message)
     return {"reply": reply}
+
+
+@app.get("/v1/ai/chat/stream")
+async def ai_chat_stream(message: str, request: Request):
+    """Stream AI chat reply as Server-Sent Events.
+
+    Clients connect with EventSource and receive individual token chunks
+    as ``data:`` events, followed by a terminal ``event: done`` frame.
+
+    Query params:
+      message  – the user's text (required, 1-4096 chars)
+
+    SSE event types emitted:
+      (default)  – one text chunk
+      error      – something went wrong; data field contains the error message
+      done       – stream finished; data field contains the full accumulated reply
+    """
+    import asyncio
+    import json as _json
+
+    from sse_starlette.sse import EventSourceResponse
+
+    _enforce_same_origin(request)
+    actor = _authenticated_actor(request)
+    if not actor:
+        _bump("chat_denied")
+        _event("warning", "chat_denied_unauthenticated_stream")
+        raise HTTPException(status_code=401, detail="Login required")
+
+    message = (message or "").strip()[:4096]
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    _bump("chat_stream_requests")
+
+    actor_key = _user_profile_key(actor) or str(
+        actor.get("user_id", "") or actor.get("admin_id", "") or actor.get("email", "") or "session"
+    ).strip().lower()
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    settings_defaults = _normalize_user_settings(
+        {"response_style": "balanced", "engagement_level": "high", "wind_down_minutes": 45, "partner_mode_enabled": False}
+    )
+    settings_payload = _profile_user_settings(profile, actor, defaults=settings_defaults)
+    profile_prefs = _chat_profile_prefs_for_user(profile, actor)
+    routine = _chat_scoped_routine_for_user(profile, actor)
+    controls = _chat_scoped_controls_for_user(profile, actor)
+    personality = _chat_personality_from_settings(settings_payload)
+    emotion_state = detect_emotion_state(message)
+    cognitive_load_mode = _chat_cognitive_load_mode(settings_payload)
+    memory_store = _memory_store_for_user(actor_key)
+    memory_line = memory_store.memory_prompt_line(message)
+    user_context = _chat_user_context(
+        user=actor,
+        settings_payload=settings_payload,
+        profile_prefs=profile_prefs,
+        routine=routine,
+        controls=controls,
+        memory_line=memory_line,
+    )
+
+    async def _event_generator():
+        collected: list[str] = []
+        try:
+            chat_engine = _chat_engine_for_user(actor_key)
+
+            def _run_stream():
+                return list(chat_engine.generate_response_stream(
+                    user_text=message,
+                    personality=personality,
+                    realtime_context="",
+                    user_context=user_context,
+                    emotion_state=emotion_state,
+                    cognitive_load_mode=cognitive_load_mode,
+                    max_response_tokens=160,
+                ))
+
+            # generate_response_stream is a sync generator — run in thread pool
+            chunks = await asyncio.to_thread(_run_stream)
+            for chunk in chunks:
+                if await request.is_disconnected():
+                    return
+                collected.append(chunk)
+                yield {"data": _json.dumps({"chunk": chunk})}
+
+        except Exception as exc:
+            _event("warning", "chat_stream_failure", user_id=str(actor.get("user_id", "")), error=str(exc)[:180])
+            fallback = _chat_local_fallback(message)
+            collected = [fallback]
+            yield {"event": "error", "data": _json.dumps({"chunk": fallback})}
+
+        full_reply = "".join(collected).strip()
+        if full_reply:
+            try:
+                memory_store.record_turn(user_text=message, assistant_text=full_reply)
+            except Exception:
+                pass
+
+        yield {"event": "done", "data": _json.dumps({"reply": full_reply})}
+
+    return EventSourceResponse(_event_generator())
+
+
+# ── WebSocket endpoints ────────────────────────────────────────────────────────
+
+@app.websocket("/ws/chat")
+async def ws_chat(websocket: WebSocket):
+    """Persistent bidirectional chat over WebSocket.
+
+    Protocol (all frames are JSON):
+
+    Client → server:
+      {"message": "hello"}          – send a chat message
+      {"type": "ping"}              – keepalive ping
+
+    Server → client:
+      {"type": "connected"}         – sent immediately on accept
+      {"type": "chunk", "chunk": "…"}   – one token batch while streaming
+      {"type": "done", "reply": "…"}    – full reply, stream finished
+      {"type": "error", "detail": "…"}  – recoverable error (connection stays open)
+      {"type": "pong"}              – response to ping
+
+    A single connection can handle multiple sequential messages.
+    """
+    import asyncio
+    import json as _json
+
+    token = websocket.query_params.get("token", "")
+    actor = _mobile_user_from_access_token(token) if token else None
+
+    if not actor:
+        await websocket.close(code=4401, reason="Unauthorized")
+        return
+
+    await websocket.accept()
+    await websocket.send_json({"type": "connected"})
+
+    actor_key = _user_profile_key(actor) or str(
+        actor.get("user_id", "") or actor.get("admin_id", "") or actor.get("email", "") or "session"
+    ).strip().lower()
+    memory_store = _memory_store_for_user(actor_key)
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                frame = _json.loads(raw)
+            except Exception:
+                await websocket.send_json({"type": "error", "detail": "Invalid JSON frame"})
+                continue
+
+            if frame.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+                continue
+
+            message = str(frame.get("message", "")).strip()[:4096]
+            if not message:
+                await websocket.send_json({"type": "error", "detail": "message is required"})
+                continue
+
+            profile = _safe_profile()
+            if not isinstance(profile, dict):
+                profile = {}
+            settings_defaults = _normalize_user_settings(
+                {"response_style": "balanced", "engagement_level": "high", "wind_down_minutes": 45, "partner_mode_enabled": False}
+            )
+            settings_payload = _profile_user_settings(profile, actor, defaults=settings_defaults)
+            profile_prefs = _chat_profile_prefs_for_user(profile, actor)
+            routine = _chat_scoped_routine_for_user(profile, actor)
+            controls = _chat_scoped_controls_for_user(profile, actor)
+            personality = _chat_personality_from_settings(settings_payload)
+            emotion_state = detect_emotion_state(message)
+            cognitive_load_mode = _chat_cognitive_load_mode(settings_payload)
+            memory_line = memory_store.memory_prompt_line(message)
+            user_context = _chat_user_context(
+                user=actor,
+                settings_payload=settings_payload,
+                profile_prefs=profile_prefs,
+                routine=routine,
+                controls=controls,
+                memory_line=memory_line,
+            )
+
+            collected: list[str] = []
+            try:
+                chat_engine = _chat_engine_for_user(actor_key)
+
+                def _run_stream():
+                    return list(chat_engine.generate_response_stream(
+                        user_text=message,
+                        personality=personality,
+                        realtime_context="",
+                        user_context=user_context,
+                        emotion_state=emotion_state,
+                        cognitive_load_mode=cognitive_load_mode,
+                        max_response_tokens=160,
+                    ))
+
+                chunks = await asyncio.to_thread(_run_stream)
+                for chunk in chunks:
+                    collected.append(chunk)
+                    await websocket.send_json({"type": "chunk", "chunk": chunk})
+
+            except Exception as exc:
+                _event("warning", "ws_chat_stream_failure", user_id=str(actor.get("user_id", "")), error=str(exc)[:180])
+                fallback = _chat_local_fallback(message)
+                collected = [fallback]
+                await websocket.send_json({"type": "error", "detail": fallback})
+
+            full_reply = "".join(collected).strip()
+            await websocket.send_json({"type": "done", "reply": full_reply})
+
+            if full_reply:
+                try:
+                    memory_store.record_turn(user_text=message, assistant_text=full_reply)
+                except Exception:
+                    pass
+
+    except Exception:
+        pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+@app.websocket("/ws/voice")
+async def ws_voice(websocket: WebSocket):
+    """Audio-in → transcript + streaming AI reply over WebSocket.
+
+    Protocol:
+
+    Client → server:
+      {"type": "config", "sample_rate": 16000}   – optional, sent before audio
+      <binary frame>                              – raw PCM-16 audio bytes
+      {"type": "stop"}                            – signals end of audio input
+
+    Server → client:
+      {"type": "connected"}                       – on accept
+      {"type": "transcript", "text": "…"}         – STT result
+      {"type": "chunk", "chunk": "…"}             – AI reply token
+      {"type": "done", "reply": "…"}              – full AI reply, stream finished
+      {"type": "error", "detail": "…"}            – STT or AI failure (connection stays open)
+
+    After "done" the client may send more audio for a new turn.
+    """
+    import asyncio
+    import io
+    import json as _json
+    import struct
+    import tempfile
+    import wave
+
+    token = websocket.query_params.get("token", "")
+    actor = _mobile_user_from_access_token(token) if token else None
+
+    if not actor:
+        await websocket.close(code=4401, reason="Unauthorized")
+        return
+
+    await websocket.accept()
+    await websocket.send_json({"type": "connected"})
+
+    actor_key = _user_profile_key(actor) or str(
+        actor.get("user_id", "") or actor.get("admin_id", "") or actor.get("email", "") or "session"
+    ).strip().lower()
+    memory_store = _memory_store_for_user(actor_key)
+
+    sample_rate = 16000
+    audio_buf: list[bytes] = []
+
+    try:
+        while True:
+            frame = await websocket.receive()
+
+            # Binary frame → audio chunk
+            if frame.get("bytes") is not None:
+                audio_buf.append(frame["bytes"])
+                continue
+
+            # Text frame → control message
+            try:
+                msg = _json.loads(frame.get("text", "{}"))
+            except Exception:
+                await websocket.send_json({"type": "error", "detail": "Invalid JSON frame"})
+                continue
+
+            if msg.get("type") == "config":
+                try:
+                    sample_rate = int(msg.get("sample_rate", 16000))
+                except Exception:
+                    pass
+                continue
+
+            if msg.get("type") != "stop":
+                await websocket.send_json({"type": "error", "detail": f"Unknown frame type: {msg.get('type')}"})
+                continue
+
+            # "stop" received — transcribe collected audio
+            if not audio_buf:
+                await websocket.send_json({"type": "error", "detail": "No audio received"})
+                audio_buf = []
+                continue
+
+            raw_pcm = b"".join(audio_buf)
+            audio_buf = []
+
+            # Write PCM to a temp WAV file for the STT manager
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
+                with wave.open(tmp_path, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)  # 16-bit
+                    wf.setframerate(sample_rate)
+                    wf.writeframes(raw_pcm)
+
+            try:
+                from ai.stt_manager import STTManager
+                stt = STTManager()
+
+                def _do_transcribe():
+                    return stt.transcribe_file_with_confidence(tmp_path)
+
+                transcript, confidence = await asyncio.to_thread(_do_transcribe)
+            except Exception as exc:
+                await websocket.send_json({"type": "error", "detail": f"STT failed: {exc}"})
+                continue
+            finally:
+                import os as _os
+                try:
+                    _os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+            transcript = transcript.strip()
+            if not transcript:
+                await websocket.send_json({"type": "error", "detail": "Could not transcribe audio"})
+                continue
+
+            await websocket.send_json({"type": "transcript", "text": transcript})
+
+            # Generate and stream AI reply
+            profile = _safe_profile()
+            if not isinstance(profile, dict):
+                profile = {}
+            settings_defaults = _normalize_user_settings(
+                {"response_style": "balanced", "engagement_level": "high", "wind_down_minutes": 45, "partner_mode_enabled": False}
+            )
+            settings_payload = _profile_user_settings(profile, actor, defaults=settings_defaults)
+            profile_prefs = _chat_profile_prefs_for_user(profile, actor)
+            routine = _chat_scoped_routine_for_user(profile, actor)
+            controls = _chat_scoped_controls_for_user(profile, actor)
+            personality = _chat_personality_from_settings(settings_payload)
+            emotion_state = detect_emotion_state(transcript)
+            cognitive_load_mode = _chat_cognitive_load_mode(settings_payload)
+            memory_line = memory_store.memory_prompt_line(transcript)
+            user_context = _chat_user_context(
+                user=actor,
+                settings_payload=settings_payload,
+                profile_prefs=profile_prefs,
+                routine=routine,
+                controls=controls,
+                memory_line=memory_line,
+            )
+
+            collected: list[str] = []
+            try:
+                chat_engine = _chat_engine_for_user(actor_key)
+
+                def _run_stream():
+                    return list(chat_engine.generate_response_stream(
+                        user_text=transcript,
+                        personality=personality,
+                        realtime_context="",
+                        user_context=user_context,
+                        emotion_state=emotion_state,
+                        cognitive_load_mode=cognitive_load_mode,
+                        max_response_tokens=160,
+                    ))
+
+                chunks = await asyncio.to_thread(_run_stream)
+                for chunk in chunks:
+                    collected.append(chunk)
+                    await websocket.send_json({"type": "chunk", "chunk": chunk})
+
+            except Exception as exc:
+                _event("warning", "ws_voice_stream_failure", user_id=str(actor.get("user_id", "")), error=str(exc)[:180])
+                fallback = _chat_local_fallback(transcript)
+                collected = [fallback]
+                await websocket.send_json({"type": "error", "detail": fallback})
+
+            full_reply = "".join(collected).strip()
+            await websocket.send_json({"type": "done", "reply": full_reply})
+
+            if full_reply:
+                try:
+                    memory_store.record_turn(user_text=transcript, assistant_text=full_reply)
+                except Exception:
+                    pass
+
+    except Exception:
+        pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+class GarminSyncRequest(BaseModel):
+    target_date: str = Field(default="", max_length=10)  # YYYY-MM-DD; empty = today
+
+
+@app.post("/v1/garmin/sync")
+async def garmin_sync(payload: GarminSyncRequest, request: Request) -> dict[str, Any]:
+    """Pull today's (or *target_date*'s) health data from Garmin Connect.
+
+    Credentials are read from GARMIN_EMAIL / GARMIN_PASSWORD env vars.
+    The data is ingested into the user's fitness_tracker profile section.
+    """
+    import asyncio
+
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "")
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    target_date = str(payload.target_date or "").strip() or None
+
+    try:
+        from integrations.fitness_tracker_api import FitnessTrackerAPI
+        tracker = FitnessTrackerAPI()
+
+        def _do_sync():
+            return tracker.fetch_from_garmin(profile, target_date)
+
+        result = await asyncio.to_thread(_do_sync)
+    except Exception as exc:
+        _event("warning", "garmin_sync_error", user_id=user_id, error=str(exc)[:200])
+        raise HTTPException(status_code=502, detail=f"Garmin sync failed: {exc}")
+
+    _event(
+        "info", "garmin_synced",
+        user_id=user_id,
+        date=result.get("date", ""),
+        ingested=result.get("ingested", False),
+    )
+    return result
+
+
+@app.get("/v1/garmin/status")
+def garmin_status(request: Request) -> dict[str, Any]:
+    """Return the current Garmin / fitness tracker status for the user."""
+    _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    try:
+        from integrations.fitness_tracker_api import FitnessTrackerAPI
+        from integrations.garmin_client import build_client_from_settings
+        tracker = FitnessTrackerAPI()
+        status = tracker.get_status(profile)
+        client = build_client_from_settings()
+        status["garmin_configured"] = bool(client._email)
+        status["garmin_available"] = client.available
+    except Exception as exc:
+        return {"error": str(exc)}
+
+    return status
+
+
+@app.get("/v1/report/weekly/pdf")
+async def weekly_report_pdf(
+    request: Request,
+    renderer: str = "reportlab",
+) -> Response:
+    """Generate the weekly health report and return it as a downloadable PDF.
+
+    renderer: "reportlab" (default, ReportLab A4) or "weasyprint" (HTML/CSS renderer).
+    """
+    import asyncio
+    import tempfile
+
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "")
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    use_weasyprint = str(renderer).strip().lower() == "weasyprint"
+
+    try:
+        from health.weekly_health_report import WeeklyHealthReport
+
+        def _build_pdf() -> bytes:
+            reporter = WeeklyHealthReport()
+            report = reporter.generate(profile)
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp_path = tmp.name
+            if use_weasyprint:
+                reporter.to_html_pdf(report, tmp_path)
+            else:
+                reporter.to_pdf(report, tmp_path)
+            import os as _os
+            data = open(tmp_path, "rb").read()
+            _os.unlink(tmp_path)
+            return data
+
+        pdf_bytes = await asyncio.to_thread(_build_pdf)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        _event("warning", "weekly_pdf_error", user_id=user_id, error=str(exc)[:200])
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}")
+
+    from datetime import date as _date
+    filename = f"danah_weekly_report_{_date.today().isoformat()}.pdf"
+    _event("info", "weekly_pdf_generated", user_id=user_id, renderer=renderer)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/v1/report/weekly/pdf/url")
+async def weekly_report_pdf_url(
+    request: Request,
+    renderer: str = "reportlab",
+    expires_in: int = 3600,
+) -> dict[str, Any]:
+    """Generate the weekly health report PDF, upload it to S3, and return a presigned URL.
+
+    renderer: "reportlab" (default) or "weasyprint"
+    expires_in: presigned URL lifetime in seconds (default 3600 = 1 hour)
+    Requires AWS_S3_BUCKET to be configured in settings.
+    """
+    import asyncio
+    import tempfile
+    from datetime import date as _date
+
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "")
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    try:
+        from Storage.s3_client import build_s3_client_from_settings
+        s3 = build_s3_client_from_settings()
+        if s3 is None:
+            raise HTTPException(status_code=503, detail="S3 not configured — set AWS_S3_BUCKET")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"S3 init failed: {exc}")
+
+    use_weasyprint = str(renderer).strip().lower() == "weasyprint"
+
+    try:
+        from health.weekly_health_report import WeeklyHealthReport
+
+        def _build_and_upload() -> str:
+            reporter = WeeklyHealthReport()
+            report = reporter.generate(profile)
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp_path = tmp.name
+            if use_weasyprint:
+                reporter.to_html_pdf(report, tmp_path)
+            else:
+                reporter.to_pdf(report, tmp_path)
+            import os as _os
+            pdf_bytes = open(tmp_path, "rb").read()
+            _os.unlink(tmp_path)
+            date_str = _date.today().isoformat()
+            key = f"{settings.aws_s3_reports_prefix}weekly/{user_id or 'anon'}/{date_str}.pdf"
+            s3.upload_bytes(key, pdf_bytes, content_type="application/pdf")
+            return s3.presigned_url(key, expires_in=max(60, min(86400, int(expires_in))))
+
+        presigned = await asyncio.to_thread(_build_and_upload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        _event("warning", "weekly_pdf_url_error", user_id=user_id, error=str(exc)[:200])
+        raise HTTPException(status_code=500, detail=f"Report upload failed: {exc}")
+
+    _event("info", "weekly_pdf_uploaded_s3", user_id=user_id)
+    return {"url": presigned, "expires_in": expires_in}
+
+
+@app.get("/v1/report/weekly/html")
+async def weekly_report_html(request: Request) -> Response:
+    """Return the weekly health report as a styled HTML document for preview."""
+    import asyncio
+
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "")
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    try:
+        from health.weekly_health_report import WeeklyHealthReport
+
+        def _build_html() -> str:
+            reporter = WeeklyHealthReport()
+            report = reporter.generate(profile)
+            return reporter.to_html(report)
+
+        html_content = await asyncio.to_thread(_build_html)
+    except Exception as exc:
+        _event("warning", "weekly_html_error", user_id=user_id, error=str(exc)[:200])
+        raise HTTPException(status_code=500, detail=f"HTML report generation failed: {exc}")
+
+    _event("info", "weekly_html_generated", user_id=user_id)
+    return Response(content=html_content, media_type="text/html; charset=utf-8")
+
+
+class FitbitSyncRequest(BaseModel):
+    access_token: str = Field(min_length=1, max_length=2048)
+    refresh_token: str = Field(default="", max_length=2048)
+    target_date: str = Field(default="", max_length=10)  # YYYY-MM-DD; empty = today
+
+
+@app.get("/v1/fitbit/auth-url")
+def fitbit_auth_url(request: Request) -> dict[str, Any]:
+    """Return the Fitbit OAuth2 authorization URL for the mobile app to open."""
+    _require_user(request)
+    try:
+        from integrations.fitbit_client import build_auth_url
+        url = build_auth_url(
+            client_id=settings.fitbit_client_id,
+            redirect_uri=settings.fitbit_redirect_uri,
+        )
+        return {"auth_url": url, "configured": bool(settings.fitbit_client_id)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/v1/fitbit/callback")
+async def fitbit_callback(code: str, request: Request) -> dict[str, Any]:
+    """OAuth2 callback — exchange authorization code for access + refresh tokens.
+
+    The mobile app (or browser) is redirected here by Fitbit after user consent.
+    Returns tokens the mobile app should store and later send to /v1/fitbit/sync.
+    """
+    import asyncio
+
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+
+    try:
+        from integrations.fitbit_client import exchange_code
+
+        def _exchange():
+            return exchange_code(
+                client_id=settings.fitbit_client_id,
+                client_secret=settings.fitbit_client_secret,
+                code=code,
+                redirect_uri=settings.fitbit_redirect_uri,
+            )
+
+        tokens = await asyncio.to_thread(_exchange)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    if "error" in tokens:
+        raise HTTPException(status_code=401, detail=tokens["error"])
+
+    return {
+        "access_token": tokens.get("access_token", ""),
+        "refresh_token": tokens.get("refresh_token", ""),
+        "expires_in": tokens.get("expires_in", 0),
+        "fitbit_user_id": tokens.get("user_id", ""),
+    }
+
+
+@app.post("/v1/fitbit/sync")
+async def fitbit_sync(payload: FitbitSyncRequest, request: Request) -> dict[str, Any]:
+    """Pull health data from Fitbit and ingest it into the user's profile.
+
+    The mobile app forwards the OAuth2 tokens obtained via /v1/fitbit/auth-url.
+    """
+    import asyncio
+
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "")
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    target_date = str(payload.target_date or "").strip() or None
+
+    try:
+        from integrations.fitness_tracker_api import FitnessTrackerAPI
+        tracker = FitnessTrackerAPI()
+
+        def _do_sync():
+            return tracker.fetch_from_fitbit(
+                profile=profile,
+                access_token=payload.access_token,
+                refresh_token=payload.refresh_token,
+                target_date=target_date,
+            )
+
+        result = await asyncio.to_thread(_do_sync)
+    except Exception as exc:
+        _event("warning", "fitbit_sync_error", user_id=user_id, error=str(exc)[:200])
+        raise HTTPException(status_code=502, detail=f"Fitbit sync failed: {exc}")
+
+    _event(
+        "info", "fitbit_synced",
+        user_id=user_id,
+        date=result.get("date", ""),
+        ingested=result.get("ingested", False),
+    )
+    return result
+
+
+class GoogleCalendarSyncRequest(BaseModel):
+    access_token: str = Field(min_length=1, max_length=2048)
+    refresh_token: str = Field(default="", max_length=2048)
+    days_ahead: int = Field(default=7, ge=1, le=30)
+    max_results: int = Field(default=50, ge=1, le=250)
+
+
+@app.post("/v1/calendar/google/sync")
+async def calendar_google_sync(payload: GoogleCalendarSyncRequest, request: Request) -> dict[str, Any]:
+    """Pull events from the authenticated user's Google Calendar and sync into their profile.
+
+    The mobile app forwards the Google OAuth2 tokens obtained during sign-in.
+    Requires a logged-in user (Bearer token or session cookie).
+    """
+    import asyncio
+
+    user = _require_user(request)
+    user_id = str(user.get("user_id", "") or "")
+
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    try:
+        from integrations.calendar_sync import CalendarSync
+        cal = CalendarSync()
+
+        def _do_sync():
+            return cal.fetch_from_google(
+                profile=profile,
+                access_token=payload.access_token,
+                refresh_token=payload.refresh_token,
+                days_ahead=payload.days_ahead,
+                max_results=payload.max_results,
+            )
+
+        result = await asyncio.to_thread(_do_sync)
+    except Exception as exc:
+        _event("warning", "google_calendar_sync_error", user_id=user_id, error=str(exc)[:200])
+        raise HTTPException(status_code=502, detail=f"Google Calendar sync failed: {exc}")
+
+    _event("info", "google_calendar_synced", user_id=user_id, events_count=result.get("events_count", 0))
+    return result
+
+
+@app.get("/v1/calendar/schedule")
+async def calendar_schedule(request: Request, days_ahead: int = 1) -> dict[str, Any]:
+    """Return the user's upcoming schedule from the local calendar cache."""
+    import asyncio
+
+    user = _require_user(request)
+    profile = _safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+
+    try:
+        from integrations.calendar_sync import CalendarSync
+        cal = CalendarSync()
+        if days_ahead <= 1:
+            result = await asyncio.to_thread(cal.get_tomorrow_schedule, profile)
+        else:
+            result = await asyncio.to_thread(cal.get_morning_brief, profile)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return result
 
 
 @app.post("/v1/command")

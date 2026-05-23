@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import '../../services/journal_store.dart';
 import '../../theme/app_theme.dart';
 
 class SleepJournalScreen extends StatefulWidget {
@@ -9,9 +10,11 @@ class SleepJournalScreen extends StatefulWidget {
 }
 
 class _SleepJournalScreenState extends State<SleepJournalScreen> {
-  final List<_JournalEntry> _entries = [
+  List<_JournalEntry> _entries = [];
+
+  static const List<_JournalEntry> _seedEntries = [
     _JournalEntry(
-      date: DateTime.now().subtract(const Duration(days: 1)),
+      date: DateTime(2026, 5, 4),
       mood: _Mood.great,
       sleepQuality: 4.5,
       hoursSlept: 7.5,
@@ -19,7 +22,7 @@ class _SleepJournalScreenState extends State<SleepJournalScreen> {
       tags: ['wind-down', 'natural wake'],
     ),
     _JournalEntry(
-      date: DateTime.now().subtract(const Duration(days: 2)),
+      date: DateTime(2026, 5, 3),
       mood: _Mood.okay,
       sleepQuality: 3.0,
       hoursSlept: 6.0,
@@ -27,7 +30,7 @@ class _SleepJournalScreenState extends State<SleepJournalScreen> {
       tags: ['restless', 'caffeine'],
     ),
     _JournalEntry(
-      date: DateTime.now().subtract(const Duration(days: 3)),
+      date: DateTime(2026, 5, 2),
       mood: _Mood.good,
       sleepQuality: 4.0,
       hoursSlept: 8.0,
@@ -35,6 +38,45 @@ class _SleepJournalScreenState extends State<SleepJournalScreen> {
       tags: ['ocean waves', 'peaceful'],
     ),
   ];
+
+  static Map<String, dynamic> _entryToMap(_JournalEntry e) => {
+    'date': e.date.toIso8601String(),
+    'mood': e.mood.name,
+    'sleepQuality': e.sleepQuality,
+    'hoursSlept': e.hoursSlept,
+    'notes': e.notes,
+    'tags': e.tags,
+  };
+
+  static _JournalEntry _entryFromMap(Map<String, dynamic> m) => _JournalEntry(
+    date: DateTime.parse(m['date'] as String),
+    mood: _Mood.values.firstWhere(
+      (mo) => mo.name == m['mood'],
+      orElse: () => _Mood.good,
+    ),
+    sleepQuality: (m['sleepQuality'] as num).toDouble(),
+    hoursSlept: (m['hoursSlept'] as num).toDouble(),
+    notes: m['notes'] as String,
+    tags: List<String>.from(m['tags'] as List),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEntries();
+  }
+
+  Future<void> _loadEntries() async {
+    final stored = JournalStore.readAll();
+    if (stored.isEmpty) {
+      for (final e in _seedEntries) {
+        await JournalStore.add(_entryToMap(e));
+      }
+      if (mounted) setState(() => _entries = List.of(_seedEntries));
+    } else {
+      if (mounted) setState(() => _entries = stored.map(_entryFromMap).toList());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,8 +130,9 @@ class _SleepJournalScreenState extends State<SleepJournalScreen> {
   }
 
   Widget _buildWeeklyInsight() {
-    final avgQuality = _entries.fold<double>(0, (sum, e) => sum + e.sleepQuality) / _entries.length;
-    final avgHours = _entries.fold<double>(0, (sum, e) => sum + e.hoursSlept) / _entries.length;
+    final count = _entries.isEmpty ? 1 : _entries.length;
+    final avgQuality = _entries.fold<double>(0, (sum, e) => sum + e.sleepQuality) / count;
+    final avgHours = _entries.fold<double>(0, (sum, e) => sum + e.hoursSlept) / count;
 
     return Container(
       margin: const EdgeInsets.all(16),
@@ -100,12 +143,12 @@ class _SleepJournalScreenState extends State<SleepJournalScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppColors.purple.withOpacity(0.2),
-            AppColors.accent.withOpacity(0.1),
+            AppColors.purple.withValues(alpha: 0.2),
+            AppColors.accent.withValues(alpha: 0.1),
           ],
         ),
         border: Border.all(
-          color: AppColors.accent.withOpacity(0.3),
+          color: AppColors.accent.withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -172,7 +215,7 @@ class _SleepJournalScreenState extends State<SleepJournalScreen> {
         Text(
           label,
           style: TextStyle(
-            color: AppColors.softWhite.withOpacity(0.7),
+            color: AppColors.softWhite.withValues(alpha: 0.7),
             fontSize: 11,
           ),
         ),
@@ -187,6 +230,7 @@ class _SleepJournalScreenState extends State<SleepJournalScreen> {
       ),
     ).then((result) {
       if (result != null && result is _JournalEntry) {
+        JournalStore.add(_entryToMap(result));
         setState(() {
           _entries.insert(0, result);
         });
@@ -269,7 +313,7 @@ class _JournalCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         color: AppColors.cardBg,
         border: Border.all(
-          color: entry.mood.color.withOpacity(0.3),
+          color: entry.mood.color.withValues(alpha: 0.3),
         ),
       ),
       child: Material(
@@ -287,7 +331,7 @@ class _JournalCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: entry.mood.color.withOpacity(0.2),
+                        color: entry.mood.color.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
@@ -338,7 +382,7 @@ class _JournalCard extends StatelessWidget {
                         Text(
                           '${entry.hoursSlept}h',
                           style: TextStyle(
-                            color: AppColors.softWhite.withOpacity(0.7),
+                            color: AppColors.softWhite.withValues(alpha: 0.7),
                             fontSize: 12,
                           ),
                         ),
@@ -350,7 +394,7 @@ class _JournalCard extends StatelessWidget {
                 Text(
                   entry.notes,
                   style: TextStyle(
-                    color: AppColors.softWhite.withOpacity(0.8),
+                    color: AppColors.softWhite.withValues(alpha: 0.8),
                     fontSize: 14,
                     height: 1.4,
                   ),
@@ -369,16 +413,16 @@ class _JournalCard extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.accent.withOpacity(0.1),
+                          color: AppColors.accent.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: AppColors.accent.withOpacity(0.3),
+                            color: AppColors.accent.withValues(alpha: 0.3),
                           ),
                         ),
                         child: Text(
                           tag,
                           style: TextStyle(
-                            color: AppColors.accent.withOpacity(0.9),
+                            color: AppColors.accent.withValues(alpha: 0.9),
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),
@@ -519,11 +563,11 @@ class _JournalEntryEditorState extends State<_JournalEntryEditor> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: isSelected
-                  ? mood.color.withOpacity(0.2)
+                  ? mood.color.withValues(alpha: 0.2)
                   : AppColors.cardBg,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isSelected ? mood.color : AppColors.softWhite.withOpacity(0.2),
+                color: isSelected ? mood.color : AppColors.softWhite.withValues(alpha: 0.2),
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -531,14 +575,14 @@ class _JournalEntryEditorState extends State<_JournalEntryEditor> {
               children: [
                 Icon(
                   mood.icon,
-                  color: isSelected ? mood.color : AppColors.softWhite.withOpacity(0.5),
+                  color: isSelected ? mood.color : AppColors.softWhite.withValues(alpha: 0.5),
                   size: 32,
                 ),
                 const SizedBox(height: 6),
                 Text(
                   mood.label,
                   style: TextStyle(
-                    color: isSelected ? mood.color : AppColors.softWhite.withOpacity(0.7),
+                    color: isSelected ? mood.color : AppColors.softWhite.withValues(alpha: 0.7),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -609,7 +653,7 @@ class _JournalEntryEditorState extends State<_JournalEntryEditor> {
       style: const TextStyle(color: AppColors.white),
       decoration: InputDecoration(
         hintText: 'How was your sleep? Any dreams? What helped?',
-        hintStyle: TextStyle(color: AppColors.softWhite.withOpacity(0.5)),
+        hintStyle: TextStyle(color: AppColors.softWhite.withValues(alpha: 0.5)),
         filled: true,
         fillColor: AppColors.cardBg,
         border: OutlineInputBorder(
@@ -640,13 +684,13 @@ class _JournalEntryEditorState extends State<_JournalEntryEditor> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: isSelected
-                  ? AppColors.accent.withOpacity(0.2)
+                  ? AppColors.accent.withValues(alpha: 0.2)
                   : AppColors.cardBg,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isSelected
                     ? AppColors.accent
-                    : AppColors.softWhite.withOpacity(0.2),
+                    : AppColors.softWhite.withValues(alpha: 0.2),
               ),
             ),
             child: Text(
@@ -724,7 +768,7 @@ class _JournalEntryDetail extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: entry.mood.color.withOpacity(0.2),
+                  color: entry.mood.color.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -761,7 +805,7 @@ class _JournalEntryDetail extends StatelessWidget {
             Text(
               entry.notes,
               style: TextStyle(
-                color: AppColors.softWhite.withOpacity(0.9),
+                color: AppColors.softWhite.withValues(alpha: 0.9),
                 fontSize: 16,
                 height: 1.6,
               ),
@@ -784,7 +828,7 @@ class _JournalEntryDetail extends StatelessWidget {
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: AppColors.accent.withOpacity(0.2),
+                      color: AppColors.accent.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: AppColors.accent),
                     ),
@@ -814,7 +858,7 @@ class _JournalEntryDetail extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
+              color: color.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: color, size: 24),
@@ -823,7 +867,7 @@ class _JournalEntryDetail extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: AppColors.softWhite.withOpacity(0.7),
+              color: AppColors.softWhite.withValues(alpha: 0.7),
               fontSize: 14,
             ),
           ),

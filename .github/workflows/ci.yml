@@ -40,6 +40,10 @@ jobs:
       - name: Security scan (bandit)
         run: bandit -c bandit.yml -r . --exclude .venv,.venv311,tests,mobile_app -ll
 
+      - name: Type check (mypy)
+        run: mypy api/ database/ --ignore-missing-imports
+        continue-on-error: true   # informational until strict mode is fully wired
+
       - name: Backend test suite with coverage
         run: |
           python -m pytest tests/ \
@@ -75,9 +79,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Mobile vertical smoke (API)
+      - name: Mobile vertical smoke (API — new app factory)
         run: |
-          python -m uvicorn web_server:app --host 127.0.0.1 --port 8000 &
+          python -m uvicorn api.app_factory:app --host 127.0.0.1 --port 8000 &
           sleep 4
           python scripts/mobile_smoke.py --base-url http://127.0.0.1:8000
 
@@ -101,6 +105,9 @@ jobs:
 
       - name: Install Flutter dependencies
         run: flutter pub get
+
+      - name: Generate l10n
+        run: flutter gen-l10n
 
       - name: Flutter analyze
         run: flutter analyze

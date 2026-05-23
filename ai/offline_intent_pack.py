@@ -1,5 +1,30 @@
+import ast
+import operator
 import re
 from datetime import datetime
+
+# Safe arithmetic evaluator — replaces eval()
+_SAFE_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Pow: operator.pow,
+    ast.USub: operator.neg,
+}
+
+
+def _safe_eval(expr: str) -> float:
+    def _eval(node: ast.AST) -> float:
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_OPS:
+            return _SAFE_OPS[type(node.op)](_eval(node.left), _eval(node.right))
+        if isinstance(node, ast.UnaryOp) and type(node.op) in _SAFE_OPS:
+            return _SAFE_OPS[type(node.op)](_eval(node.operand))
+        raise ValueError("unsupported expression")
+
+    return _eval(ast.parse(expr, mode="eval").body)
 
 
 class OfflineIntentPack:
@@ -22,7 +47,7 @@ class OfflineIntentPack:
             expr = lower.replace("calculate", "", 1).strip()
             if re.fullmatch(r"[0-9\s\+\-\*\/\(\)\.]+", expr):
                 try:
-                    value = eval(expr, {"__builtins__": {}}, {})
+                    value = _safe_eval(expr)
                     return f"The result is {value}.", True
                 except Exception:
                     return "I could not calculate that expression.", True

@@ -260,3 +260,49 @@ class CalendarSync:
             return start.hour < before_hour
         except Exception:
             return False
+
+    # ------------------------------------------------------------------
+    # Google Calendar direct pull
+    # ------------------------------------------------------------------
+
+    def fetch_from_google(
+        self,
+        profile: dict,
+        access_token: str,
+        refresh_token: str = "",
+        *,
+        days_ahead: int = 7,
+        max_results: int = 50,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Pull events directly from Google Calendar and sync them into *profile*.
+
+        Uses the user's OAuth2 tokens obtained during Google Sign-In.
+        Falls back gracefully when google-api-python-client is not installed
+        or credentials are missing.
+
+        Returns the same shape as ``sync_events()``.
+        """
+        if not str(access_token or "").strip():
+            return {"synced": False, "reason": "No Google access token provided"}
+
+        try:
+            from integrations.google_calendar_client import build_client_from_settings
+            client = build_client_from_settings()
+            if not client.available:
+                return {"synced": False, "reason": "google-api-python-client not installed"}
+        except Exception as exc:
+            logger.warning("Google Calendar client init failed: %s", exc)
+            return {"synced": False, "reason": str(exc)}
+
+        events = client.fetch_events(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            days_ahead=days_ahead,
+            max_results=max_results,
+            now=now,
+        )
+
+        result = self.sync_events(profile, events, now)
+        result["source"] = "google_calendar"
+        return result

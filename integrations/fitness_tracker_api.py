@@ -19,6 +19,7 @@ def _utcnow() -> datetime:
 
 
 SUPPORTED_DEVICES = {
+    "garmin": {"name": "Garmin", "metrics": ["heart_rate", "hrv", "spo2", "steps", "calories", "sleep_score", "body_battery", "stress_level"]},
     "apple_watch": {"name": "Apple Watch", "metrics": ["heart_rate", "hrv", "spo2", "steps", "calories"]},
     "samsung_watch": {"name": "Samsung Galaxy Watch", "metrics": ["heart_rate", "spo2", "steps", "stress"]},
     "fitbit": {"name": "Fitbit", "metrics": ["heart_rate", "spo2", "steps", "sleep_stages"]},
@@ -255,6 +256,115 @@ class FitnessTrackerAPI:
             "data_points": len(ft.get("biometric_history", [])),
             "active_alerts": len(ft.get("health_alerts", [])),
         }
+
+    # ------------------------------------------------------------------
+    # Garmin Connect direct pull
+    # ------------------------------------------------------------------
+
+    def fetch_from_fitbit(
+        self,
+        profile: dict,
+        access_token: str,
+        refresh_token: str = "",
+        target_date: "date | str | None" = None,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Pull today's (or *target_date*'s) health data from Fitbit and ingest
+        it into *profile*.
+
+        *access_token* and *refresh_token* are the user's OAuth2 tokens
+        obtained from the Fitbit consent flow. Client credentials are read
+        from ``config.settings`` (FITBIT_CLIENT_ID / FITBIT_CLIENT_SECRET).
+
+        Returns the same shape as ``ingest_biometric_data()``.
+        """
+        token = str(access_token or "").strip()
+        if not token:
+            return {"ingested": False, "reason": "No Fitbit access token provided"}
+
+        try:
+            from integrations.fitbit_client import build_client_from_settings, _FITBIT_AVAILABLE
+            if not _FITBIT_AVAILABLE:
+                return {"ingested": False, "reason": "fitbit library not installed"}
+            client = build_client_from_settings(token, refresh_token)
+        except Exception as exc:
+            logger.warning("Fitbit client init failed: %s", exc)
+            return {"ingested": False, "reason": str(exc)}
+
+        daily = client.fetch_daily(target_date)
+        if not daily.get("available", False):
+            return {"ingested": False, "reason": daily.get("reason", "No data returned"), "raw": daily}
+
+        self.ensure_shape(profile)
+        if not profile["fitness_tracker"].get("connected_device"):
+            self.connect_device(profile, "fitbit")
+
+        result = self.ingest_biometric_data(profile, daily, now)
+        result["source"] = "fitbit"
+        result["date"] = daily.get("date", "")
+        result["fitbit_extras"] = {
+            "total_sleep_hours": daily.get("total_sleep_hours"),
+            "deep_sleep_hours": daily.get("deep_sleep_hours"),
+            "rem_sleep_hours": daily.get("rem_sleep_hours"),
+            "sleep_efficiency_pct": daily.get("sleep_efficiency_pct"),
+            "active_minutes": daily.get("active_minutes"),
+            "distance_km": daily.get("distance_km"),
+            "hrv_deep_rmssd": daily.get("hrv_deep_rmssd"),
+            "spo2_min": daily.get("spo2_min"),
+            "spo2_max": daily.get("spo2_max"),
+        }
+        return result
+
+    def fetch_from_garmin(
+        self,
+        profile: dict,
+        target_date: "date | str | None" = None,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Pull today's (or *target_date*'s) health data from Garmin Connect
+        and ingest it into *profile*.
+
+        Uses credentials from ``config.settings`` (GARMIN_EMAIL / GARMIN_PASSWORD).
+        Falls back gracefully when garminconnect is not installed or unconfigured.
+
+        Returns the same shape as ``ingest_biometric_data()``.
+        """
+        try:
+            from integrations.garmin_client import build_client_from_settings
+            client = build_client_from_settings()
+            if not client.available:
+                return {"ingested": False, "reason": "garminconnect not installed"}
+            if not client._email:
+                return {"ingested": False, "reason": "GARMIN_EMAIL not configured"}
+        except Exception as exc:
+            logger.warning("Garmin client init failed: %s", exc)
+            return {"ingested": False, "reason": str(exc)}
+
+        daily = client.fetch_daily(target_date)
+        if not daily.get("available", False):
+            return {"ingested": False, "reason": daily.get("reason", "No data returned"), "raw": daily}
+
+        # Auto-connect device if not already set
+        self.ensure_shape(profile)
+        if not profile["fitness_tracker"].get("connected_device"):
+            self.connect_device(profile, "garmin")
+
+        result = self.ingest_biometric_data(profile, daily, now)
+        result["source"] = "garmin"
+        result["date"] = daily.get("date", "")
+        result["garmin_extras"] = {
+            "sleep_score": daily.get("sleep_score"),
+            "total_sleep_hours": daily.get("total_sleep_hours"),
+            "deep_sleep_hours": daily.get("deep_sleep_hours"),
+            "rem_sleep_hours": daily.get("rem_sleep_hours"),
+            "body_battery": daily.get("body_battery"),
+            "hrv_status": daily.get("hrv_status"),
+            "hrv_feedback": daily.get("hrv_feedback"),
+            "active_minutes": daily.get("active_minutes"),
+        }
+        return result
 
     # ------------------------------------------------------------------
     # Helpers

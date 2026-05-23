@@ -254,6 +254,29 @@ class WeeklyHealthReport:
 
         return "\n".join(lines)
 
+    def to_pdf(self, report: dict[str, Any], output_path: str) -> str:
+        """Render *report* (from ``generate()``) to a PDF file at *output_path*.
+
+        Returns the absolute path of the written file.
+        Raises RuntimeError if reportlab is not installed.
+        """
+        from reports.pdf_generator import generate_weekly_pdf
+        return generate_weekly_pdf(report, output_path)
+
+    def to_html_pdf(self, report: dict[str, Any], output_path: str) -> str:
+        """Render *report* to PDF via WeasyPrint (HTML/CSS renderer).
+
+        Returns the absolute path of the written file.
+        Raises RuntimeError if weasyprint is not installed.
+        """
+        from reports.html_report_renderer import render_pdf
+        return render_pdf(report, output_path)
+
+    def to_html(self, report: dict[str, Any]) -> str:
+        """Return the report as a styled HTML document string."""
+        from reports.html_report_renderer import render_html
+        return render_html(report)
+
     def _build_whatsapp_text(self, report: dict) -> str:
         sleep = report.get("sleep", {})
         recs = report.get("recommendations", [])

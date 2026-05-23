@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from core.logger import setup_logging
 setup_logging()
+from loguru import logger
 
 import requests
 
@@ -72,7 +73,17 @@ from commands.registry import match as match_command_handler
 from commands.registry import register as register_command_handler
 from commands.reminders import handle_reminder_intent_result
 from commands.sleep import handle_sleep_intent_result
-from led.led_control import LEDController
+try:
+    from led.led_control import LEDController
+except ImportError:
+    class LEDController:  # type: ignore[no-redef]
+        """No-op stub used when hardware libraries are absent."""
+        def __init__(self, **kwargs: object) -> None: pass
+        def set_user_animation(self, *a: object, **kw: object) -> None: pass
+        def set_user_brightness(self, *a: object, **kw: object) -> None: pass
+        def set_state(self, *a: object, **kw: object) -> None: pass
+        def set_color_value(self, *a: object, **kw: object) -> None: pass
+        def hardware_status(self) -> str: return "stub"
 from Storage.cache_manager import CacheManager
 from Storage.schedule_manager import ScheduleManager, is_valid_time_24h
 from Storage.user_profile import delete_profile, load_profile, save_profile
@@ -90,8 +101,22 @@ from automation_engine import (
     check_reminder_nudge,
     format_repeat_days
 )
-from led_controller import apply_led_hardware_config, apply_music_led_preferences
-from hardware.pi_sensors import build_sensor_monitor
+try:
+    from led_controller import apply_led_hardware_config, apply_music_led_preferences
+except ImportError:
+    def apply_led_hardware_config(*a: object, **kw: object) -> None: pass  # type: ignore[misc]
+    def apply_music_led_preferences(*a: object, **kw: object) -> None: pass  # type: ignore[misc]
+
+try:
+    from hardware.pi_sensors import build_sensor_monitor
+except ImportError:
+    class _NullSensorMonitor:  # type: ignore[misc]
+        def snapshot(self) -> dict: return {}
+        def start(self, *a: object, **kw: object) -> None: pass
+        def status_line(self) -> str: return "sensors unavailable"
+        def stop(self) -> None: pass
+    def build_sensor_monitor(*a: object, **kw: object) -> _NullSensorMonitor:  # type: ignore[misc]
+        return _NullSensorMonitor()
 from prayer_handler import apply_fajr_gentle_light_scene, is_islamic_reminder_request, next_islamic_reminder
 from voice_handler import (
     ensure_emotional_followup_shape,
@@ -274,26 +299,24 @@ def main():
         led.set_user_animation("breathing")
         led.set_user_brightness(0.2)
         led.set_state("sleep")
-        print("Bed: Sleep timer ended. Music paused and lights dimmed.")
+        logger.info("Sleep timer ended. Music paused and lights dimmed.")
 
     def process_due_alarms():
         due = schedule.pop_due_alarms()
         for alarm in due:
-            print(f"Bed: Alarm ringing now ({alarm.time_24h})!")
+            logger.info("Alarm ringing now ({})", alarm.time_24h)
             if alarm.label.lower().startswith("morning routine"):
                 if bool(profile.get("preferences", {}).get("adaptive_wake_enabled", True)):
-                    print(f"Bed: {sleep_engine.adaptive_wake_routine_plan(profile)}")
+                    logger.info("Adaptive wake: {}", sleep_engine.adaptive_wake_routine_plan(profile))
                     led.set_user_animation("breathing")
                     led.set_user_brightness(0.35)
-                print(f"Bed: {routine_engine.trigger_morning_routine(led, local_music)}")
+                logger.info("Morning routine: {}", routine_engine.trigger_morning_routine(led, local_music))
             elif alarm.label.lower().startswith("bedtime routine"):
                 sleep = profile.get("sleep", {})
                 minutes = int(sleep.get("wind_down_minutes", 30) or 30)
                 if bool(sleep.get("wind_down_enabled", False)):
-                    print(f"Bed: {sleep_engine.environment_intelligence_tip(profile)}")
-                print(
-                    f"Bed: {routine_engine.start_bedtime_routine(led, local_music, sleep_routine, minutes=minutes)}"
-                )
+                    logger.info("Environment tip: {}", sleep_engine.environment_intelligence_tip(profile))
+                logger.info("Bedtime routine: {}", routine_engine.start_bedtime_routine(led, local_music, sleep_routine, minutes=minutes))
             else:
                 led.set_state("speaking")
                 ok, _ = local_music.play_query("")
@@ -302,48 +325,45 @@ def main():
                 led.set_state("listening")
 
     if not settings.deepgram_api_key:
-        print("[WARN] DEEPGRAM_API_KEY is missing. Running with fallback responses.")
+        logger.warning("DEEPGRAM_API_KEY is missing. Running with fallback responses.")
     if not settings.deepgram_tts_api_key:
-        print("[WARN] DEEPGRAM_TTS_API_KEY/TTS_API_KEY is missing. TTS audio may be unavailable.")
+        logger.warning("DEEPGRAM_TTS_API_KEY/TTS_API_KEY is missing. TTS audio may be unavailable.")
     if not spotify.is_configured():
-        print("[WARN] Spotify is not configured. Music commands will not work yet.")
+        logger.warning("Spotify is not configured. Music commands will not work yet.")
     if not local_music.is_ready():
-        print("[WARN] Local music is unavailable. Install pygame: pip install pygame")
+        logger.warning("Local music is unavailable. Install pygame: pip install pygame")
     if not tts_player.is_ready():
-        print("[WARN] TTS playback controller is unavailable. Install pygame for live voice playback.")
+        logger.warning("TTS playback controller is unavailable. Install pygame for live voice playback.")
     if wake_word_manager.is_voice_mode() and (not wake_word_manager.is_voice_available()):
-        print(
-            "[WARN] Voice wake mode requested but microphone backend is unavailable. "
+        logger.warning(
+            "Voice wake mode requested but microphone backend is unavailable. "
             "Falling back to keyboard mode. Try setting WAKE_WORD_MIC_INDEX in .env (use -1 for default)."
         )
 
     gpt_diag = _build_gpt_route_diagnostics(backend_client)
     if gpt_diag["openai_ready"]:
-        print(f"[GPT] OpenAI direct route enabled with model={settings.openai_chat_model}")
+        logger.info("OpenAI direct route enabled with model={}", settings.openai_chat_model)
     elif gpt_diag["backend_ready"]:
-        print("[GPT] Backend cloud route enabled (cloud_chat entitlement required).")
+        logger.info("Backend cloud route enabled (cloud_chat entitlement required).")
     else:
-        print("[GPT] No GPT route enabled; open questions will use fallback message.")
+        logger.warning("No GPT route enabled; open questions will use fallback message.")
 
-    print("Bed: Startup health -> " + build_health_report())
+    logger.info("Startup health -> {}", build_health_report())
 
     profile = load_profile()
     if profile is None:
         profile = run_first_boot_intro(tts=tts, tts_player=tts_player)
         if profile is None:
             led.set_state("sleep")
-            print("Bed: Setup cancelled. Exiting now.")
+            logger.info("Setup cancelled. Exiting now.")
             return
     else:
         profile = ensure_profile_shape(profile)
-        print(
-            f"Bed: Welcome back, {profile.get('name', 'friend')} "
-            f"({profile.get('age', '?')} years old)."
-        )
+        logger.info("Welcome back, {} ({} years old).", profile.get('name', 'friend'), profile.get('age', '?'))
     apply_led_hardware_config(led, profile)
     automation_engine.automation_profile_ref = profile
     wake_word_manager.set_wake_aliases(build_wake_aliases_from_profile(profile))
-    print(f"Bed: {led.hardware_status()}")
+    logger.info("LED: {}", led.hardware_status())
     goal_manager.ensure_shape(profile)
     daily_life_support.ensure_shape(profile)
     goal_compass.ensure_shape(profile)
@@ -370,10 +390,10 @@ def main():
             runtime_flags["sensor_motion_active"] = next_motion
             changed = True
         if changed:
-            print(
-                "[SENSORS] "
-                f"pressure_active={runtime_flags.get('sensor_pressure_active', False)} "
-                f"motion_active={runtime_flags.get('sensor_motion_active', False)}"
+            logger.info(
+                "Sensors: pressure_active={} motion_active={}",
+                runtime_flags.get('sensor_pressure_active', False),
+                runtime_flags.get('sensor_motion_active', False),
             )
             if persist:
                 save_profile(profile)
@@ -381,13 +401,13 @@ def main():
     sensor_monitor = build_sensor_monitor(settings)
     _apply_sensor_snapshot(sensor_monitor.snapshot(), persist=False)
     sensor_monitor.start(_apply_sensor_snapshot)
-    print(f"Bed: {sensor_monitor.status_line()}")
+    logger.info("Sensors: {}", sensor_monitor.status_line())
 
     stt.language_hint = str(profile.get("preferences", {}).get("language", "auto") or "auto")
     output_ok, _ = audio_output.ensure_output(profile)
     if not output_ok:
         save_profile(profile)
-    print(f"Bed: {audio_output.output_status(profile)}")
+    logger.info("Audio: {}", audio_output.output_status(profile))
     save_profile(profile)
     automation_engine.sleep_mode_active = bool(profile.get("runtime_flags", {}).get("sleep_mode", False))
 
@@ -412,15 +432,14 @@ def main():
     apply_music_led_preferences(led, profile)
     if favorite_color:
         led.set_color_value(favorite_color)
-        print(f"Bed: Set your lights to your favorite color, {favorite_color}.")
+        logger.info("Set lights to favorite color: {}", favorite_color)
 
-    print("Smart Bed MVP (API-first STT/TTS + GPT + cache)")
+    logger.info("Smart Bed MVP (API-first STT/TTS + GPT + cache)")
     if wake_word_manager.is_voice_available():
-        print("Type 'exit' to quit. Voice wake mode is active.")
+        logger.info("Voice wake mode is active. Type 'exit' to quit.")
     else:
-        print('Type "exit" to quit. Type "wake" to simulate wake word.')
-        print('Bed: Keyboard text mode is active. Type your message and I will reply using current speakers.')
-    print("Bed: Wake phrases -> " + " | ".join(wake_word_manager.get_wake_phrases()))
+        logger.info("Keyboard text mode is active. Type 'wake' to simulate wake word, 'exit' to quit.")
+    logger.info("Wake phrases -> {}", " | ".join(wake_word_manager.get_wake_phrases()))
     led.set_state("standby")
 
     while True:
@@ -456,26 +475,26 @@ def main():
                         pace_override=float(sensor_tts.get("pace_multiplier", 1.0) or 1.0),
                         profile_override=str(sensor_tts.get("profile_override", "") or ""),
                     )
-                    print(f"Bed: {proactive_greeting}")
+                    logger.info("Proactive: {}", proactive_greeting)
                     if proactive_audio:
-                        print(f"Bed: Audio saved at {proactive_audio}")
+                        logger.debug("Audio saved at {}", proactive_audio)
                     led.set_state("standby")
         wake_text = wake_word_manager.wait_for_wake_text()
         runtime_orchestrator.record_wake_phrase(profile, wake_text)
         save_profile(profile)
         if wake_text in ("exit", "quit", "bye"):
             led.set_state("sleep")
-            print("Bed: Good night, sleep well.")
+            logger.info("Good night, sleep well.")
             break
 
         if not wake_word_manager.matches_wake_text(wake_text):
-            print("Bed: Waiting for wake word...")
+            logger.debug("Waiting for wake word...")
             continue
 
         greeting_line = build_wake_greeting(profile, runtime_orchestrator)
         environment_orchestrator.preload_transition_for_response(led, profile, greeting_line)
         led.set_state("speaking")
-        print(f"Bed: {greeting_line}")
+        logger.info("Greeting: {}", greeting_line)
         greeting_audio = play_tts_with_fast_start(
             tts,
             tts_player,
@@ -483,10 +502,10 @@ def main():
             voice_override=get_personality_voice(profile),
         )
         if greeting_audio:
-            print(f"Bed: Audio saved at {greeting_audio}")
+            logger.debug("Audio saved at {}", greeting_audio)
         interrupt_text = wake_word_manager.capture_barge_in_text()
         if interrupt_text and _is_wake_only_utterance(wake_word_manager, interrupt_text):
-            print("Bed: Wake word acknowledged. I am already listening.")
+            logger.debug("Wake word acknowledged. Already listening.")
             pending_user_text = ""
             led.set_state("listening")
         elif interrupt_text:
@@ -507,7 +526,7 @@ def main():
             text = str(reply_text or "").strip()
             if not text:
                 return
-            print(f"Bed: {text}")
+            logger.info("Automation reply: {}", text)
             last_assistant_response = text
             environment_orchestrator.preload_transition_for_response(led, profile, text)
             led.set_state("speaking")
@@ -516,10 +535,10 @@ def main():
                 voice_override=get_personality_voice(profile),
             )
             if not audio_file:
-                print("[TTS][WARN] No audio generated for automation reply.")
-            print(f"Bed: Audio saved at {audio_file}")
+                logger.warning("No audio generated for automation reply.")
+            logger.debug("Audio saved at {}", audio_file)
             if audio_file and tts_player.play_file(audio_file):
-                print("Bed: Playing response audio now.")
+                logger.debug("Playing response audio now.")
             interrupt_text = wake_word_manager.capture_barge_in_text()
             if interrupt_text:
                 tts_player.stop()
@@ -569,8 +588,8 @@ def main():
             save_profile(profile)
             led.set_state("speaking")
             audio_file = tts.synthesize_to_mp3(line, voice_override=get_personality_voice(profile))
-            print(f"Bed: {line}")
-            print(f"Bed: Audio saved at {audio_file}")
+            logger.info("Proactive: {}", line)
+            logger.debug("Audio saved at {}", audio_file)
             if audio_file:
                 tts_player.play_file(audio_file)
             interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -591,8 +610,8 @@ def main():
                 continuity_callback,
                 voice_override=get_personality_voice(profile),
             )
-            print(f"Bed: {continuity_callback}")
-            print(f"Bed: Audio saved at {audio_file}")
+            logger.info("Continuity: {}", continuity_callback)
+            logger.debug("Audio saved at {}", audio_file)
             if audio_file:
                 tts_player.play_file(audio_file)
             interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -617,8 +636,8 @@ def main():
                     checkin_prompt,
                     voice_override=get_personality_voice(profile),
                 )
-                print(f"Bed: {checkin_prompt}")
-                print(f"Bed: Audio saved at {audio_file}")
+                logger.info("Nightly checkin: {}", checkin_prompt)
+                logger.debug("Audio saved at {}", audio_file)
                 if audio_file:
                     tts_player.play_file(audio_file)
                 interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -640,8 +659,8 @@ def main():
                 recovery_msg,
                 voice_override=get_personality_voice(profile),
             )
-            print(f"Bed: {recovery_msg}")
-            print(f"Bed: Audio saved at {audio_file}")
+            logger.info("Recovery protocol: {}", recovery_msg)
+            logger.debug("Audio saved at {}", audio_file)
             if audio_file:
                 tts_player.play_file(audio_file)
             interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -663,8 +682,8 @@ def main():
                 save_profile(profile)
                 led.set_state("speaking")
                 audio_file = tts.synthesize_to_mp3(reminder, voice_override=get_personality_voice(profile))
-                print(f"Bed: {reminder}")
-                print(f"Bed: Audio saved at {audio_file}")
+                logger.info("Priority reminder: {}", reminder)
+                logger.debug("Audio saved at {}", audio_file)
                 if audio_file:
                     tts_player.play_file(audio_file)
                 interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -692,8 +711,8 @@ def main():
             save_profile(profile)
             led.set_state("speaking")
             audio_file = tts.synthesize_to_mp3(brief, voice_override=get_personality_voice(profile))
-            print(f"Bed: {brief}")
-            print(f"Bed: Audio saved at {audio_file}")
+            logger.info("Morning brief: {}", brief)
+            logger.debug("Audio saved at {}", audio_file)
             if audio_file:
                 tts_player.play_file(audio_file)
             interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -712,8 +731,8 @@ def main():
             save_profile(profile)
             led.set_state("speaking")
             audio_file = tts.synthesize_to_mp3(brief, voice_override=get_personality_voice(profile))
-            print(f"Bed: {brief}")
-            print(f"Bed: Audio saved at {audio_file}")
+            logger.info("Evening brief: {}", brief)
+            logger.debug("Audio saved at {}", audio_file)
             if audio_file:
                 tts_player.play_file(audio_file)
             interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -730,8 +749,8 @@ def main():
             save_profile(profile)
             led.set_state("speaking")
             audio_file = tts.synthesize_to_mp3(drift_alert, voice_override=get_personality_voice(profile))
-            print(f"Bed: {drift_alert}")
-            print(f"Bed: Audio saved at {audio_file}")
+            logger.info("Drift alert: {}", drift_alert)
+            logger.debug("Audio saved at {}", audio_file)
             if audio_file:
                 tts_player.play_file(audio_file)
             interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -748,8 +767,8 @@ def main():
             save_profile(profile)
             led.set_state("speaking")
             audio_file = tts.synthesize_to_mp3(recovery_card, voice_override=get_personality_voice(profile))
-            print(f"Bed: {recovery_card}")
-            print(f"Bed: Audio saved at {audio_file}")
+            logger.info("Weekly recovery card: {}", recovery_card)
+            logger.debug("Audio saved at {}", audio_file)
             if audio_file:
                 tts_player.play_file(audio_file)
             interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -793,7 +812,7 @@ def main():
             )
 
         def _log_intent(intent_name: str, original_text: str):
-            print(f"[INTENT][{intent_name}] {str(original_text or '').strip()}")
+            logger.debug("Intent [{}]: {}", intent_name, str(original_text or '').strip())
 
         def set_user_led_color(name: str):
             led.set_user_animation("solid")
@@ -838,7 +857,7 @@ def main():
 
         def handle_sleep_intent(text: str) -> str:
             raw_text = str(text or "").strip()
-            print(f"[INTENT][SLEEP] activating sleep scene for text='{raw_text}'")
+            logger.debug("Intent [SLEEP]: activating sleep scene for text='{}'", raw_text)
             result = handle_sleep_intent_result(text)
             return apply_command_result_effects(result)
 
@@ -882,7 +901,7 @@ def main():
                 elif op == "activate_sleep_scene":
                     sleep_mode_line = activate_sleep_scene()
                     if sleep_mode_line:
-                        print(f"[INTENT][SLEEP] {sleep_mode_line}")
+                        logger.debug("Intent [SLEEP]: {}", sleep_mode_line)
             return response_text
 
         def handle_reminder_intent(text: str) -> str:
@@ -933,14 +952,14 @@ def main():
                 "i finished my work and planning",
             )
             if any(phrase in lowered_user_text for phrase in completion_phrases):
-                print(f"[INTENT][CHAT] reminder_completion for text='{user_text}'")
+                logger.debug("Intent [CHAT]: reminder_completion for text='{}'", user_text)
                 for reminder in reversed(automation_engine.planned_reminders):
                     if bool(reminder.get("completed", False)):
                         continue
                     reminder["completed"] = True
                     reminder["nudge_sent"] = True
                     done_task = str(reminder.get("task", "") or "").strip()
-                    print(f"[REMINDER] Marked completed: task='{done_task}'.")
+                    logger.info("Reminder marked completed: task='{}'", done_task)
                     break
                 automation_engine.reminder_nudge_state["active"] = False
                 automation_engine.reminder_nudge_state["task"] = ""
@@ -949,31 +968,37 @@ def main():
                 try:
                     activate_sleep_scene()
                 except NameError:
-                    # TODO: trigger relax LED scene here
-                    pass
+                    from scenes.scene_store import SceneStore
+                    SceneStore.activate_by_name("relax")
                 except Exception as exc:
-                    print(f"[INTENT][CHAT][WARN] Could not trigger relax scene: {exc}")
+                    logger.warning("Could not trigger relax scene: {}", exc)
                 return "Good, your work and planning are done for today. Now you can rest."
 
             if "joke" in lowered_user_text:
-                print(f"[INTENT][CHAT] local_joke for text={user_text!r}")
+                logger.debug("Intent [CHAT]: local_joke for text={}", user_text)
                 return "Why did the bed stay calm? Because it knew rest is part of winning."
 
             if ("motivate me" in lowered_user_text) or ("motivation" in lowered_user_text):
-                print(f"[INTENT][CHAT] local_motivation for text={user_text!r}")
+                logger.debug("Intent [CHAT]: local_motivation for text={}", user_text)
                 return "Stay disciplined, be patient, and keep working hard; small steps every day create big results."
 
             if "how are you" in lowered_user_text:
-                print(f"[INTENT][CHAT] local_status for text={user_text!r}")
+                logger.debug("Intent [CHAT]: local_status for text={}", user_text)
                 return "I am running well and ready to help you."
 
             # ...existing code for other chat intents...
 
             if is_islamic_reminder_request(lowered_user_text):
-                print(f"[INTENT][CHAT] local_islamic_reminder for text={user_text!r}")
+                logger.debug("Intent [CHAT]: local_islamic_reminder for text={}", user_text)
                 return next_islamic_reminder(profile)
 
-            print(f"[INTENT][CHAT] GPT route for text='{user_text}'")
+            logger.debug("Intent [CHAT]: GPT route for text='{}'", user_text)
+
+            emotion_state = detect_emotion_state(user_text)
+            chosen_personality, _, _ = adaptive_personality.choose_personality(profile, emotion_state)
+            personality = str(profile.get("preferences", {}).get("personality", "therapist") or "therapist")
+            if chosen_personality in ("therapist", "coach", "guide"):
+                personality = chosen_personality
 
             speed_tuning = get_turn_speed_tuning(profile, user_text)
             realtime_context = ""
@@ -982,8 +1007,6 @@ def main():
                     user_text,
                     timeout_seconds=settings.ai_timeout_seconds,
                 )
-
-            personality = str(profile.get("preferences", {}).get("personality", "therapist") or "therapist")
             memory_context_line = memory_store.memory_prompt_line(user_text)
             user_context = build_user_context(
                 profile,
@@ -993,7 +1016,7 @@ def main():
                     [g for g in goal_manager.list_goals(profile) if g.get("status") == "active"],
                 ),
                 progress_context=build_progress_summary(profile),
-                emotion_context="",
+                emotion_context=emotion_response_hint(emotion_state),
                 sleep_context=sleep_engine.summary_line(profile),
                 runtime_context=runtime_orchestrator.emotion_trend_summary(profile),
                 goal_strategy_context=goal_strategy.context_summary(profile),
@@ -1010,7 +1033,7 @@ def main():
             response_text = ""
             gpt_diag = _build_gpt_route_diagnostics(backend_client)
             if gpt_diag["openai_ready"]:
-                print(f"[FLOW] GPT provider: direct OpenAI API (model={settings.openai_chat_model}).")
+                logger.debug("GPT provider: direct OpenAI API (model={})", settings.openai_chat_model)
                 ok_openai, openai_text = _request_openai_chat_reply(
                     user_text_for_ai=user_text,
                     personality=personality,
@@ -1021,14 +1044,14 @@ def main():
                 if ok_openai:
                     response_text = str(openai_text or "").strip()
                 else:
-                    print(f"[FLOW][WARN] Direct OpenAI GPT failed: {openai_text}")
+                    logger.warning("Direct OpenAI GPT failed: {}", openai_text)
 
             if (not response_text) and gpt_diag["backend_ready"] and (backend_client is not None):
                 ent_ok, _ = backend_client.fetch_entitlement()
                 if (not ent_ok) or (not backend_client.is_feature_allowed("cloud_chat")):
-                    print("[FLOW][WARN] Backend GPT route unavailable: cloud_chat entitlement is inactive.")
+                    logger.warning("Backend GPT route unavailable: cloud_chat entitlement is inactive.")
                 else:
-                    print("[FLOW] GPT provider: backend cloud_chat proxy.")
+                    logger.debug("GPT provider: backend cloud_chat proxy.")
                     ok_cloud, cloud_text, _ = backend_client.request_ai_chat(
                         text=user_text,
                         personality=personality,
@@ -1039,7 +1062,7 @@ def main():
                     if ok_cloud:
                         response_text = str(cloud_text or "").strip()
                     else:
-                        print(f"[FLOW][WARN] Backend GPT request failed: {cloud_text}")
+                        logger.warning("Backend GPT request failed: {}", cloud_text)
                         offline_response, handled_offline = offline_pack.handle(user_text)
                         response_text = offline_response if handled_offline else str(cloud_text or "").strip()
 
@@ -1050,7 +1073,7 @@ def main():
                 else:
                     missing = " | ".join(gpt_diag["issues"]) if gpt_diag["issues"] else "no GPT route is currently available"
                     response_text = f"GPT route is unavailable right now. {missing}"
-                print(f"[FLOW][WARN] GPT route unavailable. {response_text}")
+                logger.warning("GPT route unavailable. {}", response_text)
 
             return str(response_text or "")
 
@@ -1079,15 +1102,15 @@ def main():
                         "failure_count": int(breaker_state.get("failure_count", 0) or 0),
                     },
                 )
-                print(
-                    "[VOICE][CIRCUIT] Manual reset applied from control signal. "
-                    f"state={breaker_state.get('state')} failures={breaker_state.get('failure_count')}"
+                logger.info(
+                    "Circuit manual reset from control signal. state={} failures={}",
+                    breaker_state.get('state'), breaker_state.get('failure_count'),
                 )
             process_due_alarms()
             run_automations()
             nudge_text = check_reminder_nudge()
             if nudge_text:
-                print(f"Bed: {nudge_text}")
+                logger.info("Reminder nudge: {}", nudge_text)
                 last_assistant_response = nudge_text
                 environment_orchestrator.preload_transition_for_response(led, profile, nudge_text)
                 led.set_state("speaking")
@@ -1096,10 +1119,10 @@ def main():
                     voice_override=get_personality_voice(profile),
                 )
                 if not nudge_audio:
-                    print("[TTS][WARN] No audio generated for reminder nudge.")
-                print(f"Bed: Audio saved at {nudge_audio}")
+                    logger.warning("No audio generated for reminder nudge.")
+                logger.debug("Audio saved at {}", nudge_audio)
                 if nudge_audio and tts_player.play_file(nudge_audio):
-                    print("Bed: Playing response audio now.")
+                    logger.debug("Playing response audio now.")
                 interrupt_text = wake_word_manager.capture_barge_in_text()
                 if interrupt_text:
                     tts_player.stop()
@@ -1122,7 +1145,7 @@ def main():
                     if candidate == interim_intent_hint:
                         return
                     interim_intent_hint = candidate
-                    print(f"Bed (intent-prep): {candidate.get('intent', 'unknown')}")
+                    logger.debug("Intent prep: {}", candidate.get('intent', 'unknown'))
 
                 user_text, _query_confidence = get_query_text(
                     stt,
@@ -1146,34 +1169,34 @@ def main():
                         "failure_count": int(breaker_state.get("failure_count", 0) or 0),
                     },
                 )
-                print(
-                    "[VOICE][CIRCUIT] Manual reset requested from runtime command. "
-                    f"state={breaker_state.get('state')} failures={breaker_state.get('failure_count')}"
+                logger.info(
+                    "Circuit manual reset from runtime command. state={} failures={}",
+                    breaker_state.get('state'), breaker_state.get('failure_count'),
                 )
-                print("Bed: Voice pipeline recovery circuit reset. Normal voice processing is restored.")
+                logger.info("Voice pipeline recovery circuit reset. Normal voice processing is restored.")
                 led.set_state("listening")
                 continue
 
             if _is_wake_only_utterance(wake_word_manager, user_text):
-                print("Bed: I am already awake. Please tell me your command.")
+                logger.debug("Already awake — awaiting command.")
                 led.set_state("listening")
                 continue
 
             if _looks_like_echo_capture(user_text, last_assistant_response, _query_confidence):
-                print("Bed: Ignoring likely speaker-echo capture. Please speak again.")
+                logger.debug("Ignoring likely speaker-echo capture.")
                 led.set_state("listening")
                 continue
 
             if _is_app_exit_command(user_text):
                 routine_engine.stop_breathing_guide_routine()
                 led.set_state("sleep")
-                print("Bed: Good night, sleep well.")
+                logger.info("App exit: Good night, sleep well.")
                 return
 
             if _is_session_end_command(user_text):
                 routine_engine.stop_breathing_guide_routine()
                 led.set_state("standby")
-                print("Bed: Session ended. Say 'wake', 'hey smart bed', or 'hello' when you need me.")
+                logger.info("Session ended. Say 'wake', 'hey smart bed', or 'hello' when you need me.")
                 break
 
             if not user_text:
@@ -1196,8 +1219,8 @@ def main():
                     protocol,
                     voice_override=get_personality_voice(profile),
                 )
-                print(f"Bed: {protocol}")
-                print(f"Bed: Audio saved at {audio_file}")
+                logger.info("Fast protocol: {}", protocol)
+                logger.debug("Audio saved at {}", audio_file)
                 if audio_file:
                     tts_player.play_file(audio_file)
                 interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -1220,8 +1243,8 @@ def main():
                     combined,
                     voice_override=get_personality_voice(profile),
                 )
-                print(f"Bed: {combined}")
-                print(f"Bed: Audio saved at {audio_file}")
+                logger.info("Safety response ({}): {}", safety_level, combined)
+                logger.debug("Audio saved at {}", audio_file)
                 if audio_file:
                     tts_player.play_file(audio_file)
                 interrupt_text = wake_word_manager.capture_barge_in_text()
@@ -1244,8 +1267,8 @@ def main():
                     response_text,
                     voice_override=get_personality_voice(profile),
                 )
-                print(f"Bed: {response_text}")
-                print(f"Bed: Audio saved at {audio_file}")
+                logger.info("Quick response: {}", response_text)
+                logger.debug("Audio saved at {}", audio_file)
                 interrupt_text = wake_word_manager.capture_barge_in_text()
                 if interrupt_text:
                     tts_player.stop()
@@ -1255,7 +1278,7 @@ def main():
                 led.set_state("listening")
                 continue
 
-            print(f"[FLOW] STT captured chars={len(user_text)}")
+            logger.debug("STT captured chars={}", len(user_text))
             voice_failure_type = {"name": ""}
             voice_trace_id = f"voice_{time.time_ns()}"
 
@@ -1316,15 +1339,15 @@ def main():
             quality_gate_meta = turn_result.get("quality_gate", {})
             if isinstance(quality_gate_meta, dict):
                 if bool(quality_gate_meta.get("used_fallback", False)):
-                    print(f"[QUALITY_GATE] safe fallback applied reason={quality_gate_meta.get('reason', 'unknown')}")
+                    logger.info("Quality gate: safe fallback applied reason={}", quality_gate_meta.get('reason', 'unknown'))
                 elif bool(quality_gate_meta.get("trimmed", False)):
-                    print(
-                        "[QUALITY_GATE] response trimmed "
-                        f"original_len={quality_gate_meta.get('original_length', 0)} "
-                        f"final_len={quality_gate_meta.get('final_length', 0)}"
+                    logger.info(
+                        "Quality gate: response trimmed original_len={} final_len={}",
+                        quality_gate_meta.get('original_length', 0),
+                        quality_gate_meta.get('final_length', 0),
                     )
             if not response_text:
-                print("[FLOW][WARN] Voice pipeline fallback returned empty text.")
+                logger.warning("Voice pipeline fallback returned empty text.")
                 led.set_state("listening")
                 continue
 
@@ -1347,16 +1370,13 @@ def main():
                         "failure_type": str(voice_failure_type["name"] or ""),
                     },
                 )
-                print(
-                    "[VOICE][CIRCUIT] Offline fallback engaged "
-                    f"reason={breaker_reason} "
-                    f"state={breaker_snapshot.get('state')} "
-                    f"failures={breaker_snapshot.get('failure_count')} "
-                    f"cooldown_remaining={cooldown_remaining:.2f}s"
-                    f"{failure_suffix}"
+                logger.warning(
+                    "Offline fallback engaged reason={} state={} failures={} cooldown={:.2f}s{}",
+                    breaker_reason, breaker_snapshot.get('state'),
+                    breaker_snapshot.get('failure_count'), cooldown_remaining, failure_suffix,
                 )
-                print(f"Bed: {response_text}")
-                print("Bed: Voice pipeline offline fallback is active. Audio playback skipped.")
+                logger.info("Fallback response: {}", response_text)
+                logger.info("Voice pipeline offline fallback is active. Audio playback skipped.")
                 last_assistant_response = response_text
                 led.set_state("listening")
                 continue
@@ -1375,20 +1395,50 @@ def main():
                     "response_chars": len(response_text),
                 },
             )
-            print(f"[FLOW] Reply text chars={len(response_text)}")
+            logger.debug("Reply text chars={}", len(response_text))
             last_assistant_response = response_text
 
-            print(f"Bed: {response_text}")
-            print(f"Bed: Audio saved at {audio_file}")
+            logger.info("Response: {}", response_text)
+            logger.debug("Audio saved at {}", audio_file)
             if bool(turn_result.get("played", False)):
-                print("Bed: Playing response audio now.")
+                logger.debug("Playing response audio now.")
             interrupt_text = wake_word_manager.capture_barge_in_text()
             if interrupt_text:
+                runtime_orchestrator.record_interrupt(profile)
+                save_profile(profile)
                 tts_player.stop()
                 led.set_state("listening")
                 pending_user_text = interrupt_text
-                continue
-            led.set_state("listening")
+            else:
+                led.set_state("listening")
+
+            # Record memory, adaptive personality, and scene for every completed turn
+            _emotion_state = detect_emotion_state(user_text)
+            _personality = str(profile.get("preferences", {}).get("personality", "therapist") or "therapist")
+            _chosen, _, _ = adaptive_personality.choose_personality(profile, _emotion_state)
+            if _chosen in ("therapist", "coach", "guide"):
+                _personality = _chosen
+            memory_store.record_turn(
+                user_text=user_text,
+                assistant_text=response_text,
+                emotion_state=_emotion_state,
+                personality=_personality,
+            )
+            adaptive_personality.record_interaction(
+                profile,
+                personality=_personality,
+                emotion_state=_emotion_state,
+                user_text=user_text,
+                score=0.8,
+            )
+            _scene = environment_orchestrator.choose_scene(
+                emotion_state=_emotion_state,
+                recovery_mode=bool(profile.get("sleep", {}).get("recovery_mode", False)),
+                challenge_level=int(profile.get("sleep", {}).get("challenge_level", 1)),
+                personality=_personality,
+            )
+            environment_orchestrator.apply_scene(led, profile, _scene)
+            save_profile(profile)
             continue
 
             personality = profile.get("preferences", {}).get("personality", "therapist")
@@ -1461,7 +1511,7 @@ def main():
             )
 
             if preparsed_control_turn:
-                print(f"Bed: Fast path using preparsed intent '{interim_intent_hint.get('intent', 'control')}'.")
+                logger.debug("Fast path using preparsed intent '{}'", interim_intent_hint.get('intent', 'control'))
 
             realtime_query = (not preparsed_control_turn) and is_realtime_query(user_text)
             realtime_context = ""
@@ -1564,7 +1614,7 @@ def main():
                     detailed_mode=detailed_mode,
                     response_style=response_style,
                 )
-                print("Bed: (cache hit)")
+                logger.debug("Cache hit for query")
             else:
                 ack_mode = str(profile.get("preferences", {}).get("thinking_ack_mode", "minimal") or "minimal").lower().strip()
                 if ack_mode in ("off", "mute", "disabled"):
@@ -1614,12 +1664,11 @@ def main():
                 gpt_diag = _build_gpt_route_diagnostics(backend_client)
                 if not effective_realtime_query:
                     led.set_state("thinking")
-                print(f"[FLOW] STT captured chars={len(user_text)}")
-                print("[FLOW] Open-question route -> GPT completion")
+                logger.debug("STT captured chars={} — open-question route -> GPT", len(user_text))
 
                 response_text = ""
                 if gpt_diag["openai_ready"]:
-                    print(f"[FLOW] GPT provider: direct OpenAI API (model={settings.openai_chat_model}).")
+                    logger.debug("GPT provider: direct OpenAI API (model={})", settings.openai_chat_model)
                     ok_openai, openai_text = _request_openai_chat_reply(
                         user_text_for_ai=user_text_for_ai,
                         personality=personality,
@@ -1629,16 +1678,16 @@ def main():
                     )
                     if ok_openai:
                         response_text = str(openai_text or "").strip()
-                        print(f"[FLOW] GPT reply text chars={len(response_text)}")
+                        logger.debug("GPT reply text chars={}", len(response_text))
                     else:
-                        print(f"[FLOW][WARN] Direct OpenAI GPT failed: {openai_text}")
+                        logger.warning("Direct OpenAI GPT failed: {}", openai_text)
 
                 if (not response_text) and gpt_diag["backend_ready"] and (backend_client is not None):
                     ent_ok, _ = backend_client.fetch_entitlement()
                     if (not ent_ok) or (not backend_client.is_feature_allowed("cloud_chat")):
-                        print("[FLOW][WARN] Backend GPT route unavailable: cloud_chat entitlement is inactive.")
+                        logger.warning("Backend GPT route unavailable: cloud_chat entitlement is inactive.")
                     else:
-                        print("[FLOW] GPT provider: backend cloud_chat proxy.")
+                        logger.debug("GPT provider: backend cloud_chat proxy.")
                         ok_cloud, cloud_text, _ = backend_client.request_ai_chat(
                             text=user_text_for_ai,
                             personality=personality,
@@ -1648,9 +1697,9 @@ def main():
                         )
                         if ok_cloud:
                             response_text = str(cloud_text or "").strip()
-                            print(f"[FLOW] GPT reply text chars={len(response_text)}")
+                            logger.debug("GPT reply text chars={}", len(response_text))
                         else:
-                            print(f"[FLOW][WARN] Backend GPT request failed: {cloud_text}")
+                            logger.warning("Backend GPT request failed: {}", cloud_text)
                             offline_response, handled_offline = offline_pack.handle(user_text)
                             response_text = offline_response if handled_offline else str(cloud_text or "").strip()
 
@@ -1664,7 +1713,7 @@ def main():
                             "GPT route is unavailable right now. "
                             f"{missing}"
                         )
-                    print(f"[FLOW][WARN] GPT route unavailable. {response_text}")
+                    logger.warning("GPT route unavailable. {}", response_text)
 
                 if stream_interrupt_text:
                     runtime_orchestrator.record_interrupt(profile)
@@ -1740,12 +1789,12 @@ def main():
             )
             save_profile(profile)
             if response_audio_already_played:
-                print(f"Bed: {response_text}")
+                logger.info("Response (streamed): {}", response_text)
                 if tts_player.is_playing():
-                    print("Bed: Streaming response audio now.")
+                    logger.debug("Streaming response audio now.")
             else:
                 environment_orchestrator.preload_transition_for_response(led, profile, response_text)
-                print("[FLOW] Routing GPT reply -> TTS -> pygame playback")
+                logger.debug("Routing GPT reply -> TTS -> pygame playback")
                 audio_file = play_tts_with_fast_start(
                     tts,
                     tts_player,
@@ -1755,10 +1804,10 @@ def main():
                     emotion_state=emotion_state,
                     profile_override=profile_override_for_turn,
                 )
-                print(f"Bed: {response_text}")
-                print(f"Bed: Audio saved at {audio_file}")
+                logger.info("Response: {}", response_text)
+                logger.debug("Audio saved at {}", audio_file)
                 if tts_player.is_playing():
-                    print("Bed: Playing response audio now.")
+                    logger.debug("Playing response audio now.")
 
                 interrupt_text = wake_word_manager.capture_barge_in_text()
                 if interrupt_text:

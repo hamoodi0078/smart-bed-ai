@@ -237,6 +237,9 @@ class RaspberryPiWs281xBackend:
 
     def _run_loop(self) -> None:
         frame_idx = 0
+        _render_failures = 0
+        _max_render_failures = 3
+        _render_backoff_seconds = 0.5
         while not self._stop_event.is_set():
             with self._lock:
                 animation = str(self._frame_state.user_animation or "solid").strip().lower()
@@ -251,11 +254,21 @@ class RaspberryPiWs281xBackend:
 
             try:
                 self._render_frame(frame_idx)
+                _render_failures = 0
             except Exception as exc:
-                self._status = f"LED hardware render failed: {exc}"
-                logger.warning("Raspberry Pi LED render failed: %s", exc)
-                self.close()
-                break
+                _render_failures += 1
+                self._status = f"LED hardware render failed ({_render_failures}/{_max_render_failures}): {exc}"
+                logger.warning(
+                    "Raspberry Pi LED render failed (%s/%s): %s",
+                    _render_failures,
+                    _max_render_failures,
+                    exc,
+                )
+                if _render_failures >= _max_render_failures:
+                    logger.error("LED render failure threshold reached. Shutting down LED thread.")
+                    self.close()
+                    break
+                time.sleep(_render_backoff_seconds)
             frame_idx = (frame_idx + 1) % 10_000
 
 

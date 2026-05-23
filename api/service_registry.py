@@ -84,6 +84,18 @@ def initialize_services(app: FastAPI) -> None:
     except Exception as e:
         logger.warning("PrayerAutomation init failed: %s", e)
 
+    # Islamic calendar automations (Eid al-Fitr, Eid al-Adha, Jumu'ah)
+    try:
+        from automations.registry import AutomationRegistry
+        from automations.islamic_automations import register_islamic_automations
+        if not hasattr(app.state, "automation_registry"):
+            app.state.automation_registry = AutomationRegistry(
+                state_path=RUNTIME_DATA_DIR / "automation_state.json"
+            )
+        register_islamic_automations(app.state.automation_registry)
+    except Exception as e:
+        logger.warning("Islamic automations init failed: %s", e)
+
     try:
         from islamic_mode.tahajjud_manager import TahajjudManager
         app.state.tahajjud_manager = TahajjudManager()
@@ -149,7 +161,8 @@ def initialize_services(app: FastAPI) -> None:
 
     try:
         from scenes.weather_adaptive import WeatherAdaptive
-        app.state.weather_adaptive = WeatherAdaptive()
+        from config.settings import settings as _settings
+        app.state.weather_adaptive = WeatherAdaptive(api_key=_settings.owm_api_key)
     except Exception as e:
         logger.warning("WeatherAdaptive init failed: %s", e)
 

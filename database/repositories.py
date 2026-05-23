@@ -11,8 +11,9 @@ from sqlalchemy import delete, func, select
 
 from time_utils import ensure_utc, from_iso, to_iso, utcnow
 
-from .connection import DatabaseConnection
+from .connection import AsyncDatabaseConnection, DatabaseConnection
 from .models import (
+    Alarm,
     AppVersion,
     BetaCohortMember,
     BetaMetricsSnapshot,
@@ -24,9 +25,13 @@ from .models import (
     MobileCommandRecord,
     MobileAuthSession,
     NightlySummaryFeedbackProgress,
+    OtpRequest,
     SleepSession,
+    SpotifyToken,
     User,
     UserFeatureOverride,
+    UserProfilePrefs,
+    UserRoutine,
 )
 
 
@@ -210,6 +215,7 @@ class EventRepository:
                 select(Event)
                 .where(Event.user_id == user_key, func.date(Event.timestamp) == target_date.isoformat())
                 .order_by(Event.timestamp.desc())
+                .limit(500)
             )
             return list(session.execute(statement).scalars().all())
 
@@ -853,9 +859,10 @@ class MobileAuthRepository:
         now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
         revoked_count = 0
         with self.db.get_session() as session:
-            statement = select(MobileAuthSession).where(
-                MobileAuthSession.user_id == uid,
-                MobileAuthSession.revoked.is_(False),
+            statement = (
+                select(MobileAuthSession)
+                .where(MobileAuthSession.user_id == uid, MobileAuthSession.revoked.is_(False))
+                .limit(200)
             )
             for row in session.execute(statement).scalars().all():
                 row.revoked = True
@@ -1562,4 +1569,707 @@ class FeatureFlagRepository:
             "reason": str(row.reason or ""),
             "set_by": str(row.set_by or "") or None,
             "set_at": to_iso(ensure_utc(row.set_at)) if row.set_at else "",
+        }
+
+
+# ---------------------------------------------------------------------------
+# Async repositories — backed by AsyncDatabaseConnection (asyncpg + SQLAlchemy asyncio)
+# ---------------------------------------------------------------------------
+
+class AsyncUserRepository:
+    """Async counterpart of UserRepository.
+
+    Uses SQLAlchemy AsyncSession (asyncpg driver) for all queries so the
+    ORM models stay consistent with the sync layer.
+    """
+
+    def __init__(self, db: AsyncDatabaseConnection) -> None:
+        self._db = db
+
+    async def get_by_id(self, user_id: str) -> User | None:
+        key = _clean_user_id(user_id)
+        if not key:
+            return None
+        async with self._db.get_session() as session:
+            return await session.get(User, key)
+
+    async def get_by_email(self, email: str) -> User | None:
+        normalized = str(email or "").strip().lower()
+        if not normalized:
+            return None
+        async with self._db.get_session() as session:
+            result = await session.execute(
+                select(User).where(User.email == normalized).limit(1)
+            )
+            return result.scalar_one_or_none()
+
+    async def create(
+        self,
+        email: str,
+        password_hash: str,
+        full_name: str | None = None,
+        user_id: str | None = None,
+    ) -> User:
+        async with self._db.get_session() as session:
+            user = User(
+                id=str(user_id or "").strip() or None,
+                email=str(email or "").strip().lower(),
+                password_hash=str(password_hash or "").strip(),
+                full_name=str(full_name or "").strip() or None,
+            )
+            session.add(user)
+            await session.flush()
+            await session.refresh(user)
+            return user
+
+    async def update_subscription(
+        self,
+        user_id: str,
+        status: str,
+        trial_start: datetime | None = None,
+        trial_end: datetime | None = None,
+    ) -> User:
+        async with self._db.get_session() as session:
+            user = await session.get(User, str(user_id or "").strip())
+            if user is None:
+                raise ValueError("User not found")
+            user.subscription_status = str(status or "free").strip().lower() or "free"
+            user.trial_start_date = trial_start
+            user.trial_end_date = trial_end
+            user.updated_at = utcnow()
+            session.add(user)
+            await session.flush()
+            await session.refresh(user)
+            return user
+
+    async def update(self, user_id: str, **kwargs: Any) -> User:
+        async with self._db.get_session() as session:
+            user = await session.get(User, str(user_id or "").strip())
+            if user is None:
+                raise ValueError("User not found")
+            blocked = {"id", "created_at"}
+            for key, value in kwargs.items():
+                if key not in blocked and hasattr(user, key):
+                    setattr(user, key, value)
+            user.updated_at = utcnow()
+            session.add(user)
+            await session.flush()
+            await session.refresh(user)
+            return user
+
+    async def delete(self, user_id: str) -> bool:
+        key = _clean_user_id(user_id)
+        if not key:
+            return False
+        async with self._db.get_session() as session:
+            user = await session.get(User, key)
+            if user is None:
+                return False
+            await session.delete(user)
+            return True
+
+    async def list_all(self, limit: int = 1000) -> list[User]:
+        safe_limit = max(1, min(int(limit or 1000), 5000))
+        async with self._db.get_session() as session:
+            result = await session.execute(
+                select(User).order_by(User.created_at.desc()).limit(safe_limit)
+            )
+            return list(result.scalars().all())
+
+
+class AsyncSleepSessionRepository:
+    """Async counterpart of SleepSessionRepository."""
+
+    def __init__(self, db: AsyncDatabaseConnection) -> None:
+        self._db = db
+
+    async def get_session_by_date(
+        self, user_id: str, date: date_type | str
+    ) -> SleepSession | None:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return None
+        target_date = _coerce_date(date)
+        async with self._db.get_session() as session:
+            result = await session.execute(
+                select(SleepSession)
+                .where(
+                    SleepSession.user_id == user_key,
+                    SleepSession.date == target_date,
+                )
+                .limit(1)
+            )
+            return result.scalar_one_or_none()
+
+    async def get_recent_sessions(
+        self, user_id: str, limit: int = 7
+    ) -> list[SleepSession]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return []
+        safe_limit = max(1, min(int(limit or 7), 90))
+        async with self._db.get_session() as session:
+            result = await session.execute(
+                select(SleepSession)
+                .where(SleepSession.user_id == user_key)
+                .order_by(SleepSession.date.desc())
+                .limit(safe_limit)
+            )
+            return list(result.scalars().all())
+
+    async def get_sessions_for_month(
+        self, user_id: str, year: int, month: int, limit: int = 40
+    ) -> list[SleepSession]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return []
+        try:
+            month_start = date_type(int(year), int(month), 1)
+        except ValueError:
+            return []
+        month_end = (
+            date_type(int(year) + 1, 1, 1)
+            if int(month) == 12
+            else date_type(int(year), int(month) + 1, 1)
+        )
+        safe_limit = max(1, min(int(limit or 40), 200))
+        async with self._db.get_session() as session:
+            result = await session.execute(
+                select(SleepSession)
+                .where(
+                    SleepSession.user_id == user_key,
+                    SleepSession.date >= month_start,
+                    SleepSession.date < month_end,
+                )
+                .order_by(SleepSession.date.desc())
+                .limit(safe_limit)
+            )
+            return list(result.scalars().all())
+
+    async def create_or_update_session(
+        self, user_id: str, date: date_type | str, **kwargs: Any
+    ) -> SleepSession:
+        user_key = _clean_user_id(user_id)
+        target_date = _coerce_date(date)
+        allowed = {
+            "bedtime", "wake_time", "total_sleep_minutes",
+            "restlessness_score", "scenes_used",
+            "automations_fired", "winddowns_completed",
+        }
+        async with self._db.get_session() as session:
+            result = await session.execute(
+                select(SleepSession)
+                .where(
+                    SleepSession.user_id == user_key,
+                    SleepSession.date == target_date,
+                )
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                row = SleepSession(user_id=user_key, date=target_date)
+            for key, value in kwargs.items():
+                if key in allowed:
+                    setattr(row, key, value)
+            session.add(row)
+            await session.flush()
+            await session.refresh(row)
+            return row
+
+
+class AsyncEventRepository:
+    """Async counterpart of EventRepository.
+
+    ``log_event`` also exposes a fast-path via the raw asyncpg pool
+    (``log_event_raw``) for high-volume sensor / telemetry writes that
+    don't need ORM overhead.
+    """
+
+    def __init__(self, db: AsyncDatabaseConnection) -> None:
+        self._db = db
+
+    async def log_event(
+        self,
+        user_id: str | None,
+        event_type: str,
+        metadata: dict[str, Any] | None = None,
+        trace_id: str | None = None,
+    ) -> Event:
+        async with self._db.get_session() as session:
+            import json as _json
+            row = Event(
+                user_id=_clean_user_id(user_id),
+                event_type=str(event_type or "").strip(),
+                metadata_json=dict(metadata or {}) if isinstance(metadata, dict) else None,
+                trace_id=str(trace_id or "").strip() or None,
+            )
+            session.add(row)
+            await session.flush()
+            await session.refresh(row)
+            return row
+
+    async def log_event_raw(
+        self,
+        user_id: str | None,
+        event_type: str,
+        metadata: dict[str, Any] | None = None,
+        trace_id: str | None = None,
+    ) -> str:
+        """Insert an event using the raw asyncpg pool — no ORM overhead.
+
+        Returns the new row's ``id`` string. Use for high-throughput telemetry
+        writes (sensor readings, automation fires) where ORM overhead matters.
+        """
+        import json as _json
+        from uuid import uuid4
+        new_id = str(uuid4())
+        now = utcnow()
+        meta_json = _json.dumps(metadata) if isinstance(metadata, dict) else None
+        async with self._db.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO events (id, user_id, event_type, metadata, trace_id, timestamp)
+                VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+                """,
+                new_id,
+                _clean_user_id(user_id),
+                str(event_type or "").strip(),
+                meta_json,
+                str(trace_id or "").strip() or None,
+                now,
+            )
+        return new_id
+
+    async def get_events_by_user(
+        self,
+        user_id: str,
+        limit: int = 50,
+        since: datetime | None = None,
+    ) -> list[Event]:
+        user_key = _clean_user_id(user_id)
+        if not user_key:
+            return []
+        safe_limit = max(1, min(int(limit or 50), 500))
+        async with self._db.get_session() as session:
+            stmt = select(Event).where(Event.user_id == user_key)
+            if since is not None:
+                stmt = stmt.where(Event.timestamp >= since)
+            stmt = stmt.order_by(Event.timestamp.desc()).limit(safe_limit)
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
+
+    async def cleanup_old_events(self, days: int = 90) -> int:
+        cutoff = utcnow() - timedelta(days=max(1, int(days or 90)))
+        async with self._db.get_session() as session:
+            result = await session.execute(
+                delete(Event).where(Event.timestamp < cutoff)
+            )
+            return int(result.rowcount or 0)
+
+
+class AlarmRepository:
+    """CRUD for the alarms table (sync SQLAlchemy)."""
+
+    _MAX_ALARMS_PER_USER = 20
+
+    def __init__(self, db: DatabaseConnection | None = None):
+        self.db = db or DatabaseConnection()
+
+    def list_alarms(self, user_id: str) -> list[Alarm]:
+        with self.db.get_session() as session:
+            result = session.execute(
+                select(Alarm)
+                .where(Alarm.user_id == user_id)
+                .order_by(Alarm.created_at)
+                .limit(self._MAX_ALARMS_PER_USER)
+            )
+            return list(result.scalars().all())
+
+    def get_alarm(self, alarm_id: str, user_id: str) -> Alarm | None:
+        with self.db.get_session() as session:
+            return session.execute(
+                select(Alarm).where(Alarm.id == alarm_id, Alarm.user_id == user_id)
+            ).scalar_one_or_none()
+
+    def create_alarm(
+        self,
+        user_id: str,
+        time: str,
+        label: str = "",
+        enabled: bool = True,
+        days_of_week: list[int] | None = None,
+        wake_style: str = "gentle_light",
+        smart_window_minutes: int = 0,
+    ) -> Alarm:
+        with self.db.get_session() as session:
+            count = session.execute(
+                select(func.count()).where(Alarm.user_id == user_id)
+            ).scalar_one()
+            if count >= self._MAX_ALARMS_PER_USER:
+                raise ValueError(f"Alarm limit reached ({self._MAX_ALARMS_PER_USER})")
+            alarm = Alarm(
+                user_id=user_id,
+                time=time,
+                label=label,
+                enabled=enabled,
+                days_of_week=days_of_week or [],
+                wake_style=wake_style,
+                smart_window_minutes=smart_window_minutes,
+            )
+            session.add(alarm)
+            session.flush()
+            session.refresh(alarm)
+            return alarm
+
+    def update_alarm(
+        self,
+        alarm_id: str,
+        user_id: str,
+        **fields: Any,
+    ) -> Alarm | None:
+        with self.db.get_session() as session:
+            alarm = session.execute(
+                select(Alarm).where(Alarm.id == alarm_id, Alarm.user_id == user_id)
+            ).scalar_one_or_none()
+            if alarm is None:
+                return None
+            allowed = {"time", "label", "enabled", "days_of_week", "wake_style", "smart_window_minutes"}
+            for key, val in fields.items():
+                if key in allowed:
+                    setattr(alarm, key, val)
+            session.flush()
+            session.refresh(alarm)
+            return alarm
+
+    def delete_alarm(self, alarm_id: str, user_id: str) -> bool:
+        with self.db.get_session() as session:
+            result = session.execute(
+                delete(Alarm).where(Alarm.id == alarm_id, Alarm.user_id == user_id)
+            )
+            return int(result.rowcount or 0) > 0
+
+
+# ---------------------------------------------------------------------------
+# Profile repository — DB-backed replacement for profile JSON helpers
+# ---------------------------------------------------------------------------
+
+_DEFAULT_SETTINGS: dict[str, Any] = {
+    "response_style": "balanced",
+    "engagement_level": "high",
+    "wind_down_minutes": 45,
+    "partner_mode_enabled": False,
+    "bedtime_drift_automation_enabled": True,
+    "quiet_hours_override_limit_minutes": 120,
+    "weekly_insight_enabled": True,
+}
+
+_DEFAULT_PREFS: dict[str, Any] = {
+    "display_name": "",
+    "timezone": "Asia/Kuwait",
+    "push_enabled": True,
+    "email_enabled": False,
+    "location_mode": "auto",
+    "country_code": "KW",
+    "city": "",
+    "latitude": None,
+    "longitude": None,
+    "theme_mode": "system",
+}
+
+
+class ProfileRepository:
+    """CRUD for UserProfilePrefs and UserRoutine (sync SQLAlchemy).
+
+    Provides the DB-backed replacement for `_safe_profile()` / `_save_profile()`
+    for the profile and settings API routes.
+    """
+
+    def __init__(self, db: DatabaseConnection | None = None) -> None:
+        self.db = db or DatabaseConnection()
+
+    # ── Profile prefs ─────────────────────────────────────────────────────────
+
+    def get_profile_prefs(self, user_id: str) -> dict[str, Any]:
+        """Return profile prefs dict; creates a default row if absent."""
+        uid = _clean_user_id(user_id)
+        if not uid:
+            return dict(_DEFAULT_PREFS)
+        with self.db.get_session() as session:
+            row = session.execute(
+                select(UserProfilePrefs).where(UserProfilePrefs.user_id == uid).limit(1)
+            ).scalar_one_or_none()
+            if row is None:
+                return dict(_DEFAULT_PREFS)
+            return self._prefs_to_dict(row)
+
+    def upsert_profile_prefs(self, user_id: str, **fields: Any) -> dict[str, Any]:
+        """Create or update the UserProfilePrefs row for user_id."""
+        uid = _clean_user_id(user_id)
+        if not uid:
+            raise ValueError("user_id is required")
+        allowed = {
+            "display_name", "timezone", "push_enabled", "email_enabled",
+            "location_mode", "country_code", "city", "latitude", "longitude", "theme_mode",
+        }
+        with self.db.get_session() as session:
+            row = session.execute(
+                select(UserProfilePrefs).where(UserProfilePrefs.user_id == uid).limit(1)
+            ).scalar_one_or_none()
+            if row is None:
+                row = UserProfilePrefs(user_id=uid)
+                session.add(row)
+            for key, val in fields.items():
+                if key in allowed and hasattr(row, key):
+                    setattr(row, key, val)
+            row.updated_at = utcnow()
+            session.flush()
+            session.refresh(row)
+            return self._prefs_to_dict(row)
+
+    # ── Bed settings ──────────────────────────────────────────────────────────
+
+    def get_settings(self, user_id: str) -> dict[str, Any]:
+        """Return bed-behaviour settings dict; falls back to defaults."""
+        uid = _clean_user_id(user_id)
+        if not uid:
+            return dict(_DEFAULT_SETTINGS)
+        with self.db.get_session() as session:
+            row = session.execute(
+                select(UserProfilePrefs).where(UserProfilePrefs.user_id == uid).limit(1)
+            ).scalar_one_or_none()
+            if row is None or not isinstance(row.settings_json, dict):
+                return dict(_DEFAULT_SETTINGS)
+            return {**_DEFAULT_SETTINGS, **row.settings_json}
+
+    def upsert_settings(self, user_id: str, **fields: Any) -> dict[str, Any]:
+        """Merge provided fields into the settings_json for user_id."""
+        uid = _clean_user_id(user_id)
+        if not uid:
+            raise ValueError("user_id is required")
+        allowed = set(_DEFAULT_SETTINGS.keys())
+        with self.db.get_session() as session:
+            row = session.execute(
+                select(UserProfilePrefs).where(UserProfilePrefs.user_id == uid).limit(1)
+            ).scalar_one_or_none()
+            if row is None:
+                row = UserProfilePrefs(user_id=uid)
+                session.add(row)
+            current = row.settings_json if isinstance(row.settings_json, dict) else {}
+            updated = {**_DEFAULT_SETTINGS, **current, **{k: v for k, v in fields.items() if k in allowed}}
+            row.settings_json = updated
+            row.updated_at = utcnow()
+            session.flush()
+            return dict(updated)
+
+    # ── Routine ───────────────────────────────────────────────────────────────
+
+    def get_routine(self, user_id: str) -> dict[str, Any]:
+        uid = _clean_user_id(user_id)
+        if not uid:
+            return {"bedtime": "22:30", "wake": "07:00", "weekends_different": False}
+        with self.db.get_session() as session:
+            row = session.execute(
+                select(UserRoutine).where(UserRoutine.user_id == uid).limit(1)
+            ).scalar_one_or_none()
+            if row is None:
+                return {"bedtime": "22:30", "wake": "07:00", "weekends_different": False}
+            return {
+                "bedtime": row.bedtime,
+                "wake": row.wake,
+                "weekends_different": row.weekends_different,
+                "weekend_bedtime": row.weekend_bedtime,
+                "weekend_wake": row.weekend_wake,
+            }
+
+    def upsert_routine(self, user_id: str, **fields: Any) -> dict[str, Any]:
+        uid = _clean_user_id(user_id)
+        if not uid:
+            raise ValueError("user_id is required")
+        allowed = {"bedtime", "wake", "weekends_different", "weekend_bedtime", "weekend_wake"}
+        with self.db.get_session() as session:
+            row = session.execute(
+                select(UserRoutine).where(UserRoutine.user_id == uid).limit(1)
+            ).scalar_one_or_none()
+            if row is None:
+                row = UserRoutine(user_id=uid)
+                session.add(row)
+            for key, val in fields.items():
+                if key in allowed and hasattr(row, key):
+                    setattr(row, key, val)
+            row.updated_at = utcnow()
+            session.flush()
+            session.refresh(row)
+            return self.get_routine(uid)
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _prefs_to_dict(row: UserProfilePrefs) -> dict[str, Any]:
+        return {
+            "display_name": row.display_name or "",
+            "timezone": row.timezone or "Asia/Kuwait",
+            "push_enabled": bool(row.push_enabled),
+            "email_enabled": bool(row.email_enabled),
+            "location_mode": row.location_mode or "auto",
+            "country_code": row.country_code or "",
+            "city": row.city or "",
+            "latitude": row.latitude,
+            "longitude": row.longitude,
+            "theme_mode": row.theme_mode or "system",
+        }
+
+
+class OtpRepository:
+    """DB-backed OTP storage — replaces the profile JSON 'mobile_phone_otp_requests' section."""
+
+    def __init__(self, db: DatabaseConnection | None = None) -> None:
+        from config.settings import settings
+        self._db = db or DatabaseConnection(database_url=settings.database_url)
+
+    def create(
+        self,
+        *,
+        request_id: str,
+        phone_number: str,
+        otp_digest: str,
+        expires_at: datetime,
+        client_name: str = "",
+        delivery_provider: str = "",
+        delivery_status: str = "",
+        delivery_message_id: str = "",
+    ) -> None:
+        with self._db.get_session() as session:
+            session.add(OtpRequest(
+                request_id=request_id,
+                phone_number=phone_number,
+                otp_digest=otp_digest,
+                expires_at=expires_at,
+                client_name=client_name,
+                delivery_provider=delivery_provider,
+                delivery_status=delivery_status,
+                delivery_message_id=delivery_message_id,
+            ))
+
+    def get(self, request_id: str) -> dict[str, Any] | None:
+        with self._db.get_session() as session:
+            row = session.get(OtpRequest, request_id)
+            if row is None:
+                return None
+            return {
+                "request_id": row.request_id,
+                "phone_number": row.phone_number,
+                "otp_digest": row.otp_digest,
+                "attempts": row.attempts,
+                "client_name": row.client_name,
+                "delivery_provider": row.delivery_provider,
+                "delivery_status": row.delivery_status,
+                "delivery_message_id": row.delivery_message_id,
+                "expires_at": row.expires_at,
+                "created_at": row.created_at,
+            }
+
+    def increment_attempts(self, request_id: str) -> int:
+        """Increment attempt counter; return new count."""
+        with self._db.get_session() as session:
+            row = session.get(OtpRequest, request_id)
+            if row is None:
+                return 0
+            row.attempts += 1
+            session.flush()
+            return row.attempts
+
+    def delete(self, request_id: str) -> None:
+        with self._db.get_session() as session:
+            row = session.get(OtpRequest, request_id)
+            if row is not None:
+                session.delete(row)
+
+    def cleanup_expired(self) -> int:
+        """Delete all expired OTP rows; return count deleted."""
+        with self._db.get_session() as session:
+            result = session.execute(
+                delete(OtpRequest).where(OtpRequest.expires_at < utcnow())
+            )
+            return result.rowcount or 0
+
+
+class SpotifyTokenRepository:
+    """DB-backed Spotify token storage — replaces profile JSON 'spotify_tokens' section."""
+
+    def __init__(self, db: DatabaseConnection | None = None) -> None:
+        from config.settings import settings
+        self._db = db or DatabaseConnection(database_url=settings.database_url)
+
+    def get(self, user_key: str) -> dict[str, Any] | None:
+        with self._db.get_session() as session:
+            row = session.scalars(
+                select(SpotifyToken).where(SpotifyToken.user_key == user_key)
+            ).first()
+            if row is None:
+                return None
+            return self._to_dict(row)
+
+    def upsert(
+        self,
+        user_key: str,
+        *,
+        access_token: str,
+        refresh_token: str = "",
+        scope: str = "",
+        spotify_user_id: str = "",
+        display_name: str = "",
+        spotify_email: str = "",
+        expires_at: str = "",
+    ) -> dict[str, Any]:
+        with self._db.get_session() as session:
+            row = session.scalars(
+                select(SpotifyToken).where(SpotifyToken.user_key == user_key)
+            ).first()
+            if row is None:
+                row = SpotifyToken(user_key=user_key)
+                session.add(row)
+            row.access_token = access_token
+            if refresh_token:
+                row.refresh_token = refresh_token
+            row.scope = scope
+            row.spotify_user_id = spotify_user_id
+            row.display_name = display_name
+            row.spotify_email = spotify_email
+            row.expires_at = expires_at
+            session.flush()
+            return self._to_dict(row)
+
+    def update_access_token(
+        self,
+        user_key: str,
+        *,
+        access_token: str,
+        expires_at: str,
+    ) -> None:
+        with self._db.get_session() as session:
+            row = session.scalars(
+                select(SpotifyToken).where(SpotifyToken.user_key == user_key)
+            ).first()
+            if row is not None:
+                row.access_token = access_token
+                row.expires_at = expires_at
+
+    def delete(self, user_key: str) -> None:
+        with self._db.get_session() as session:
+            row = session.scalars(
+                select(SpotifyToken).where(SpotifyToken.user_key == user_key)
+            ).first()
+            if row is not None:
+                session.delete(row)
+
+    @staticmethod
+    def _to_dict(row: SpotifyToken) -> dict[str, Any]:
+        return {
+            "access_token": row.access_token or "",
+            "refresh_token": row.refresh_token or "",
+            "scope": row.scope or "",
+            "spotify_user_id": row.spotify_user_id or "",
+            "display_name": row.display_name or "",
+            "spotify_email": row.spotify_email or "",
+            "expires_at": row.expires_at or "",
         }

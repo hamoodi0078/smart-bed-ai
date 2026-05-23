@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
@@ -86,18 +86,18 @@ class _LedControlScreenState extends State<LedControlScreen> {
         borderRadius: BorderRadius.circular(20),
         gradient: RadialGradient(
           colors: [
-            _selectedColor.withOpacity(_brightness),
-            _selectedColor.withOpacity(_brightness * 0.3),
+            _selectedColor.withValues(alpha: _brightness),
+            _selectedColor.withValues(alpha: _brightness * 0.3),
             AppColors.cardBg,
           ],
         ),
         border: Border.all(
-          color: _selectedColor.withOpacity(0.5),
+          color: _selectedColor.withValues(alpha: 0.5),
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: _selectedColor.withOpacity(_brightness * 0.6),
+            color: _selectedColor.withValues(alpha: _brightness * 0.6),
             blurRadius: 30,
             spreadRadius: 5,
           ),
@@ -110,7 +110,7 @@ class _LedControlScreenState extends State<LedControlScreen> {
             Icon(
               Icons.lightbulb_rounded,
               size: 64,
-              color: Colors.white.withOpacity(_brightness),
+              color: Colors.white.withValues(alpha: _brightness),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -151,7 +151,7 @@ class _LedControlScreenState extends State<LedControlScreen> {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: _selectedColor.withOpacity(0.4),
+                    color: _selectedColor.withValues(alpha: 0.4),
                     blurRadius: 20,
                     spreadRadius: 5,
                   ),
@@ -169,7 +169,7 @@ class _LedControlScreenState extends State<LedControlScreen> {
                       border: Border.all(color: AppColors.white, width: 3),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withValues(alpha: 0.3),
                           blurRadius: 10,
                         ),
                       ],
@@ -239,7 +239,7 @@ class _LedControlScreenState extends State<LedControlScreen> {
                   value: _brightness,
                   onChanged: (value) => setState(() => _brightness = value),
                   activeColor: _selectedColor,
-                  inactiveColor: AppColors.softWhite.withOpacity(0.3),
+                  inactiveColor: AppColors.softWhite.withValues(alpha: 0.3),
                 ),
               ),
               const Icon(Icons.brightness_high, color: AppColors.softWhite, size: 20),
@@ -282,7 +282,7 @@ class _LedControlScreenState extends State<LedControlScreen> {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: color.withOpacity(0.5),
+                      color: color.withValues(alpha: 0.5),
                       blurRadius: isSelected ? 12 : 6,
                       spreadRadius: isSelected ? 2 : 0,
                     ),

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from notifications.expo_sender import ExpoPushSender
 from notifications.notification_scheduler import NotificationScheduler
 from notifications.whatsapp_notifier import WhatsAppNotifier
+from tasks.notification_tasks import send_push_notification as _send_push_task
 
 
 router = APIRouter(prefix="/v1/notifications", tags=["notifications"])
@@ -62,11 +65,13 @@ def register_device(request: RegisterDeviceRequest) -> dict:
 
 @router.post("/send")
 def send_notification(request: SendNotificationRequest) -> dict:
-    return expo_sender.send_to_user(
+    job_id = str(uuid4())
+    _send_push_task(
         user_id=request.user_id,
         notification_type=request.notification_type,
         template_vars=request.template_vars or {},
     )
+    return {"task_id": job_id, "queued": True}
 
 
 @router.get("/log/{user_id}")

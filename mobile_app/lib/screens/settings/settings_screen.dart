@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
@@ -211,9 +212,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               shape: BoxShape.circle,
             ),
             child: const Icon(
-              Icons.person,
+              CupertinoIcons.person_fill,
               color: AppColors.white,
-              size: 40,
+              size: 34,
             ),
           ),
           const SizedBox(width: 12),
@@ -351,8 +352,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     trailing: const Icon(
-                      Icons.chevron_right,
+                      CupertinoIcons.chevron_right,
                       color: AppColors.softWhite,
+                      size: 16,
                     ),
                     onTap: _showDanaPicker,
                   ),
@@ -375,8 +377,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     trailing: const Icon(
-                      Icons.chevron_right,
+                      CupertinoIcons.chevron_right,
                       color: AppColors.softWhite,
+                      size: 16,
                     ),
                     onTap: _showLanguagePicker,
                   ),
@@ -399,8 +402,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     trailing: const Icon(
-                      Icons.chevron_right,
+                      CupertinoIcons.chevron_right,
                       color: AppColors.softWhite,
+                      size: 16,
                     ),
                     onTap: () {
                       Navigator.of(context).push(
@@ -417,8 +421,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(color: AppColors.white),
                     ),
                     trailing: const Icon(
-                      Icons.chevron_right,
+                      CupertinoIcons.chevron_right,
                       color: AppColors.softWhite,
+                      size: 16,
                     ),
                     onTap: _showComingSoon,
                   ),
@@ -429,8 +434,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(color: AppColors.white),
                     ),
                     trailing: const Icon(
-                      Icons.chevron_right,
+                      CupertinoIcons.chevron_right,
                       color: AppColors.softWhite,
+                      size: 16,
                     ),
                     onTap: _showComingSoon,
                   ),

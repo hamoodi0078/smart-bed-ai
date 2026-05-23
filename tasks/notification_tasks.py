@@ -1,79 +1,77 @@
-"""Celery tasks for sending notifications without blocking request handlers."""
+"""Compatibility shim: notification tasks now run on the arq worker.
+
+Old callers that used Celery-style `.delay()` should be migrated to enqueue
+via the arq pool exposed on `request.app.state.arq`.  The helpers below
+provide a synchronous enqueue path for legacy web_server.py call sites that
+cannot be made async yet.
+
+Migrate new code to:
+    await arq_pool.enqueue_job("send_push_notification",
+                               user_id=uid, notification_type=ntype, template_vars=tvars)
+"""
 
 from __future__ import annotations
 
-from celery import shared_task
 from loguru import logger
 
-from tasks.celery_app import celery_app
 
-
-@celery_app.task(
-    bind=True,
-    max_retries=3,
-    default_retry_delay=30,
-    name="tasks.notification_tasks.send_push_notification",
-)
-def send_push_notification(
-    self,
-    user_id: str,
-    notification_type: str,
-    template_vars: dict,
-) -> dict:
-    """Send an Expo push notification in a background worker with retry."""
-    from notifications.expo_sender import ExpoPushSender
-    from notifications.notification_types import NotificationType
-
+def _get_arq_pool():
+    """Return the arq pool from the running FastAPI app, or None."""
     try:
-        sender = ExpoPushSender()
-        result = sender.send_to_user(
-            user_id=user_id,
-            notification_type=NotificationType(notification_type),
-            template_vars=template_vars,
-        )
-        logger.info("Push notification sent: user={} type={}", user_id, notification_type)
-        return result
-    except Exception as exc:
-        logger.warning(
-            "Push notification failed (attempt {}/{}): user={} error={}",
-            self.request.retries + 1, self.max_retries + 1, user_id, exc,
-        )
-        raise self.retry(exc=exc)
+        from api.app_factory import app as _app
+        return getattr(_app.state, "arq", None)
+    except Exception:
+        return None
 
 
-@celery_app.task(
-    bind=True,
-    max_retries=3,
-    default_retry_delay=30,
-    name="tasks.notification_tasks.send_whatsapp_notification",
-)
-def send_whatsapp_notification(
-    self,
-    method: str,
-    phone: str,
-    user_id: str,
-    extra: dict,
-) -> dict:
-    """Send a WhatsApp notification in a background worker with retry.
+def _enqueue(job_name: str, **kwargs) -> bool:
+    """Fire-and-forget enqueue from a sync context via asyncio.run_coroutine_threadsafe."""
+    import asyncio
 
-    `method` is one of: 'dana_checkin', 'streak_message'.
-    `extra` holds method-specific kwargs (e.g. days_inactive, streak_days).
-    """
-    from notifications.whatsapp_notifier import WhatsAppNotifier
+    pool = _get_arq_pool()
+    if pool is None:
+        logger.warning("notification_tasks: arq pool unavailable, dropping job={}", job_name)
+        return False
 
-    try:
-        notifier = WhatsAppNotifier()
-        if method == "dana_checkin":
-            result = notifier.send_dana_checkin(phone, user_id, int(extra.get("days_inactive", 0)))
-        elif method == "streak_message":
-            result = notifier.send_streak_message(phone, user_id, int(extra.get("streak_days", 0)))
-        else:
-            return {"sent": False, "reason": f"unknown_method:{method}"}
-        logger.info("WhatsApp notification sent: user={} method={}", user_id, method)
-        return result
-    except Exception as exc:
-        logger.warning(
-            "WhatsApp notification failed (attempt {}/{}): user={} error={}",
-            self.request.retries + 1, self.max_retries + 1, user_id, exc,
-        )
-        raise self.retry(exc=exc)
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        asyncio.ensure_future(pool.enqueue_job(job_name, **kwargs))
+    else:
+        loop.run_until_complete(pool.enqueue_job(job_name, **kwargs))
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Public API — same signatures as the old Celery tasks
+# ---------------------------------------------------------------------------
+
+def send_push_notification(user_id: str, notification_type: str, template_vars: dict) -> bool:
+    ok = _enqueue("send_push_notification",
+                  user_id=user_id, notification_type=notification_type,
+                  template_vars=template_vars)
+    logger.info("notification_tasks: enqueued push user={} type={}", user_id, notification_type)
+    return ok
+
+
+def send_whatsapp_notification(method: str, phone: str, user_id: str, extra: dict) -> bool:
+    ok = _enqueue("send_whatsapp_notification",
+                  method=method, phone=phone, user_id=user_id, extra=extra)
+    logger.info("notification_tasks: enqueued whatsapp user={} method={}", user_id, method)
+    return ok
+
+
+def send_fcm_notification(user_id: str, notification_type: str, template_vars: dict) -> bool:
+    ok = _enqueue("send_fcm_notification",
+                  user_id=user_id, notification_type=notification_type,
+                  template_vars=template_vars)
+    logger.info("notification_tasks: enqueued FCM user={} type={}", user_id, notification_type)
+    return ok
+
+
+def send_weekly_report_notification(
+    user_id: str, template_vars: dict | None = None
+) -> bool:
+    ok = _enqueue("send_weekly_report_notification",
+                  user_id=user_id, template_vars=template_vars or {})
+    logger.info("notification_tasks: enqueued weekly report user={}", user_id)
+    return ok
