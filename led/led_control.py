@@ -5,7 +5,11 @@ from hardware.pi_led import _LedFrameState, build_led_backend
 
 
 class LEDController:
-    MAX_SAFE_BRIGHTNESS: float = 0.80
+    # Derive the software safety cap from the hardware PWM ceiling so both
+    # limits agree. settings.led_max_brightness is a 0-255 int; convert to
+    # 0.0-1.0 and also cap at 0.80 as an additional safety floor.
+    _hw_cap = min(1.0, max(0.0, int(getattr(settings, "led_max_brightness", 255)) / 255.0))
+    MAX_SAFE_BRIGHTNESS: float = min(0.80, _hw_cap) if _hw_cap < 0.80 else 0.80
 
     NAMED_COLORS = {
         "red": (255, 0, 0),

@@ -9,7 +9,7 @@ pyarabic==0.6.15               # Arabic text processing — strip diacritics, no
 arabic-reshaper==3.0.0         # Reshape Arabic ligatures for PIL/image rendering (joins letters correctly)
 google-api-python-client==2.131.0  # Google Calendar v3 API — server-side event pull
 garminconnect==0.2.19              # Garmin Connect API — pull sleep, HRV, steps, body battery
-fitbit==0.3.1                      # Fitbit Web API — pull sleep stages, heart rate, SpO2, steps
+# fitbit==0.3.1                    # Fitbit Web API — unmaintained unofficial lib; use httpx directly if needed
 reportlab==4.2.0                   # PDF generation — weekly health report export
 requests==2.32.3
 httpx==0.27.0          # Async HTTP client — non-blocking inside FastAPI handlers
@@ -62,7 +62,7 @@ pgvector==0.3.2                    # PostgreSQL vector similarity — replaces C
 anthropic==0.40.0                 # Claude API client — prompt caching + streaming + adaptive thinking
 instructor==1.4.3                 # Structured LLM outputs via Pydantic — wraps any LLM client
 litellm==1.83.0                   # Universal LLM router — one interface for 100+ providers (Anthropic, OpenAI, Gemini…)
-langchain-core==1.0.0             # LangChain core abstractions: typed messages, PromptTemplate, output parsers, LCEL runnables
+langchain-core>=0.3.0,<0.4.0       # LangChain core abstractions: typed messages, PromptTemplate, output parsers, LCEL runnables
 
 # ── Voice / AI ──────────────────────────────────────────────────────
 SpeechRecognition==3.10.4

@@ -88,7 +88,9 @@ class WorkerSettings:
     ]
     on_startup = startup
     on_shutdown = shutdown
-    redis_settings = _redis_settings()
+    # Evaluated lazily via classmethod so ARQ_REDIS_URL is read when the worker
+    # process starts (after env vars are loaded), not at module import time.
+    redis_settings = property(lambda self: _redis_settings())
     max_jobs = 10
     job_timeout = 300       # seconds — max runtime per job before it is cancelled
     keep_result = 3600      # seconds — keep job result key in Redis

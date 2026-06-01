@@ -248,4 +248,42 @@ def initialize_services(app: FastAPI) -> None:
     except Exception as e:
         logger.warning("FitnessTrackerAPI init failed: %s", e)
 
-    logger.info("All automation services initialized successfully.")
+    # ── Register sync DB connection so /v1/monitoring/metrics/detailed ────────
+    # api/monitoring.py calls registry.get_optional("database") and then calls
+    # db_conn.get_pool_status() — without this entry the pool stats are always null.
+    try:
+        from database.connection import DatabaseConnection
+        app.state.database = DatabaseConnection()
+    except Exception as e:
+        logger.warning("DatabaseConnection init failed: %s", e)
+
+    # ── Wire all services into a ServiceRegistry so api/dependencies.py ──────
+    # get_service_registry() returns request.app.state.services; without this
+    # every get_backup_manager(), get_health_monitor(), ... dependency raises
+    # AttributeError: 'State' object has no attribute 'services'.
+    from core.service_registry import ServiceRegistry
+    _registry = ServiceRegistry()
+    _SERVICE_ATTR_NAMES = [
+        "backup_manager", "health_monitor", "analytics_engine",
+        "sleep_analyzer", "wake_optimizer", "sleep_debt_tracker", "nap_optimizer",
+        "prayer_automation", "tahajjud_manager", "ramadan_mode",
+        "pressure_intelligence", "presence_engine", "auto_guest_detection",
+        "stress_detector", "hydration_tracker", "weekly_health_report",
+        "circadian_engine", "weather_adaptive", "activity_predictor",
+        "geofence_manager", "calendar_sync", "automation_learning",
+        "partner_engine", "compromise_engine", "staggered_wake",
+        "trial_automation", "reengagement_campaigns", "achievement_engine",
+        "personality_evolution", "dream_journal", "fitness_tracker",
+        "bathroom_automation", "automation_registry",
+        "database",
+    ]
+    for _attr in _SERVICE_ATTR_NAMES:
+        _svc = getattr(app.state, _attr, None)
+        if _svc is not None:
+            _registry.register(_attr, _svc)
+    app.state.services = _registry
+    logger.info(
+        "All automation services initialized successfully. "
+        "ServiceRegistry has %d entries.",
+        len(_registry.list_services()),
+    )

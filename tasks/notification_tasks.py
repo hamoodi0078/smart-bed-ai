@@ -25,7 +25,14 @@ def _get_arq_pool():
 
 
 def _enqueue(job_name: str, **kwargs) -> bool:
-    """Fire-and-forget enqueue from a sync context via asyncio.run_coroutine_threadsafe."""
+    """Fire-and-forget enqueue from a sync context.
+
+    Uses asyncio.get_running_loop() (Python 3.7+, never deprecated) to detect
+    whether we are inside an already-running event loop.  If yes, schedules the
+    coroutine with ensure_future.  If no, uses asyncio.run() which creates a
+    fresh event loop — safe on Python 3.10+ where get_event_loop() is deprecated
+    when called with no running loop, and raises RuntimeError on 3.12+.
+    """
     import asyncio
 
     pool = _get_arq_pool()
@@ -33,11 +40,14 @@ def _enqueue(job_name: str, **kwargs) -> bool:
         logger.warning("notification_tasks: arq pool unavailable, dropping job={}", job_name)
         return False
 
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        asyncio.ensure_future(pool.enqueue_job(job_name, **kwargs))
-    else:
-        loop.run_until_complete(pool.enqueue_job(job_name, **kwargs))
+    try:
+        loop = asyncio.get_running_loop()
+        # Already inside a running event loop (e.g. called from a sync route
+        # handler that runs inside uvicorn's loop via run_in_executor).
+        loop.create_task(pool.enqueue_job(job_name, **kwargs))
+    except RuntimeError:
+        # No running event loop — safe to use asyncio.run() (Python 3.7+).
+        asyncio.run(pool.enqueue_job(job_name, **kwargs))
     return True
 
 

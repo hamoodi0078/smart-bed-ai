@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS base
+FROM python:3.12-slim AS base
 
 WORKDIR /app
 
@@ -20,13 +20,17 @@ RUN mkdir -p runtime_data output_audio local_music data
 COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
+# Build-time defaults — override at runtime with -e GUNICORN_WORKERS=8
+ARG GUNICORN_WORKERS=4
+ARG GUNICORN_TIMEOUT=120
+ARG GUNICORN_KEEPALIVE=5
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DANAH_ENV=production \
-    # Workers: default 4; override with GUNICORN_WORKERS env var
-    GUNICORN_WORKERS=${GUNICORN_WORKERS:-4} \
-    GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120} \
-    GUNICORN_KEEPALIVE=${GUNICORN_KEEPALIVE:-5}
+    GUNICORN_WORKERS=${GUNICORN_WORKERS} \
+    GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT} \
+    GUNICORN_KEEPALIVE=${GUNICORN_KEEPALIVE}
 
 EXPOSE 8000
 
@@ -35,16 +39,16 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=20s \
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-# Gunicorn with 4 async workers, request recycling to prevent memory leaks,
-# and graceful shutdown timeout so in-flight requests complete.
-CMD ["gunicorn", "api.app_factory:app", \
-    "--workers", "4", \
-    "--worker-class", "uvicorn.workers.UvicornWorker", \
-    "--bind", "0.0.0.0:8000", \
-    "--timeout", "120", \
-    "--keepalive", "5", \
-    "--max-requests", "1000", \
-    "--max-requests-jitter", "100", \
-    "--graceful-timeout", "30", \
-    "--access-logfile", "-", \
-    "--error-logfile", "-"]
+# Shell form so ${GUNICORN_WORKERS} is expanded at container start.
+# Override at runtime: docker run -e GUNICORN_WORKERS=8 ...
+CMD gunicorn api.app_factory:app \
+    --workers ${GUNICORN_WORKERS} \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:8000 \
+    --timeout ${GUNICORN_TIMEOUT} \
+    --keepalive ${GUNICORN_KEEPALIVE} \
+    --max-requests 1000 \
+    --max-requests-jitter 100 \
+    --graceful-timeout 30 \
+    --access-logfile - \
+    --error-logfile -

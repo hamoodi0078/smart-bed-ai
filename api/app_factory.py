@@ -52,15 +52,42 @@ async def _lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Service registry init error (non-fatal): %s", exc)
 
+    # Sentry error tracking (must be initialised early so it catches startup errors)
+    try:
+        if settings.sentry_dsn:
+            import sentry_sdk
+            from sentry_sdk.integrations.fastapi import FastApiIntegration
+            from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+            from sentry_sdk.integrations.logging import LoggingIntegration
+            sentry_sdk.init(
+                dsn=settings.sentry_dsn,
+                environment=settings.sentry_environment,
+                release=settings.sentry_release or None,
+                traces_sample_rate=settings.sentry_traces_sample_rate,
+                profiles_sample_rate=settings.sentry_profiles_sample_rate,
+                integrations=[
+                    FastApiIntegration(),
+                    SqlalchemyIntegration(),
+                    LoggingIntegration(level=None, event_level=None),
+                ],
+                send_default_pii=False,
+            )
+            logger.info("Sentry initialized (env=%s)", settings.sentry_environment)
+    except Exception as exc:
+        logger.warning("Sentry init skipped: %s", exc)
+
     # Async PostgreSQL pool
     try:
         from database import AsyncDatabaseConnection
         _async_db = AsyncDatabaseConnection()
         await _async_db.initialize()
         app.state.async_db = _async_db
+        # Expose session factory so get_db_session() dependency works
+        app.state.db_session_factory = _async_db._session_factory
     except Exception as exc:
         logger.warning("Async DB init skipped (non-fatal): %s", exc)
         app.state.async_db = None
+        app.state.db_session_factory = None
 
     # pgvector memory index
     try:
@@ -144,6 +171,10 @@ def create_app() -> FastAPI:
         )
     _allow_credentials = bool(allowed_origins) and "*" not in allowed_origins
 
+    # Trace ID — inject X-Trace-ID / X-Request-ID on every request
+    from api.middleware.trace_id import TraceIDMiddleware
+    application.add_middleware(TraceIDMiddleware)
+
     # Rate limiting — hard import: app must not start without this protection
     from api.middleware.rate_limiter import RateLimitMiddleware
     application.add_middleware(RateLimitMiddleware)
@@ -151,6 +182,16 @@ def create_app() -> FastAPI:
     # Security headers — applied to every response
     from api.middleware.security_headers import SecurityHeadersMiddleware
     application.add_middleware(SecurityHeadersMiddleware)
+
+    # slowapi per-route limiter — must be on app.state before routes are hit
+    try:
+        from slowapi import _rate_limit_exceeded_handler
+        from slowapi.errors import RateLimitExceeded
+        from api.limiter import limiter
+        application.state.limiter = limiter
+        application.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    except ImportError:
+        pass
 
     # CORS
     application.add_middleware(
@@ -213,9 +254,9 @@ def create_app() -> FastAPI:
     application.include_router(metrics_router)
     application.include_router(islamic_router)
 
-    # Existing automation router
+    # Automation router (canonical — wraps legacy api/automation_routes.py internally)
     try:
-        from api.automation_routes import router as automation_router
+        from api.routers.automations import router as automation_router
         application.include_router(automation_router)
     except ImportError:
         pass
@@ -278,6 +319,21 @@ def create_app() -> FastAPI:
     except ImportError as exc:
         from core.logger import logger
         logger.warning("qr_api unavailable (skipped): %s", exc)
+
+    # Monitoring / diagnostics router
+    try:
+        from api.monitoring import router as monitoring_router
+        application.include_router(monitoring_router)
+    except ImportError as exc:
+        from core.logger import logger
+        logger.warning("monitoring router unavailable (skipped): %s", exc)
+
+    # OpenTelemetry FastAPI auto-instrumentation (after all routes are registered)
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        FastAPIInstrumentor().instrument_app(application)
+    except ImportError:
+        pass
 
     return application
 

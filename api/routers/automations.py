@@ -1,11 +1,10 @@
-"""Automation routes stub.
+"""Automation routes — single canonical router for all automation endpoints.
 
-Most automation routes already live in api/automation_routes.py —
-this stub imports that existing router and re-exports it.
-Add additional automation-adjacent routes here as you migrate from web_server.py.
+api/automation_routes.py is the legacy location; this module re-exports it so
+app_factory.py has one clean import point.  New automation endpoints should be
+added here directly.
 
-Routes already in api/automation_routes.py — wire them in app_factory.py.
-Additional routes to migrate from web_server.py:
+TODO (migrate from web_server.py):
   POST /v1/actions/undo          (line 6013)
   GET  /v1/actions/undo/status   (line 6063)
   GET  /v1/mobile/actions/undo/status (line 6087)
@@ -18,12 +17,8 @@ from fastapi import APIRouter
 
 router = APIRouter(tags=["automations"])
 
-# Wire in existing automation routes
 try:
-    from api.automation_routes import router as _existing_automation_router
-    router.include_router(_existing_automation_router)
+    from api.automation_routes import router as _legacy_router
+    router.include_router(_legacy_router)
 except ImportError:
     pass
-
-# NOTE: Additional automation routes are served via the legacy web_server.py mount.
-# They will be migrated here incrementally as individual features stabilize.
