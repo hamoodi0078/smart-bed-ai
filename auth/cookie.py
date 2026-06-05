@@ -31,7 +31,8 @@ def enforce_same_origin(request: Request) -> None:
     is_production = os.getenv("DANAH_ENV", "development").lower() == "production"
 
     if not is_production:
-        localhost_hints = ("localhost", "127.0.0.1", "10.0.2.2")
+        backend_host = os.getenv("BACKEND_HOST", "localhost")
+        localhost_hints = ("localhost", "127.0.0.1", backend_host)
         if any(hint in origin for hint in localhost_hints):
             return
 
