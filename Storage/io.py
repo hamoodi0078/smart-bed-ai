@@ -34,6 +34,36 @@ def _normalize_path(path: str | Path) -> Path:
     return resolved
 
 
+def confine_path(base_dir: Path, candidate: str | Path) -> Path:
+    """Resolve *candidate* and verify it stays inside *base_dir*.
+
+    Raises ``ValueError`` if the resolved path escapes the trusted directory.
+    This is the project-wide defence against SonarCloud path-traversal findings:
+      1. Resolve *base_dir* to an absolute canonical path.
+      2. Resolve *candidate* — try as-is first, then joined to base.
+      3. Verify the result is equal to or a descendant of the base.
+
+    Both absolute and relative candidates are supported.
+    """
+    base = Path(base_dir).resolve()
+
+    # Strategy 1: resolve the candidate directly (handles absolute paths and
+    # relative paths that already include the base directory name).
+    target = Path(candidate).resolve()
+    if target == base or str(target).startswith(str(base) + os.sep):
+        return target
+
+    # Strategy 2: join to base_dir (handles bare filenames like "state.json").
+    target = (base / Path(candidate)).resolve()
+    if target == base or str(target).startswith(str(base) + os.sep):
+        return target
+
+    raise ValueError(
+        f"Path traversal blocked: {target} is outside allowed directory {base}"
+    )
+
+
+
 def _local_lock_for(path: Path) -> RLock:
     key = str(path.resolve())
     with _LOCAL_LOCKS_GUARD:

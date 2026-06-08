@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 import hashlib
 from pathlib import Path
 
-from Storage.io import atomic_write_json, locked_read_json
+from Storage.io import atomic_write_json, confine_path, locked_read_json
+from config import RUNTIME_DATA_DIR
 from time_utils import ensure_utc, from_iso, to_iso, utcnow
 
 IDEMPOTENCY_STORE_PATH = Path("data") / "idempotency_store.json"
@@ -28,7 +29,7 @@ def make_fingerprint(automation_id: str, action_type: str, ts: datetime) -> str:
 
 class IdempotencyStore:
     def __init__(self, path: str | Path = IDEMPOTENCY_STORE_PATH):
-        self._path = Path(path)
+        self._path = confine_path(RUNTIME_DATA_DIR, path)
         self._last_recorded_expires_at = ""
 
     @property

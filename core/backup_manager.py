@@ -19,7 +19,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 
-from Storage.io import atomic_write_json, locked_read_json
+from Storage.io import atomic_write_json, confine_path, locked_read_json
 
 _DEFAULT_RETENTION = {"daily": 30, "weekly": 12, "monthly": 6}
 _BACKUP_SCHEDULE_HOUR = 3  # 3 AM local time
@@ -63,7 +63,7 @@ class BackupManager:
                 if k in retention:
                     self._retention[k] = max(1, int(retention[k]))
         self._encryption_key = str(encryption_key or "").strip()
-        self._state_path = self._backup_root / "backup_state.json"
+        self._state_path = confine_path(self._backup_root, "backup_state.json")
         self._lock = threading.Lock()
         self._scheduler: BackgroundScheduler | None = None
 
@@ -336,16 +336,8 @@ class BackupManager:
                 logger.warning("Retention cleanup failed: {}: {}", old_dir, exc)
 
     def _load_state(self) -> dict[str, Any]:
-        if not self._state_path.exists():
-            return {}
-        try:
-            with open(self._state_path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-            return data if isinstance(data, dict) else {}
-        except (OSError, json.JSONDecodeError):
-            return {}
+        data = locked_read_json(self._state_path)
+        return data if isinstance(data, dict) else {}
 
     def _save_state(self, state: dict[str, Any]) -> None:
-        self._state_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self._state_path, "w", encoding="utf-8") as fh:
-            json.dump(state, fh, indent=2, ensure_ascii=False)
+        atomic_write_json(self._state_path, state)

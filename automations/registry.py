@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from Storage.io import atomic_write_json, locked_read_json
+from Storage.io import atomic_write_json, confine_path, locked_read_json
 from automations.base import (
     AUTOMATION_CRITICALITY_CRITICAL,
     Automation,
@@ -16,6 +16,7 @@ from automations.base import (
     normalize_cooldown_minutes,
 )
 from automations.idempotency import IdempotencyStore, make_fingerprint
+from config import RUNTIME_DATA_DIR
 from core.structured_logging import emit_json_log
 from core.types import Effect
 from time_utils import ensure_utc, from_iso, to_iso, utcnow
@@ -84,10 +85,20 @@ class AutomationRegistry:
     """Registry and runner for effect-based automations with persisted run state."""
 
     def __init__(self, state_path: Path):
-        self._state_path = Path(state_path)
+        self._state_path = self._confine_state_path(state_path)
         self._automations: list[Automation] = []
         self._state = self._load_state()
         self._idempotency_store = IdempotencyStore(path=self._state_path.with_name("idempotency_store.json"))
+
+    @staticmethod
+    def _confine_state_path(candidate: str | Path) -> Path:
+        """Resolve *candidate* and verify it stays inside RUNTIME_DATA_DIR.
+
+        Prevents path-traversal when state_path originates from config or
+        constructor arguments (addresses SonarCloud python:S5144).
+        """
+        return confine_path(RUNTIME_DATA_DIR, candidate)
+
 
     def register(self, automation: Automation) -> None:
         normalized_cooldown = normalize_cooldown_minutes(automation.cooldown_minutes)

@@ -17,6 +17,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from Storage.io import atomic_write_json, confine_path
+
 logger = logging.getLogger("core.health_monitor")
 
 _CHECK_INTERVAL_SECONDS = 300  # 5 minutes default
@@ -112,7 +114,7 @@ class HealthMonitor:
             "api_latency_critical_ms": float(api_latency_critical_ms),
         }
         self._check_interval = max(30, int(check_interval_seconds))
-        self._state_path = self._runtime_data_dir / "health_state.json"
+        self._state_path = confine_path(self._runtime_data_dir, "health_state.json")
         self._alert_callbacks: list[Callable[[HealthCheck], None]] = []
         self._recovery_actions: dict[str, Callable[[], bool]] = {}
         self._api_latencies: list[float] = []
@@ -363,9 +365,7 @@ class HealthMonitor:
             "consecutive_failures": dict(self._consecutive_failures),
         }
         try:
-            self._state_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._state_path, "w", encoding="utf-8") as fh:
-                json.dump(state, fh, indent=2, ensure_ascii=False)
+            atomic_write_json(self._state_path, state)
         except OSError as exc:
             logger.error("Failed to save health state: %s", exc)
 
