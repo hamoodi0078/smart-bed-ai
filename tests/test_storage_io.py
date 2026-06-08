@@ -4,7 +4,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from Storage.io import atomic_write_json, locked_read_json
+from Storage.io import atomic_write_json, confine_path, locked_read_json
 
 
 class TestStorageIo(unittest.TestCase):
@@ -92,6 +92,32 @@ class TestStorageIo(unittest.TestCase):
         repaired = {"schema_version": 1, "restored": True}
         atomic_write_json(self.path, repaired)
         self.assertEqual(locked_read_json(self.path), repaired)
+
+    def test_confine_path_valid_cases(self):
+        # A relative filename/path resolved under the base
+        res1 = confine_path(self.base, "state.json")
+        self.assertEqual(res1, (self.base / "state.json").resolve())
+
+        res2 = confine_path(self.base, "nested/state.json")
+        self.assertEqual(res2, (self.base / "nested/state.json").resolve())
+
+        # An absolute path that is inside the base
+        abs_target = (self.base / "nested" / "file.json").resolve()
+        res3 = confine_path(self.base, abs_target)
+        self.assertEqual(res3, abs_target)
+
+    def test_confine_path_invalid_cases_outside_base(self):
+        # A relative path trying to traverse outside
+        with self.assertRaises(ValueError):
+            confine_path(self.base, "../escaped.json")
+
+        # An absolute path outside the base
+        import tempfile
+        with tempfile.TemporaryDirectory() as other_dir:
+            other_base = Path(other_dir).resolve()
+            # If the candidate is an absolute path outside the base, it must fail
+            with self.assertRaises(ValueError):
+                confine_path(self.base, other_base / "file.json")
 
 
 if __name__ == "__main__":
