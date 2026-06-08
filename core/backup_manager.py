@@ -164,7 +164,11 @@ class BackupManager:
 
     def validate_backup(self, backup_path: str) -> dict[str, Any]:
         """Validate integrity of a backup using its manifest checksums."""
-        src = Path(backup_path).resolve()
+        try:
+            src = confine_path(self._backup_root, backup_path)
+        except ValueError as exc:
+            return {"valid": False, "error": f"Invalid backup path: {exc}"}
+
         manifest_path = src / "manifest.json"
         if not manifest_path.exists():
             return {"valid": False, "error": "No manifest found."}

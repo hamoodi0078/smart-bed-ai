@@ -371,5 +371,49 @@ class TestInMemoryCircuitBreaker(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await cb.allow_request())
 
 
+# ── P1-X: BackupManager Path Traversal Prevention ─────────────────────────────
+
+class TestBackupManagerPathTraversal(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self._tmp = tempfile.TemporaryDirectory()
+        self.runtime_dir = Path(self._tmp.name)
+        self.backup_root = self.runtime_dir / "backups"
+        self.backup_root.mkdir(parents=True, exist_ok=True)
+        from core.backup_manager import BackupManager
+        self.manager = BackupManager(
+            runtime_data_dir=self.runtime_dir,
+            backup_root=self.backup_root
+        )
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_validate_backup_confinement_valid(self):
+        # A path inside backup root
+        safe_path = self.backup_root / "daily" / "backup_2026"
+        safe_path.mkdir(parents=True, exist_ok=True)
+        # Create manifest
+        manifest_path = safe_path / "manifest.json"
+        import json
+        manifest_path.write_text(json.dumps({"files": []}))
+
+        res = self.manager.validate_backup(str(safe_path))
+        self.assertTrue(res.get("valid"))
+
+    def test_validate_backup_confinement_traversal_relative(self):
+        # A traversal path
+        res = self.manager.validate_backup("../escaped")
+        self.assertFalse(res.get("valid"))
+        self.assertIn("Path traversal blocked", res.get("error", ""))
+
+    def test_validate_backup_confinement_traversal_absolute(self):
+        import tempfile
+        res = self.manager.validate_backup(tempfile.gettempdir())
+        self.assertFalse(res.get("valid"))
+        self.assertIn("Path traversal blocked", res.get("error", ""))
+
+
 if __name__ == "__main__":
     unittest.main()
