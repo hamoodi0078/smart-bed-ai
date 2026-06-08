@@ -2048,8 +2048,39 @@ def _sanitize_user_key(value: str) -> str:
     raw = str(value or "").strip().lower()
     if not raw:
         return "guest"
-    safe = re.sub(r"[^a-z0-9._-]+", "_", raw).strip("._-")
+    # Only allow alphanumerics, underscores, and hyphens — NO dots to prevent
+    # ".." directory traversal when the key is used in file path construction.
+    safe = re.sub(r"[^a-z0-9_-]+", "_", raw).strip("_-")
     return (safe or "guest")[:80]
+
+
+def _safe_user_file_path(base_dir: Path, filename: str) -> Path:
+    """Build a safe file path confined to *base_dir*.
+
+    Security measures (addresses SonarCloud path-traversal rule):
+    1. Extract only the basename — strips any directory components.
+    2. Enforce a strict character allowlist (alphanumeric, underscore, hyphen, dot).
+    3. Build with pathlib.Path and call .resolve() to canonicalise.
+    4. Verify the resolved path is still inside *base_dir*.
+    """
+    # Step 1: strip directory components
+    name = os.path.basename(filename)
+
+    # Step 2: reject characters outside a safe set
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+\.json", name):
+        raise ValueError(f"Invalid user file name: {name!r}")
+
+    # Step 3: construct via pathlib and resolve to an absolute canonical path
+    base = base_dir.resolve()
+    target = (base / name).resolve()
+
+    # Step 4: verify the resolved path is still inside the allowed directory
+    if not str(target).startswith(str(base) + os.sep) and target != base:
+        raise ValueError(
+            f"Path traversal blocked: {target} is outside allowed directory {base}"
+        )
+
+    return target
 
 
 def _memory_store_for_user(user_key: str):
@@ -2059,7 +2090,8 @@ def _memory_store_for_user(user_key: str):
         conn = _database_connection()
         return DBLongTermMemoryStore(user_id=safe_key, db_connection=conn)
     except Exception:
-        return LongTermMemoryStore(path=str(WEB_MEMORY_DIR / f"{safe_key}.json"))
+        safe_path = _safe_user_file_path(WEB_MEMORY_DIR, f"{safe_key}.json")
+        return LongTermMemoryStore(path=str(safe_path))
 
 
 def _chat_engine_for_user(user_key: str) -> ConversationEngine:
