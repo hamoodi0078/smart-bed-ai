@@ -74,7 +74,7 @@ dependencies:
   image_picker: ^1.1.0              # Profile photo upload
 
   # Localisation
-  intl: ^0.19.0                     # Arabic/RTL date & number formatting for Islamic screen
+  intl: ^0.20.2                     # Arabic/RTL date & number formatting for Islamic screen
 
   # Notifications
   flutter_local_notifications: ^17.2.4   # Local scheduled alarms (wind-down, bedtime alerts)

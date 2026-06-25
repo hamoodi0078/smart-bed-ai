@@ -628,16 +628,16 @@ class _IslamicScreenState extends ConsumerState<IslamicScreen> {
         color: AppColors.cardBg,
         borderRadius: BorderRadius.circular(18),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.nightlight_round, color: AppColors.gold, size: 24),
-          SizedBox(width: 12),
+          const Icon(Icons.nightlight_round, color: AppColors.gold, size: 24),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   "Tonight's Sunnah Tip",
                   style: TextStyle(
                     color: AppColors.white,
@@ -645,7 +645,7 @@ class _IslamicScreenState extends ConsumerState<IslamicScreen> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Builder(builder: (context) {
                   const tip =
                       'Sleep on your right side as the Prophet ﷺ recommended';

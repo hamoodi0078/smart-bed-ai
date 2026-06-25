@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../services/journal_store.dart';
 import '../../theme/app_theme.dart';
 
@@ -12,7 +12,7 @@ class SleepJournalScreen extends StatefulWidget {
 class _SleepJournalScreenState extends State<SleepJournalScreen> {
   List<_JournalEntry> _entries = [];
 
-  static const List<_JournalEntry> _seedEntries = [
+  static final List<_JournalEntry> _seedEntries = [
     _JournalEntry(
       date: DateTime(2026, 5, 4),
       mood: _Mood.great,

@@ -117,7 +117,7 @@ def build_log_record(
 
 
 def emit_json_log(
-    logger: logging.Logger,
+    logger: Any,
     *,
     level: str,
     event_type: str,

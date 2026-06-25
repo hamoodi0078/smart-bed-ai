@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
@@ -45,7 +45,7 @@ class _ScenesGalleryScreenState extends State<ScenesGalleryScreen> {
       final scenesList = response['items'] as List<dynamic>? ?? [];
       if (mounted) {
         setState(() {
-          _scenes = scenesList.map((data) => _Scene.fromJson(data)).toList();
+          _scenes = scenesList.map((data) => _Scene.fromJson(data as Map<String, dynamic>)).toList();
           _isLoading = false;
         });
       }

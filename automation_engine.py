@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+from collections.abc import Callable
 from datetime import datetime, timedelta
 import logging
 from zoneinfo import ZoneInfo
@@ -34,7 +35,7 @@ reminder_nudge_state = {
 sleep_mode_active = False
 AUTOMATION_STATE_PATH = RUNTIME_DATA_DIR / "automations_state.json"
 automation_registry = AutomationRegistry(state_path=AUTOMATION_STATE_PATH)
-automation_reply_handler = None
+automation_reply_handler: "Callable[[str], object] | None" = None
 automation_runtime_hooks: dict[str, object] = {}
 automation_profile_ref: dict | None = None
 

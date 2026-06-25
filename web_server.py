@@ -124,17 +124,17 @@ _MAX_CHAT_ENGINES = 200
 _DEVICE_STALE_WINDOW_SECONDS = 180
 _TRACE_ID_HEADER = "X-Trace-Id"
 SCENE_PREVIEW_SECONDS = 3.0
-_cors_origins_raw = str(settings.web_allowed_origins_raw or "http://127.0.0.1:8000,http://localhost:8000")
+_cors_origins_raw = settings.web_allowed_origins_raw or "http://127.0.0.1:8000,http://localhost:8000"
 ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 ALLOWED_ORIGIN_REGEX = str(settings.web_allowed_origin_regex or "").strip() or None
 # Authoritative server hostname used by _enforce_same_origin to avoid trusting the client Host header.
 # Set SERVER_HOSTNAME in .env for production (e.g. "api.danah.io").
-_SERVER_HOSTNAME = str(os.getenv("SERVER_HOSTNAME", "") or "").strip().lower() or None
+_SERVER_HOSTNAME = (os.getenv("SERVER_HOSTNAME", "") or "").strip().lower() or None
 from core.logger import logger, setup_logging
 setup_logging()
 
 
-def _sentry_scrub_event(event: dict, hint: object) -> dict:
+def _sentry_scrub_event(event: Any, hint: Any) -> Any:
     """Strip sensitive keys from Sentry events before they leave the process."""
     for frame in (
         event.get("exception", {})
@@ -2310,7 +2310,7 @@ def _restore_scene_store_snapshot(previous_state: Any) -> bool:
     if rows is None:
         return False
 
-    normalize_scene = getattr(scene_store, "_normalize_scene", None)
+    normalize_scene: Any = getattr(scene_store, "_normalize_scene", None)
     save_state = getattr(scene_store, "_save_state", None)
     current_state = getattr(scene_store, "_state", None)
     if not callable(normalize_scene) or not callable(save_state) or not isinstance(current_state, dict):
@@ -2319,7 +2319,8 @@ def _restore_scene_store_snapshot(previous_state: Any) -> bool:
     restored_scenes: list[dict[str, Any]] = []
     for row in rows:
         if isinstance(row, dict):
-            restored_scenes.append(normalize_scene(row))
+            normalized: Any = normalize_scene(row)
+            restored_scenes.append(normalized)
 
     scene_store._state = {
         "version": current_state.get("version", 1),
@@ -2365,7 +2366,7 @@ def _run_scene_preview(
     time_fn=None,
 ) -> dict[str, Any]:
     sleep = sleep_fn if callable(sleep_fn) else time.sleep
-    clock = time_fn if callable(time_fn) else time.monotonic
+    clock: Any = time_fn if callable(time_fn) else time.monotonic
     controls_section = _get_scoped_profile_section(profile, "web_device_controls")
     previous_controls = _normalize_device_controls(controls_section.get(key, {}))
     preview_controls = _scene_preview_controls(previous_controls, scene_entry)
@@ -5953,7 +5954,7 @@ async def sleep_overview(request: Request) -> dict[str, Any]:
 
 
 @app.post("/v1/scenes/compose")
-def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, Any]:
+def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, Any] | JSONResponse:
     _enforce_same_origin(request)
     _require_premium_plan(request)
     trace_id = _request_trace_id(request)

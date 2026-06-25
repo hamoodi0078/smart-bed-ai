@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../theme/app_theme.dart';
 
@@ -110,7 +110,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
       setState(() => _playingSound = soundId);
       await _player.stop();
       try {
-        await _player.setAssetSource('assets/sounds/$soundId.mp3');
+        await _player.setAsset('assets/sounds/$soundId.mp3');
         await _player.setLoopMode(LoopMode.one);
         await _player.play();
       } catch (_) {

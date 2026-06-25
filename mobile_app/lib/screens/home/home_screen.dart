@@ -1,4 +1,4 @@
-﻿import 'dart:io' show Platform;
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -298,9 +298,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // Trigger score + stagger animations when data arrives
     ref.listen<AsyncValue<_HomeData>>(homeDashboardProvider, (_, next) {
       next.whenData((data) {
-        final score = (data.dashboard['weekly_insight']
+        final double score = ((data.dashboard['weekly_insight']
                     ?['completion_rate_pct'] ??
-                0)
+                0) as num)
             .toDouble();
         _scoreAnim = Tween<double>(
           begin: _scoreAnim.value,
@@ -823,7 +823,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               ),
               const SizedBox(height: 16),
               Text(
-                weeklyInsight['summary'] ??
+                (weeklyInsight['summary'] as String?) ??
                     'Keep up the great work!',
                 textAlign: TextAlign.center,
                 style: const TextStyle(

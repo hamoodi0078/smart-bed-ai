@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -49,7 +49,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _userData = user;
         }
         if (dashboard['error'] != true) {
-          _stats = dashboard['weekly_insight'] ?? {};
+          _stats = (dashboard['weekly_insight'] as Map<String, dynamic>?) ?? {};
         }
         _isLoading = false;
       });
@@ -58,11 +58,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final userName = _userData['name'] ?? _userData['full_name'] ?? 'User';
-    final userEmail = _userData['email'] ?? '';
-    final sleepScore = _stats['completion_rate_pct'] ?? 0;
-    final totalSessions = _stats['wind_down_sessions'] ?? 0;
-    final streakDays = _stats['streak_days'] ?? 0;
+    final String userName = (_userData['name'] ?? _userData['full_name'] ?? 'User') as String;
+    final String userEmail = (_userData['email'] ?? '') as String;
+    final int sleepScore = (_stats['completion_rate_pct'] as num? ?? 0).toInt();
+    final int totalSessions = (_stats['wind_down_sessions'] as num? ?? 0).toInt();
+    final int streakDays = (_stats['streak_days'] as num? ?? 0).toInt();
 
     return Scaffold(
       backgroundColor: AppColors.background,

@@ -9,15 +9,25 @@ When disabled, all public APIs return noop/empty results safely.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ring.ble_client import NoopRingClient, RingBleClient
+    from ring.automation import RingAutomationEngine
+
 __all__ = [
     "RingBleClient",
     "NoopRingClient",
-    "RingBedFusionEngine",
+    "RingAutomationEngine",
     "build_ring_client",
 ]
 
 
-def build_ring_client(settings: object) -> object:
+def build_ring_client(settings: object) -> "RingBleClient | NoopRingClient":
     """Factory: create a ring client from app settings.
 
     Returns a real *RingBleClient* when the ring feature is enabled and

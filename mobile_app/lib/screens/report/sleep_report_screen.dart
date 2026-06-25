@@ -70,7 +70,7 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
         bars = dayOrder
             .map((d) => _SleepBarPoint(
                   day: d,
-                  hours: (breakdown[d] ?? breakdown[d.toLowerCase()] ?? 0) as num,
+                  hours: ((breakdown[d] ?? breakdown[d.toLowerCase()] ?? 0) as num).toDouble(),
                 ))
             .toList();
       } else {
@@ -324,7 +324,7 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                   color: AppColors.cardBg,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -337,7 +337,7 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                     SizedBox(height: 4),
                     Text(
                       _avgSleep,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.accent,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -355,7 +355,7 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                   color: AppColors.cardBg,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -368,7 +368,7 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                     SizedBox(height: 4),
                     Text(
                       _nightsTracked,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.accent,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -578,7 +578,7 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
         color: AppColors.cardBg,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -589,12 +589,12 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             _danaSummary.isNotEmpty
                 ? _danaSummary
                 : 'Keep your routine consistent for better sleep!',
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.softWhite,
               fontSize: 12,
               fontStyle: FontStyle.italic,

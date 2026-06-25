@@ -9,6 +9,7 @@ import logging
 import re
 import threading
 import time
+from typing import TYPE_CHECKING, Any, cast
 from zoneinfo import ZoneInfo
 
 from core.logger import setup_logging
@@ -84,6 +85,9 @@ except ImportError:
         def set_state(self, *a: object, **kw: object) -> None: pass
         def set_color_value(self, *a: object, **kw: object) -> None: pass
         def hardware_status(self) -> str: return "stub"
+
+if TYPE_CHECKING:
+    from led.led_control import LEDController as _RealLEDController
 from Storage.cache_manager import CacheManager
 from Storage.schedule_manager import ScheduleManager, is_valid_time_24h
 from Storage.user_profile import delete_profile, load_profile, save_profile
@@ -117,6 +121,20 @@ except ImportError:
         def stop(self) -> None: pass
     def build_sensor_monitor(*a: object, **kw: object) -> _NullSensorMonitor:  # type: ignore[misc]
         return _NullSensorMonitor()
+
+try:
+    from ring import build_ring_client
+except ImportError:
+    class _NoopRing:  # type: ignore[misc]
+        def is_connected(self) -> bool: return False
+        def status_line(self) -> str: return "ring: bleak not installed"
+        def start_background(self) -> None: pass
+        def stop_background(self) -> None: pass
+        def get_status_dict(self) -> dict: return {"connected": False}
+
+    def build_ring_client(*a: object, **kw: object) -> "_NoopRing":  # type: ignore[misc]
+        return _NoopRing()
+
 from prayer_handler import apply_fajr_gentle_light_scene, is_islamic_reminder_request, next_islamic_reminder
 from voice_handler import (
     ensure_emotional_followup_shape,
@@ -189,12 +207,12 @@ from loguru import logger  # noqa: E402 (setup_logging already called above)
 
 
 def main():
-    led = LEDController(
+    led: _RealLEDController = cast("_RealLEDController", LEDController(
         user_strip_pin=settings.user_strip_pin,
         state_strip_pin=settings.state_strip_pin,
         user_strip_led_count=settings.user_strip_led_count,
         state_strip_led_count=settings.state_strip_led_count,
-    )
+    ))
     cache = CacheManager(ttl_seconds=settings.cache_ttl_seconds)
     schedule = ScheduleManager()
     goal_manager = SessionGoalManager()
@@ -280,6 +298,7 @@ def main():
         timeout_seconds=settings.ai_timeout_seconds,
     )
     sensor_monitor = None
+    ring_client = None
 
     def build_health_report() -> str:
         results = run_device_health_checks(
@@ -402,6 +421,33 @@ def main():
     _apply_sensor_snapshot(sensor_monitor.snapshot(), persist=False)
     sensor_monitor.start(_apply_sensor_snapshot)
     logger.info("Sensors: {}", sensor_monitor.status_line())
+
+    # ── COLMI Smart Ring (BLE biometrics) ─────────────────────────────
+    ring_client = build_ring_client(settings)
+    ring_client.start_background()
+    logger.info("Smart Ring: {}", ring_client.status_line())
+    if bool(getattr(settings, "ring_enabled", False)) and not ring_client.is_connected:
+        logger.warning(
+            "Ring enabled but not connected — verify RING_BLE_ADDRESS in .env "
+            "and that Bluetooth is active on this device."
+        )
+
+    # ── Ring automation engine ─────────────────────────────────────────
+    try:
+        from ring.automation import RingAutomationEngine as _RingAutomationEngine
+        ring_automation = _RingAutomationEngine(cast(Any, ring_client), led, tts, tts_player, profile)
+        ring_automation.start()
+        logger.info("Ring automation engine started.")
+    except Exception as _ring_auto_exc:
+        ring_automation = None
+        logger.warning("Ring automation engine could not start: {}", _ring_auto_exc)
+
+    # ── Register ring client with the API router for mobile pairing ────
+    try:
+        from api.routers.ring import set_ring_client as _set_ring_client
+        _set_ring_client(ring_client, ring_automation)
+    except Exception as _ring_api_exc:
+        logger.warning("Could not register ring client with API router: {}", _ring_api_exc)
 
     stt.language_hint = str(profile.get("preferences", {}).get("language", "auto") or "auto")
     output_ok, _ = audio_output.ensure_output(profile)
@@ -907,7 +953,7 @@ def main():
         def handle_reminder_intent(text: str) -> str:
             result = handle_reminder_intent_result(
                 text,
-                reminders_summary=automation_engine.planned_reminders,
+                reminders_summary=format_planned_reminders(),
                 now_provider=datetime.now,
             )
             return apply_command_result_effects(result)
@@ -967,11 +1013,8 @@ def main():
                 automation_engine.reminder_nudge_state["nudge_time"] = None
                 try:
                     activate_sleep_scene()
-                except NameError:
-                    from scenes.scene_store import SceneStore
-                    SceneStore.activate_by_name("relax")
                 except Exception as exc:
-                    logger.warning("Could not trigger relax scene: {}", exc)
+                    logger.warning("Could not trigger relax scene after reminder completion: {}", exc)
                 return "Good, your work and planning are done for today. Now you can rest."
 
             if "joke" in lowered_user_text:

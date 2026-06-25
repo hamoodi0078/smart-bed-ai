@@ -187,9 +187,43 @@ class Settings(BaseSettings):
     sensor_temperature_enabled: bool = False
     sensor_temperature_pin: int = 4
     sensor_temperature_poll_interval_seconds: float = 5.0
+    # MAX30102 heart-rate oximeter is REPLACED by the COLMI smart ring.
+    # The fields below are kept as dead stubs so old .env files do not crash.
     sensor_heart_rate_enabled: bool = False
-    sensor_heart_rate_sample_count: int = 100
-    sensor_heart_rate_poll_interval_seconds: float = 5.0
+
+    # ── COLMI Smart Ring (BLE) ────────────────────────────────────────
+    ring_enabled: bool = Field(
+        False,
+        validation_alias=AliasChoices("RING_ENABLED", "ring_enabled"),
+    )
+    ring_ble_address: str = Field(
+        "",
+        validation_alias=AliasChoices("RING_BLE_ADDRESS", "ring_ble_address"),
+    )
+    ring_model: str = Field(
+        "colmi_r02",
+        validation_alias=AliasChoices("RING_MODEL", "ring_model"),
+    )
+    ring_auto_connect: bool = Field(
+        True,
+        validation_alias=AliasChoices("RING_AUTO_CONNECT", "ring_auto_connect"),
+    )
+    ring_realtime_hr_enabled: bool = Field(
+        True,
+        validation_alias=AliasChoices("RING_REALTIME_HR_ENABLED", "ring_realtime_hr_enabled"),
+    )
+    ring_realtime_spo2_enabled: bool = Field(
+        True,
+        validation_alias=AliasChoices("RING_REALTIME_SPO2_ENABLED", "ring_realtime_spo2_enabled"),
+    )
+    ring_sync_interval_minutes: int = Field(
+        30,
+        validation_alias=AliasChoices("RING_SYNC_INTERVAL_MINUTES", "ring_sync_interval_minutes"),
+    )
+    ring_reconnect_max_retries: int = Field(
+        10,
+        validation_alias=AliasChoices("RING_RECONNECT_MAX_RETRIES", "ring_reconnect_max_retries"),
+    )
     aec_min_confidence_when_playing: float = 0.72
 
     # ── Spotify ───────────────────────────────────────────────────────
