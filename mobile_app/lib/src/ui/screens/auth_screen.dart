@@ -46,11 +46,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   Future<void> _submit() async {
     final valid = _formKey.currentState?.validate() ?? false;
-    if (!valid) {
-      return;
-    }
+    if (!valid) return;
 
     final auth = ref.read(authControllerProvider.notifier);
+
     try {
       if (_mode == _AuthMode.signIn) {
         await auth.signIn(
@@ -64,10 +63,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           name: _nameController.text.trim(),
         );
       }
-      if (mounted) {
-        context.go('/dashboard');
-      }
-    } catch (_) {}
+      // Router handles redirect automatically — no context.go needed
+    } catch (_) {
+      // AuthController already sets errorMessage in state
+      // UI reads authState.errorMessage and shows it automatically
+    }
   }
 
   Future<void> _requestOtp() async {
@@ -90,8 +90,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         _otpDebugCode = result.debugCode;
       });
       final debug = result.debugCode.isEmpty ? '' : ' OTP: ${result.debugCode}';
-      final delivery =
-          result.delivery.isEmpty ? '' : ' via ${result.delivery}';
+      final delivery = result.delivery.isEmpty ? '' : ' via ${result.delivery}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -139,7 +138,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         rawAuthCode.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Provide a social token/auth code or email/phone fallback.'),
+          content: Text(
+            'Provide a social token/auth code or email/phone fallback.',
+          ),
         ),
       );
       return;
@@ -187,7 +188,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('Danah Smart Bed', style: theme.textTheme.headlineLarge),
+                    Text(
+                      'Danah Smart Bed',
+                      style: theme.textTheme.headlineLarge,
+                    ),
                     const SizedBox(height: 10),
                     Text(
                       _mode == _AuthMode.signIn
@@ -201,7 +205,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
-                            _mode == _AuthMode.signIn ? 'Sign in' : 'Create account',
+                            _mode == _AuthMode.signIn
+                                ? 'Sign in'
+                                : 'Create account',
                             style: theme.textTheme.titleLarge,
                           ),
                           const SizedBox(height: 8),
@@ -245,10 +251,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                               width: double.infinity,
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
-                                color: SmartBedPalette.danger.withValues(alpha: 0.14),
+                                color: SmartBedPalette.danger.withValues(
+                                  alpha: 0.14,
+                                ),
                                 borderRadius: BorderRadius.circular(18),
                                 border: Border.all(
-                                  color: SmartBedPalette.danger.withValues(alpha: 0.25),
+                                  color: SmartBedPalette.danger.withValues(
+                                    alpha: 0.25,
+                                  ),
                                 ),
                               ),
                               child: Text(
@@ -271,11 +281,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                     decoration: const InputDecoration(
                                       labelText: 'Full name',
                                       hintText: 'Hamoud Khan',
-                                      prefixIcon: Icon(Icons.person_outline_rounded),
+                                      prefixIcon: Icon(
+                                        Icons.person_outline_rounded,
+                                      ),
                                     ),
                                     validator: (value) {
                                       if (_mode == _AuthMode.register &&
-                                          (value == null || value.trim().isEmpty)) {
+                                          (value == null ||
+                                              value.trim().isEmpty)) {
                                         return 'Enter your name so Dana can greet you properly.';
                                       }
                                       return null;
@@ -305,7 +318,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   obscureText: true,
                                   decoration: const InputDecoration(
                                     labelText: 'Password',
-                                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                                    prefixIcon: Icon(
+                                      Icons.lock_outline_rounded,
+                                    ),
                                   ),
                                   onFieldSubmitted: (_) => _submit(),
                                   validator: (value) {
@@ -319,12 +334,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 SizedBox(
                                   width: double.infinity,
                                   child: FilledButton.icon(
-                                    onPressed: authState.isSubmitting ? null : _submit,
+                                    onPressed: authState.isSubmitting
+                                        ? null
+                                        : _submit,
                                     icon: authState.isSubmitting
                                         ? const SizedBox(
                                             width: 18,
                                             height: 18,
-                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
                                           )
                                         : Icon(
                                             _mode == _AuthMode.signIn
@@ -368,7 +387,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 hintText: _otpDebugCode.isNotEmpty
                                     ? _otpDebugCode
                                     : '6-digit code',
-                                prefixIcon: const Icon(Icons.verified_user_rounded),
+                                prefixIcon: const Icon(
+                                  Icons.verified_user_rounded,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 6),
@@ -385,14 +406,20 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                             runSpacing: 10,
                             children: <Widget>[
                               FilledButton.tonalIcon(
-                                onPressed: authState.isSubmitting ? null : _requestOtp,
+                                onPressed: authState.isSubmitting
+                                    ? null
+                                    : _requestOtp,
                                 icon: const Icon(Icons.sms_outlined),
                                 label: Text(
-                                  _otpRequestId.isEmpty ? 'Send OTP' : 'Resend OTP',
+                                  _otpRequestId.isEmpty
+                                      ? 'Send OTP'
+                                      : 'Resend OTP',
                                 ),
                               ),
                               FilledButton.tonalIcon(
-                                onPressed: authState.isSubmitting || _otpRequestId.isEmpty
+                                onPressed:
+                                    authState.isSubmitting ||
+                                        _otpRequestId.isEmpty
                                     ? null
                                     : _verifyOtp,
                                 icon: const Icon(Icons.login_rounded),
@@ -401,7 +428,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                             ],
                           ),
                           const SizedBox(height: 18),
-                          Text('Social sign-in', style: theme.textTheme.titleMedium),
+                          Text(
+                            'Social sign-in',
+                            style: theme.textTheme.titleMedium,
+                          ),
                           const SizedBox(height: 10),
                           TextFormField(
                             controller: _socialTokenController,
@@ -416,7 +446,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                             controller: _socialAuthCodeController,
                             decoration: const InputDecoration(
                               labelText: 'Apple auth code (optional)',
-                              hintText: 'Use when Apple returns authorization code',
+                              hintText:
+                                  'Use when Apple returns authorization code',
                               prefixIcon: Icon(Icons.code_rounded),
                             ),
                           ),
@@ -459,4 +490,3 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 }
-

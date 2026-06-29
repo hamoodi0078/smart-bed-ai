@@ -98,7 +98,7 @@ class TestWebAiChat(unittest.TestCase):
         self._patch_env.stop()
         self._tmp.cleanup()
 
-    def _register(self, email: str = "chat@example.com", password: str = "secret123", name: str = "Chat User"):
+    def _register(self, email: str = "chat@example.com", password: str = "Secret1234", name: str = "Chat User"):
         return self.client.post(
             "/v1/auth/register",
             json={"email": email, "password": password, "name": name},
@@ -158,7 +158,7 @@ class TestWebAiChat(unittest.TestCase):
         self.assertEqual(fake_memory.recorded[0].get("personality"), "coach")
 
     def test_chat_falls_back_when_engine_returns_deepgram_fallback(self):
-        self._register(email="fallback@example.com", password="secret123", name="Fallback User")
+        self._register(email="fallback@example.com", password="Secret1234", name="Fallback User")
 
         fake_engine = _FakeChatEngine("(Deepgram fallback - guide) temporary fallback text.")
         fake_memory = _FakeMemoryStore()

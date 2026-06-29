@@ -16,8 +16,8 @@ httpx==0.27.0          # Async HTTP client — non-blocking inside FastAPI handl
 
 # ── Database ────────────────────────────────────────────────────────
 sqlalchemy==2.0.35
-psycopg2-binary==2.9.9            # sync driver (existing routes)
-asyncpg==0.29.0                   # async driver — used by AsyncDatabaseConnection + SQLAlchemy asyncio extension
+psycopg2-binary==2.9.12           # sync driver (existing routes)
+asyncpg==0.31.0                   # async driver — used by AsyncDatabaseConnection + SQLAlchemy asyncio extension
 alembic==1.13.1
 redis==5.0.8           # Pub/sub for multi-device sync + notification queue
 aiofiles==24.1.0       # Async file I/O for Storage/io.py
@@ -49,7 +49,7 @@ arq==0.26.1                        # Async job queue (asyncio-native, replaces C
 pyannote.audio==3.3.0             # Who-spoke-when diarization (requires HF_TOKEN + model accept)
 
 # ── Analytics & AI ──────────────────────────────────────────────────
-pandas==2.2.2                      # Sleep trend analysis, weekly report aggregations
+pandas==2.3.3                     # Sleep trend analysis, weekly report aggregations
 numpy==1.26.4                      # Math for restlessness scores, sleep stage ratios
 scikit-learn==1.5.0                # Sleep anomaly detection, pattern clustering
 antropy==0.1.6                     # Signal entropy measures (sample_entropy, perm_entropy) for sleep-depth scoring

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'islamic_screen.dart';
+import '../../src/ui/screens/islamic_screen.dart';
 
 class IslamicModeScreen extends StatelessWidget {
   const IslamicModeScreen({super.key});

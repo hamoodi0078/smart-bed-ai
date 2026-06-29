@@ -63,8 +63,8 @@ class IslamicScreen extends ConsumerWidget {
                                 label: overview.ramadanActive
                                     ? 'Ramadan active'
                                     : (overview.islamicEvent.isEmpty
-                                          ? 'Daily guidance'
-                                          : overview.islamicEvent),
+                                    ? 'Daily guidance'
+                                    : overview.islamicEvent),
                                 tone: overview.ramadanActive
                                     ? StatusTone.success
                                     : StatusTone.neutral,
@@ -129,12 +129,49 @@ class IslamicScreen extends ConsumerWidget {
           ],
         ),
       ),
-      error: (error, stackTrace) => _ErrorView(
-        message: error is ApiException
-            ? error.message
-            : 'Unable to load Islamic mode.',
-        onRetry: () => _refresh(ref),
-      ),
+
+      error: (error, stackTrace) {
+        // 403 = premium required — show upgrade card instead of error
+        final isPremiumError = (error is ApiException && error.statusCode == 403) ||
+            error.toString().contains('403') ||
+            error.toString().toLowerCase().contains('premium');
+        if (isPremiumError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: PanelCard(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Icon(Icons.star_rounded, size: 56, color: Colors.amber),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Premium Feature',
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Islamic Mode is available on the Premium plan. Upgrade to access prayer timings, Ramadan mode, and Tahajjud scheduling.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        return _ErrorView(
+          message: error is ApiException
+              ? error.message
+              : 'Unable to load Islamic mode.',
+          onRetry: () => _refresh(ref),
+        );
+      },
+
       loading: () => const Center(child: CircularProgressIndicator()),
     );
   }

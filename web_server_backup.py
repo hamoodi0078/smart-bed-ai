@@ -5323,12 +5323,12 @@ def _subscription_status_payload(user_id: str) -> dict[str, Any]:
     }
 
 
-@app.get("/", response_model=None)
+@app.get("/")
 def root() -> RedirectResponse:
     return RedirectResponse(url="/login")
 
 
-@app.get("/login", response_model=None)
+@app.get("/login")
 def login_page() -> FileResponse:
     return FileResponse(
         WEB_DIR / "login.html",
@@ -5340,12 +5340,12 @@ def login_page() -> FileResponse:
     )
 
 
-@app.get("/healthz", response_model=None)
+@app.get("/healthz")
 def healthz() -> dict[str, Any]:
     return {"ok": True, "service": "web_runtime"}
 
 
-@app.get("/healthz/detailed", response_model=None)
+@app.get("/healthz/detailed")
 def healthz_detailed() -> dict[str, Any]:
     checks: dict[str, Any] = {"service": "web_runtime"}
 
@@ -5374,13 +5374,13 @@ def healthz_detailed() -> dict[str, Any]:
     return checks
 
 
-@app.get("/metrics", response_model=None)
+@app.get("/metrics")
 def metrics() -> Response:
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-@app.get("/v1/bed/state", response_model=None)
-@app.get("/v1/bedstate", response_model=None)
+@app.get("/v1/bed/state")
+@app.get("/v1/bedstate")
 def bed_state_bridge(request: Request) -> dict[str, Any]:
     user = _authenticated_user(request)
     admin = _cookie_admin(request)
@@ -5412,7 +5412,7 @@ def bed_state_bridge(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/device/status", response_model=None)
+@app.get("/v1/device/status")
 def device_status(request: Request) -> dict[str, Any]:
     """Returns device status indicator: Green = online, Yellow = stale, Red = offline."""
     _require_user(request)
@@ -5469,7 +5469,7 @@ def device_status(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/state", response_model=None)
+@app.get("/v1/state")
 def v1_state(request: Request) -> dict[str, Any]:
     if not (_authenticated_user(request) or _cookie_admin(request)):
         raise HTTPException(status_code=401, detail="Login required")
@@ -5507,7 +5507,7 @@ def v2_bed_state(request: Request) -> BedStateV2Response:
     )
 
 
-@app.get("/user-dashboard", response_model=None)
+@app.get("/user-dashboard")
 def user_dashboard(request: Request):
     if not _cookie_user(request):
         return RedirectResponse(url="/login?role=user&next=/user-dashboard", status_code=302)
@@ -5521,7 +5521,7 @@ def user_dashboard(request: Request):
     )
 
 
-@app.get("/admin-panel", response_model=None)
+@app.get("/admin-panel")
 def admin_panel(request: Request):
     if not _cookie_admin(request):
         return RedirectResponse(url="/login?role=admin&next=/admin-panel", status_code=302)
@@ -5535,7 +5535,7 @@ def admin_panel(request: Request):
     )
 
 
-@app.get("/admin-billing", response_model=None)
+@app.get("/admin-billing")
 def admin_billing(request: Request):
     if not _cookie_admin(request):
         return RedirectResponse(url="/login?role=admin&next=/admin-billing", status_code=302)
@@ -5549,7 +5549,7 @@ def admin_billing(request: Request):
     )
 
 
-@app.get("/admin", response_model=None)
+@app.get("/admin")
 def admin_v2(request: Request):
     if not _cookie_admin(request):
         return RedirectResponse(url="/login?role=admin&next=/admin", status_code=302)
@@ -5563,7 +5563,7 @@ def admin_v2(request: Request):
     )
 
 
-@app.get("/assets/{asset_name}", response_model=None)
+@app.get("/assets/{asset_name}")
 def asset_file(asset_name: str) -> FileResponse:
     safe_name = Path(asset_name).name
     target = ASSETS_DIR / safe_name
@@ -5579,7 +5579,7 @@ def asset_file(asset_name: str) -> FileResponse:
     )
 
 
-@app.post("/v1/auth/register", response_model=None)
+@app.post("/v1/auth/register")
 def auth_register(payload: RegisterRequest, response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     email = (payload.email or "").strip().lower()
@@ -5619,7 +5619,7 @@ def auth_register(payload: RegisterRequest, response: Response, request: Request
     }
 
 
-@app.post("/v1/auth/login", response_model=None)
+@app.post("/v1/auth/login")
 def auth_login(payload: LoginRequest, response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     email = str(payload.email or "").strip().lower()
@@ -5646,7 +5646,7 @@ def auth_login(payload: LoginRequest, response: Response, request: Request) -> d
     }
 
 
-@app.post("/v1/admin/auth/login", response_model=None)
+@app.post("/v1/admin/auth/login")
 def admin_auth_login(payload: LoginRequest, response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     email = str(payload.email or "").strip().lower()
@@ -5691,7 +5691,7 @@ def admin_auth_login(payload: LoginRequest, response: Response, request: Request
     }
 
 
-@app.post("/v1/auth/logout", response_model=None)
+@app.post("/v1/auth/logout")
 def auth_logout(response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user_token = str(request.cookies.get("sb_user_token", "") or "").strip()
@@ -5705,7 +5705,7 @@ def auth_logout(response: Response, request: Request) -> dict[str, Any]:
     return {"ok": True}
 
 
-@app.post("/v1/auth/revoke-all-sessions", response_model=None)
+@app.post("/v1/auth/revoke-all-sessions")
 def auth_revoke_all_sessions(response: Response, request: Request) -> dict[str, Any]:
     """Invalidate every active session for the current user across both auth systems.
     Use this after a password change or when a device is lost.
@@ -5734,7 +5734,7 @@ def auth_revoke_all_sessions(response: Response, request: Request) -> dict[str, 
     return {"ok": True, "legacy_revoked": legacy_revoked, "mobile_revoked": mobile_revoked}
 
 
-@app.post("/v1/auth/delete-data", response_model=None)
+@app.post("/v1/auth/delete-data")
 def auth_delete_data(response: Response, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _cookie_user(request)
@@ -5762,7 +5762,7 @@ def auth_delete_data(response: Response, request: Request) -> dict[str, Any]:
     return {"ok": True, "deleted": deleted, "profile_sections_removed": profile_removed}
 
 
-@app.get("/v1/auth/me", response_model=None)
+@app.get("/v1/auth/me")
 def auth_me(request: Request) -> dict[str, Any]:
     user = _cookie_user(request)
     if not user:
@@ -5777,7 +5777,7 @@ def auth_me(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/admin/auth/me", response_model=None)
+@app.get("/v1/admin/auth/me")
 def admin_auth_me(request: Request) -> dict[str, Any]:
     admin = _cookie_admin(request)
     if not admin:
@@ -5785,7 +5785,7 @@ def admin_auth_me(request: Request) -> dict[str, Any]:
     return {"ok": True, "admin": admin}
 
 
-@app.get("/v1/admin/observability", response_model=None)
+@app.get("/v1/admin/observability")
 def admin_observability(request: Request) -> dict[str, Any]:
     _require_admin(request)
     return {
@@ -5795,7 +5795,7 @@ def admin_observability(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/admin/diagnostics", response_model=None)
+@app.get("/v1/admin/diagnostics")
 def admin_diagnostics(request: Request) -> dict[str, Any]:
     """Live snapshot of module-level global state for ops visibility."""
     _require_admin(request)
@@ -5826,7 +5826,7 @@ def admin_diagnostics(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/mobile/dashboard", response_model=None)
+@app.get("/v1/mobile/dashboard")
 def mobile_dashboard(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
@@ -5908,18 +5908,8 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
         "automation_feedback_loop": command_feedback_loop,
     }
 
-@app.get("/v1/mobile/sensors/live")
-async def sensors_live():
-    """Stub endpoint — returns empty sensor data until hardware is connected."""
-    return {
-        "temperature": None,
-        "humidity": None,
-        "pressure": None,
-        "connected": False,
-        "message": "Sensor hardware not connected"
-    }
 
-@app.get("/v1/mobile/scenes", response_model=None)
+@app.get("/v1/mobile/scenes")
 def mobile_scenes(request: Request) -> dict[str, Any]:
     _require_user(request)
     return {
@@ -5929,7 +5919,7 @@ def mobile_scenes(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/scenes/templates", response_model=None)
+@app.get("/v1/scenes/templates")
 def scene_templates(request: Request, premium_only: bool = False) -> dict[str, Any]:
     user = _authenticated_user(request)
     templates = scene_store.get_templates_for_api()
@@ -5945,7 +5935,7 @@ def scene_templates(request: Request, premium_only: bool = False) -> dict[str, A
     }
 
 
-@app.get("/v1/sleep/overview", response_model=None)
+@app.get("/v1/sleep/overview")
 async def sleep_overview(request: Request) -> dict[str, Any]:
     import asyncio
     _require_user(request)
@@ -5963,7 +5953,7 @@ async def sleep_overview(request: Request) -> dict[str, Any]:
     }
 
 
-@app.post("/v1/scenes/compose", response_model=None)
+@app.post("/v1/scenes/compose")
 def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, Any] | JSONResponse:
     _enforce_same_origin(request)
     _require_premium_plan(request)
@@ -6038,7 +6028,7 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
     }
 
 
-@app.post("/v1/actions/undo", response_model=None)
+@app.post("/v1/actions/undo")
 def undo_last_action(payload: UndoActionRequest, request: Request):
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -6088,7 +6078,7 @@ def undo_last_action(payload: UndoActionRequest, request: Request):
     }
 
 
-@app.get("/v1/actions/undo/status", response_model=None)
+@app.get("/v1/actions/undo/status")
 def undo_action_status(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     key = _user_profile_key(user)
@@ -6112,7 +6102,7 @@ def undo_action_status(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/mobile/actions/undo/status", response_model=None)
+@app.get("/v1/mobile/actions/undo/status")
 def mobile_undo_action_status(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     key = _user_profile_key(user)
@@ -6139,7 +6129,7 @@ def mobile_undo_action_status(request: Request) -> dict[str, Any]:
     }
 
 
-@app.post("/v1/mobile/actions/undo", response_model=None)
+@app.post("/v1/mobile/actions/undo")
 def mobile_undo_last_action(request: Request):
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -6199,7 +6189,7 @@ def mobile_undo_last_action(request: Request):
     }
 
 
-@app.post("/v1/subscriptions/trial/start", response_model=None)
+@app.post("/v1/subscriptions/trial/start")
 def start_trial_subscription(payload: TrialStartRequest, request: Request):
     _enforce_same_origin(request)
     trace_id = _request_trace_id(request)
@@ -6259,14 +6249,14 @@ def start_trial_subscription(payload: TrialStartRequest, request: Request):
     }
 
 
-@app.get("/v1/subscriptions/status", response_model=None)
+@app.get("/v1/subscriptions/status")
 def subscription_status(request: Request, user_id: str = "") -> dict[str, Any]:
     resolved_user_id = _resolve_subscription_actor_user_id(request, user_id)
     payload = _subscription_status_payload(resolved_user_id)
     return {"ok": True, **payload}
 
 
-@app.get("/v1/subscriptions/trial/status", response_model=None)
+@app.get("/v1/subscriptions/trial/status")
 def trial_subscription_status(request: Request, user_id: str = "") -> dict[str, Any]:
     resolved_user_id = _resolve_subscription_actor_user_id(request, user_id)
     payload = _subscription_status_payload(resolved_user_id)
@@ -6341,14 +6331,14 @@ def _capture_mobile_checkout(
     }
 
 
-@app.get("/v1/mobile/subscription/status", response_model=None)
+@app.get("/v1/mobile/subscription/status")
 async def mobile_subscription_status(request: Request) -> dict[str, Any]:
     import asyncio
     user = _require_user(request)
     return await asyncio.to_thread(_mobile_subscription_status_response, str(user.get("user_id", "") or ""))
 
 
-@app.get("/v1/mobile/plan", response_model=None)
+@app.get("/v1/mobile/plan")
 def mobile_plan(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     status = _mobile_subscription_status_response(str(user.get("user_id", "") or ""))
@@ -6364,7 +6354,7 @@ def mobile_plan(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/mobile/subscription/history", response_model=None)
+@app.get("/v1/mobile/subscription/history")
 def mobile_subscription_history(request: Request, limit: int = 12) -> dict[str, Any]:
     user = _require_user(request)
     user_id = str(user.get("user_id", "") or "").strip()
@@ -6374,7 +6364,7 @@ def mobile_subscription_history(request: Request, limit: int = 12) -> dict[str, 
     }
 
 
-@app.post("/v1/mobile/subscription/checkout", response_model=None)
+@app.post("/v1/mobile/subscription/checkout")
 def mobile_subscription_checkout(
     payload: MobileSubscriptionCheckoutRequest,
     request: Request,
@@ -6393,7 +6383,7 @@ def mobile_subscription_checkout(
     return {"ok": True, "checkout": checkout}
 
 
-@app.post("/v1/mobile/subscription/capture", response_model=None)
+@app.post("/v1/mobile/subscription/capture")
 def mobile_subscription_capture(
     payload: MobileSubscriptionCaptureRequest,
     request: Request,
@@ -6421,7 +6411,7 @@ def mobile_subscription_capture(
     )
 
 
-@app.post("/v1/mobile/subscription/cancel", response_model=None)
+@app.post("/v1/mobile/subscription/cancel")
 def mobile_subscription_cancel(
     payload: MobileSubscriptionCancelRequest,
     request: Request,
@@ -6446,7 +6436,7 @@ def mobile_subscription_cancel(
     }
 
 
-@app.post("/v1/mobile/subscription/pause", response_model=None)
+@app.post("/v1/mobile/subscription/pause")
 def mobile_subscription_pause(
     payload: MobileSubscriptionActionRequest,
     request: Request,
@@ -6471,7 +6461,7 @@ def mobile_subscription_pause(
     }
 
 
-@app.post("/v1/mobile/subscription/cancel-active", response_model=None)
+@app.post("/v1/mobile/subscription/cancel-active")
 def mobile_subscription_cancel_active(
     payload: MobileSubscriptionActionRequest,
     request: Request,
@@ -6496,7 +6486,7 @@ def mobile_subscription_cancel_active(
     }
 
 
-@app.get("/billing/paypal/approve", response_model=None)
+@app.get("/billing/paypal/approve")
 def billing_paypal_approve(
     session_id: str = "",
     token: str = "",
@@ -6542,7 +6532,7 @@ def billing_paypal_approve(
     return result
 
 
-@app.get("/billing/paypal/cancel", response_model=None)
+@app.get("/billing/paypal/cancel")
 def billing_paypal_cancel(session_id: str = ""):
     checkout = _subscription_checkout_session(session_id)
     if not isinstance(checkout, dict):
@@ -6566,7 +6556,7 @@ def billing_paypal_cancel(session_id: str = ""):
     }
 
 
-@app.post("/v1/billing/paypal/webhook", response_model=None)
+@app.post("/v1/billing/paypal/webhook")
 async def billing_paypal_webhook(request: Request) -> dict[str, Any]:
     try:
         payload = await request.json()
@@ -6622,7 +6612,7 @@ async def billing_paypal_webhook(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/mobile/settings", response_model=None)
+@app.get("/v1/mobile/settings")
 async def mobile_settings(request: Request) -> dict[str, Any]:
     import asyncio
     user = _require_user(request)
@@ -6633,7 +6623,7 @@ async def mobile_settings(request: Request) -> dict[str, Any]:
     return {"ok": True, "settings": resolved}
 
 
-@app.post("/v1/mobile/settings", response_model=None)
+@app.post("/v1/mobile/settings")
 def upsert_mobile_settings(payload: UserSettingsRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -6917,7 +6907,7 @@ def _login_mobile_user_db_first(email: str, password: str) -> dict[str, Any] | N
     return payload
 
 
-@app.post("/v1/mobile/auth/register", response_model=None)
+@app.post("/v1/mobile/auth/register")
 def mobile_auth_register(payload: MobileRegisterRequest, request: Request) -> dict[str, Any]:
     email = (payload.email or "").strip().lower()
     password = payload.password or ""
@@ -6948,7 +6938,7 @@ def mobile_auth_register(payload: MobileRegisterRequest, request: Request) -> di
     return _mobile_auth_response(user, tokens)
 
 
-@app.post("/v1/mobile/auth/login", response_model=None)
+@app.post("/v1/mobile/auth/login")
 def mobile_auth_login(payload: MobileLoginRequest, request: Request) -> dict[str, Any]:
     email = str(payload.email or "").strip().lower()
     if _is_account_locked(email):
@@ -6969,7 +6959,7 @@ def mobile_auth_login(payload: MobileLoginRequest, request: Request) -> dict[str
     return _mobile_auth_response(user, tokens)
 
 
-@app.post("/v1/mobile/auth/otp/request", response_model=None)
+@app.post("/v1/mobile/auth/otp/request")
 def mobile_auth_request_otp(payload: MobileOtpRequestRequest, request: Request) -> dict[str, Any]:
     phone_number = _normalize_phone_number(payload.phone_number)
     if not phone_number:
@@ -7026,7 +7016,7 @@ def mobile_auth_request_otp(payload: MobileOtpRequestRequest, request: Request) 
     return response
 
 
-@app.post("/v1/mobile/auth/otp/verify", response_model=None)
+@app.post("/v1/mobile/auth/otp/verify")
 def mobile_auth_verify_otp(payload: MobileOtpVerifyRequest, request: Request) -> dict[str, Any]:
     request_id = str(payload.request_id or "").strip()
     phone_number = _normalize_phone_number(payload.phone_number)
@@ -7114,7 +7104,7 @@ def mobile_auth_verify_otp(payload: MobileOtpVerifyRequest, request: Request) ->
     return _issue_mobile_auth_tokens_for_user(user, client_name=client_name)
 
 
-@app.post("/v1/mobile/auth/social", response_model=None)
+@app.post("/v1/mobile/auth/social")
 def mobile_auth_social_login(payload: MobileSocialLoginRequest, request: Request) -> dict[str, Any]:
     provider = str(payload.provider or "").strip().lower()
     client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
@@ -7179,7 +7169,7 @@ def mobile_auth_social_login(payload: MobileSocialLoginRequest, request: Request
     return response
 
 
-@app.post("/v1/mobile/auth/refresh", response_model=None)
+@app.post("/v1/mobile/auth/refresh")
 def mobile_auth_refresh(payload: MobileRefreshRequest, request: Request) -> dict[str, Any]:
     refresh_token = str(payload.refresh_token or "").strip()
     if not refresh_token:
@@ -7202,7 +7192,7 @@ def mobile_auth_refresh(payload: MobileRefreshRequest, request: Request) -> dict
     return _mobile_auth_response(user, tokens)
 
 
-@app.post("/v1/mobile/auth/logout", response_model=None)
+@app.post("/v1/mobile/auth/logout")
 def mobile_auth_logout(payload: MobileLogoutRequest, request: Request) -> dict[str, Any]:
     access_token = _bearer_token(request)
     refresh_token = str(payload.refresh_token or "").strip()
@@ -7211,7 +7201,7 @@ def mobile_auth_logout(payload: MobileLogoutRequest, request: Request) -> dict[s
     return {"ok": True, "revoked": bool(revoked_db or revoked_legacy)}
 
 
-@app.get("/v1/mobile/auth/me", response_model=None)
+@app.get("/v1/mobile/auth/me")
 def mobile_auth_me(request: Request) -> dict[str, Any]:
     user = _mobile_user(request)
     if not user:
@@ -7227,7 +7217,7 @@ def mobile_auth_me(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/mobile/routine", response_model=None)
+@app.get("/v1/mobile/routine")
 async def mobile_routine(request: Request) -> dict[str, Any]:
     import asyncio
     user = _require_user(request)
@@ -7239,7 +7229,7 @@ async def mobile_routine(request: Request) -> dict[str, Any]:
     return {"ok": True, "routine": _normalize_user_routine({**defaults, **scoped})}
 
 
-@app.post("/v1/mobile/push-token", response_model=None)
+@app.post("/v1/mobile/push-token")
 def register_push_token(payload: RegisterPushTokenRequest, request: Request) -> dict[str, Any]:
     """Store the user's Expo push token so the backend can send notifications."""
     _enforce_same_origin(request)
@@ -7278,7 +7268,7 @@ def register_push_token(payload: RegisterPushTokenRequest, request: Request) -> 
     return {"ok": True, "registered": True}
 
 
-@app.post("/v1/mobile/routine", response_model=None)
+@app.post("/v1/mobile/routine")
 def upsert_mobile_routine(payload: UserRoutineRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -7300,7 +7290,7 @@ def upsert_mobile_routine(payload: UserRoutineRequest, request: Request) -> dict
     return {"ok": True, "routine": normalized}
 
 
-@app.get("/v1/mobile/profile", response_model=None)
+@app.get("/v1/mobile/profile")
 async def mobile_profile(request: Request) -> dict[str, Any]:
     import asyncio
     user = _require_user(request)
@@ -7327,7 +7317,7 @@ async def mobile_profile(request: Request) -> dict[str, Any]:
     }
 
 
-@app.post("/v1/mobile/profile", response_model=None)
+@app.post("/v1/mobile/profile")
 def upsert_mobile_profile(payload: UserProfilePrefsRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -7352,7 +7342,7 @@ def upsert_mobile_profile(payload: UserProfilePrefsRequest, request: Request) ->
     return {"ok": True, "profile": normalized}
 
 
-@app.get("/v1/mobile/islamic/overview", response_model=None)
+@app.get("/v1/mobile/islamic/overview")
 def mobile_islamic_overview(request: Request) -> dict[str, Any]:
     user = _require_premium_plan(request)
     profile = _safe_profile()
@@ -7362,7 +7352,7 @@ def mobile_islamic_overview(request: Request) -> dict[str, Any]:
     return {"ok": True, **overview}
 
 
-@app.get("/v1/mobile/islamic/prayer-times", response_model=None)
+@app.get("/v1/mobile/islamic/prayer-times")
 def mobile_islamic_prayer_times(request: Request) -> dict[str, Any]:
     user = _require_premium_plan(request)
     profile = _safe_profile()
@@ -7376,7 +7366,7 @@ def mobile_islamic_prayer_times(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/mobile/islamic/next-prayer", response_model=None)
+@app.get("/v1/mobile/islamic/next-prayer")
 def mobile_islamic_next_prayer(request: Request) -> dict[str, Any]:
     user = _require_premium_plan(request)
     profile = _safe_profile()
@@ -7392,7 +7382,7 @@ def mobile_islamic_next_prayer(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/mobile/device-controls", response_model=None)
+@app.get("/v1/mobile/device-controls")
 def mobile_device_controls(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
@@ -7408,7 +7398,7 @@ def mobile_device_controls(request: Request) -> dict[str, Any]:
     return {"ok": True, "controls": _normalize_device_controls({**defaults, **scoped})}
 
 
-@app.get("/v1/mobile/bed/pairing", response_model=None)
+@app.get("/v1/mobile/bed/pairing")
 def mobile_bed_pairing_status(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
@@ -7455,7 +7445,7 @@ def mobile_bed_pairing_status(request: Request) -> dict[str, Any]:
     }
 
 
-@app.post("/v1/mobile/bed/pair", response_model=None)
+@app.post("/v1/mobile/bed/pair")
 def mobile_bed_pair(payload: MobileBedPairRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -7530,7 +7520,7 @@ def mobile_bed_pair(payload: MobileBedPairRequest, request: Request) -> dict[str
     }
 
 
-@app.post("/v1/mobile/bed/unpair", response_model=None)
+@app.post("/v1/mobile/bed/unpair")
 def mobile_bed_unpair(payload: MobileBedUnpairRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -7569,7 +7559,7 @@ def mobile_bed_unpair(payload: MobileBedUnpairRequest, request: Request) -> dict
     return {"ok": True, "paired": False, "device_id": device_id}
 
 
-@app.get("/v1/mobile/alarms", response_model=None)
+@app.get("/v1/mobile/alarms")
 def mobile_alarms(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
@@ -7584,7 +7574,7 @@ def mobile_alarms(request: Request) -> dict[str, Any]:
     return {"ok": True, "alarms": alarms}
 
 
-@app.post("/v1/mobile/alarms", response_model=None)
+@app.post("/v1/mobile/alarms")
 def mobile_upsert_alarm(payload: MobileAlarmUpsertRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -7633,7 +7623,7 @@ def mobile_upsert_alarm(payload: MobileAlarmUpsertRequest, request: Request) -> 
     return {"ok": True, "alarm": target, "alarms": alarms}
 
 
-@app.post("/v1/mobile/alarms/{alarm_id}/toggle", response_model=None)
+@app.post("/v1/mobile/alarms/{alarm_id}/toggle")
 def mobile_toggle_alarm(alarm_id: str, payload: MobileAlarmToggleRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -7672,7 +7662,7 @@ def mobile_toggle_alarm(alarm_id: str, payload: MobileAlarmToggleRequest, reques
     return {"ok": True, "alarm_id": target_id, "enabled": bool(payload.enabled)}
 
 
-@app.delete("/v1/mobile/alarms/{alarm_id}", response_model=None)
+@app.delete("/v1/mobile/alarms/{alarm_id}")
 def mobile_delete_alarm(alarm_id: str, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -7699,7 +7689,7 @@ def mobile_delete_alarm(alarm_id: str, request: Request) -> dict[str, Any]:
     return {"ok": True, "deleted_alarm_id": target_id}
 
 
-@app.get("/v1/mobile/spotify/auth-url", response_model=None)
+@app.get("/v1/mobile/spotify/auth-url")
 def mobile_spotify_auth_url(request: Request, done_uri: str = "") -> dict[str, Any]:
     user = _require_user(request)
     config = _spotify_env_config(request)
@@ -7725,7 +7715,7 @@ def mobile_spotify_auth_url(request: Request, done_uri: str = "") -> dict[str, A
     return {"ok": True, "auth_url": _spotify_auth_url(config, state)}
 
 
-@app.get("/v1/mobile/spotify/connect", response_model=None)
+@app.get("/v1/mobile/spotify/connect")
 def mobile_spotify_connect(request: Request):
     done_uri = _safe_mobile_done_uri(str(request.query_params.get("done_uri", "") or ""))
     safe_base_redirect = done_uri or "/user-dashboard"
@@ -7764,7 +7754,7 @@ def mobile_spotify_connect(request: Request):
     return RedirectResponse(url=_spotify_auth_url(config, state), status_code=302)
 
 
-@app.get("/v1/mobile/spotify/callback", response_model=None)
+@app.get("/v1/mobile/spotify/callback")
 def mobile_spotify_callback(request: Request, code: str = "", state: str = ""):
     default_error_redirect = "/user-dashboard?spotify=error"
     if not code or not state:
@@ -7841,7 +7831,7 @@ def mobile_spotify_callback(request: Request, code: str = "", state: str = ""):
     return RedirectResponse(url=safe_success_redirect, status_code=302)
 
 
-@app.get("/v1/mobile/spotify/status", response_model=None)
+@app.get("/v1/mobile/spotify/status")
 def mobile_spotify_status(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     key = _user_profile_key(user)
@@ -7863,7 +7853,7 @@ def mobile_spotify_status(request: Request) -> dict[str, Any]:
     }
 
 
-@app.post("/v1/mobile/spotify/disconnect", response_model=None)
+@app.post("/v1/mobile/spotify/disconnect")
 def mobile_spotify_disconnect(request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -7876,7 +7866,7 @@ def mobile_spotify_disconnect(request: Request) -> dict[str, Any]:
     return {"ok": True}
 
 
-@app.get("/v1/mobile/spotify/playback-status", response_model=None)
+@app.get("/v1/mobile/spotify/playback-status")
 def mobile_spotify_playback_status(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     key = _user_profile_key(user)
@@ -7902,7 +7892,7 @@ def mobile_spotify_playback_status(request: Request) -> dict[str, Any]:
     }
 
 
-@app.post("/v1/mobile/spotify/playback", response_model=None)
+@app.post("/v1/mobile/spotify/playback")
 def mobile_spotify_playback(payload: SpotifyPlaybackRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -7962,7 +7952,7 @@ def mobile_spotify_playback(payload: SpotifyPlaybackRequest, request: Request) -
     raise HTTPException(status_code=400, detail="Unsupported Spotify playback action")
 
 
-@app.post("/v1/mobile/device-controls", response_model=None)
+@app.post("/v1/mobile/device-controls")
 def upsert_mobile_device_controls(payload: UserDeviceControlRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -7984,7 +7974,7 @@ def upsert_mobile_device_controls(payload: UserDeviceControlRequest, request: Re
     return {"ok": True, "controls": normalized}
 
 
-@app.get("/v1/mobile/timeline", response_model=None)
+@app.get("/v1/mobile/timeline")
 def mobile_timeline(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
@@ -8051,7 +8041,7 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
     return {"ok": True, "items": normalized_items}
 
 
-@app.get("/v1/mobile/first-3-nights", response_model=None)
+@app.get("/v1/mobile/first-3-nights")
 def mobile_first_3_nights(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     key = _user_profile_key(user)
@@ -8078,7 +8068,7 @@ def mobile_first_3_nights(request: Request) -> dict[str, Any]:
     return {"ok": True, "checklist": checklist}
 
 
-@app.post("/v1/mobile/first-3-nights/complete", response_model=None)
+@app.post("/v1/mobile/first-3-nights/complete")
 def mobile_first_3_nights_complete(payload: FirstThreeNightsStepRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -8102,7 +8092,7 @@ def mobile_first_3_nights_complete(payload: FirstThreeNightsStepRequest, request
     return {"ok": True, "checklist": checklist}
 
 
-@app.post("/v1/mobile/nightly-summary/feedback", response_model=None)
+@app.post("/v1/mobile/nightly-summary/feedback")
 def mobile_nightly_summary_feedback(payload: NightlySummaryFeedbackRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -8126,7 +8116,7 @@ def mobile_nightly_summary_feedback(payload: NightlySummaryFeedbackRequest, requ
     return {"ok": True, "feedback": feedback}
 
 
-@app.post("/v1/mobile/device-commands/{command_id}/feedback", response_model=None)
+@app.post("/v1/mobile/device-commands/{command_id}/feedback")
 def mobile_device_command_feedback(
     command_id: str,
     payload: DeviceCommandFeedbackRequest,
@@ -8205,7 +8195,7 @@ def mobile_device_command_feedback(
     }
 
 
-@app.get("/v1/mobile/beta/metrics", response_model=None)
+@app.get("/v1/mobile/beta/metrics")
 def mobile_beta_metrics(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
@@ -8260,12 +8250,12 @@ def mobile_beta_metrics(request: Request) -> dict[str, Any]:
     }
 
 
-@app.post("/v1/mobile/user-actions", response_model=None)
+@app.post("/v1/mobile/user-actions")
 def mobile_user_actions(payload: UserActionRequest, request: Request) -> dict[str, Any]:
     return create_mobile_device_command(UserDeviceCommandRequest(action=payload.action), request)
 
 
-@app.post("/v1/mobile/scenes/preview", response_model=None)
+@app.post("/v1/mobile/scenes/preview")
 def mobile_scene_preview(payload: SceneSelectionRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -8334,7 +8324,7 @@ def mobile_scene_preview(payload: SceneSelectionRequest, request: Request) -> di
     }
 
 
-@app.post("/v1/mobile/scenes/save-tonight", response_model=None)
+@app.post("/v1/mobile/scenes/save-tonight")
 def mobile_scene_save_tonight(payload: SceneSelectionRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -8424,7 +8414,7 @@ def mobile_scene_save_tonight(payload: SceneSelectionRequest, request: Request) 
     }
 
 
-@app.post("/v1/mobile/device-commands", response_model=None)
+@app.post("/v1/mobile/device-commands")
 def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
@@ -8639,7 +8629,7 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
     }
 
 
-@app.get("/v1/mobile/device-commands/{command_id}", response_model=None)
+@app.get("/v1/mobile/device-commands/{command_id}")
 def mobile_device_command_status(command_id: str, request: Request) -> dict[str, Any]:
     user = _require_user(request)
     key = _user_profile_key(user)
@@ -8692,7 +8682,7 @@ def mobile_device_command_status(command_id: str, request: Request) -> dict[str,
     return {"ok": True, "command": target, "last_command_result": last_command_result}
 
 
-@app.get("/v1/mobile/devices", response_model=None)
+@app.get("/v1/mobile/devices")
 def mobile_devices(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
@@ -8719,7 +8709,7 @@ def mobile_devices(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/admin/overview", response_model=None)
+@app.get("/v1/admin/overview")
 def admin_overview(request: Request) -> dict[str, Any]:
     _require_admin(request)
     return {
@@ -8730,7 +8720,7 @@ def admin_overview(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/admin/incidents", response_model=None)
+@app.get("/v1/admin/incidents")
 def admin_incidents(request: Request) -> dict[str, Any]:
     _require_admin(request)
     items = store.list_incidents(limit=20)
@@ -8771,7 +8761,7 @@ def admin_incidents(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/admin/runtime", response_model=None)
+@app.get("/v1/admin/runtime")
 def admin_runtime(request: Request) -> dict[str, Any]:
     _require_admin(request)
     payment_events = store.db.get("payment_events", []) if isinstance(store.db, dict) else []
@@ -8794,7 +8784,7 @@ def admin_runtime(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/admin/fleet", response_model=None)
+@app.get("/v1/admin/fleet")
 def admin_fleet(request: Request) -> dict[str, Any]:
     _require_admin(request)
     devices = store.list_fleet_devices(limit=1000)
@@ -8852,7 +8842,7 @@ def admin_fleet(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/admin/audit", response_model=None)
+@app.get("/v1/admin/audit")
 def admin_audit(request: Request) -> dict[str, Any]:
     _require_admin(request)
     rows = store.list_admin_audit_logs(limit=10)
@@ -8885,7 +8875,7 @@ def admin_audit(request: Request) -> dict[str, Any]:
     return {"items": items}
 
 
-@app.get("/v1/admin/billing/timeline", response_model=None)
+@app.get("/v1/admin/billing/timeline")
 def admin_billing_timeline(
     request: Request,
     limit: int = 50,
@@ -8920,7 +8910,7 @@ def admin_billing_timeline(
     }
 
 
-@app.get("/v1/admin/user-dashboard", response_model=None)
+@app.get("/v1/admin/user-dashboard")
 def admin_user_dashboard(request: Request) -> dict[str, Any]:
     _require_admin(request)
     profile = _safe_profile()
@@ -8997,7 +8987,7 @@ def admin_user_dashboard(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/admin/mobile/beta-acceptance", response_model=None)
+@app.get("/v1/admin/mobile/beta-acceptance")
 def admin_mobile_beta_acceptance(
     request: Request,
     max_testers: int = 5,
@@ -9011,7 +9001,7 @@ def admin_mobile_beta_acceptance(
     return {"ok": True, "report": report}
 
 
-@app.get("/v1/admin/mobile/beta-cohort", response_model=None)
+@app.get("/v1/admin/mobile/beta-cohort")
 def admin_mobile_beta_cohort(
     request: Request,
     cohort_key: str = "kuwait_beta",
@@ -9029,7 +9019,7 @@ def admin_mobile_beta_cohort(
     return {"ok": True, "report": report}
 
 
-@app.post("/v1/admin/mobile/beta-cohort/enroll", response_model=None)
+@app.post("/v1/admin/mobile/beta-cohort/enroll")
 def admin_mobile_beta_cohort_enroll(payload: BetaCohortEnrollRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     admin = _require_admin(request)
@@ -9074,7 +9064,7 @@ def admin_mobile_beta_cohort_enroll(payload: BetaCohortEnrollRequest, request: R
     }
 
 
-@app.post("/v1/admin/actions", response_model=None)
+@app.post("/v1/admin/actions")
 def admin_actions(payload: AdminActionRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     admin = _require_admin(request)
@@ -9123,7 +9113,7 @@ def admin_actions(payload: AdminActionRequest, request: Request) -> dict[str, An
     }
 
 
-@app.post("/v1/admin/voice/circuit-breaker/reset", response_model=None)
+@app.post("/v1/admin/voice/circuit-breaker/reset")
 def admin_voice_circuit_breaker_reset(request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     admin = _require_admin(request)
@@ -9148,7 +9138,7 @@ def admin_voice_circuit_breaker_reset(request: Request) -> dict[str, Any]:
 
 # ── Update Manager routes ──────────────────────────────────────────────────────
 
-@app.get("/v1/admin/versions", response_model=None)
+@app.get("/v1/admin/versions")
 def admin_list_versions(request: Request) -> dict[str, Any]:
     _require_admin(request)
     app_versions = _db_update_repository().list_app_versions(limit=100)
@@ -9156,7 +9146,7 @@ def admin_list_versions(request: Request) -> dict[str, Any]:
     return {"ok": True, "app_versions": app_versions, "firmware_versions": firmware_versions}
 
 
-@app.post("/v1/admin/versions/app", response_model=None)
+@app.post("/v1/admin/versions/app")
 def admin_publish_app_version(payload: PublishAppVersionRequest, request: Request) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
@@ -9184,7 +9174,7 @@ def admin_publish_app_version(payload: PublishAppVersionRequest, request: Reques
     return {"ok": True, "version": result}
 
 
-@app.post("/v1/admin/versions/firmware", response_model=None)
+@app.post("/v1/admin/versions/firmware")
 def admin_publish_firmware_version(payload: PublishFirmwareVersionRequest, request: Request) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
@@ -9209,7 +9199,7 @@ def admin_publish_firmware_version(payload: PublishFirmwareVersionRequest, reque
     return {"ok": True, "version": result}
 
 
-@app.patch("/v1/admin/versions/{version_id}", response_model=None)
+@app.patch("/v1/admin/versions/{version_id}")
 def admin_patch_version(version_id: str, payload: PatchVersionRequest, request: Request) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
@@ -9241,14 +9231,14 @@ def admin_patch_version(version_id: str, payload: PatchVersionRequest, request: 
 
 # ── Feature Flag routes ────────────────────────────────────────────────────────
 
-@app.get("/v1/admin/feature-flags", response_model=None)
+@app.get("/v1/admin/feature-flags")
 def admin_list_feature_flags(request: Request) -> dict[str, Any]:
     _require_admin(request)
     flags = _db_feature_flag_repository().list_flags()
     return {"ok": True, "flags": flags}
 
 
-@app.post("/v1/admin/feature-flags", response_model=None)
+@app.post("/v1/admin/feature-flags")
 def admin_upsert_feature_flag(payload: UpsertFeatureFlagRequest, request: Request) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
@@ -9273,7 +9263,7 @@ def admin_upsert_feature_flag(payload: UpsertFeatureFlagRequest, request: Reques
     return {"ok": True, "flag": result}
 
 
-@app.patch("/v1/admin/feature-flags/{flag_key}", response_model=None)
+@app.patch("/v1/admin/feature-flags/{flag_key}")
 def admin_patch_feature_flag(flag_key: str, payload: PatchFeatureFlagRequest, request: Request) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
@@ -9303,7 +9293,7 @@ def admin_patch_feature_flag(flag_key: str, payload: PatchFeatureFlagRequest, re
 
 # ── User feature override routes ───────────────────────────────────────────────
 
-@app.get("/v1/admin/users/{user_id}/features", response_model=None)
+@app.get("/v1/admin/users/{user_id}/features")
 def admin_get_user_features(user_id: str, request: Request) -> dict[str, Any]:
     _require_admin(request)
     flags = _db_feature_flag_repository().list_flags()
@@ -9316,7 +9306,7 @@ def admin_get_user_features(user_id: str, request: Request) -> dict[str, Any]:
     return {"ok": True, "user_id": user_id, "flags": merged}
 
 
-@app.post("/v1/admin/users/{user_id}/features", response_model=None)
+@app.post("/v1/admin/users/{user_id}/features")
 def admin_set_user_feature(user_id: str, payload: SetUserFeatureOverrideRequest, request: Request) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
@@ -9339,7 +9329,7 @@ def admin_set_user_feature(user_id: str, payload: SetUserFeatureOverrideRequest,
     return {"ok": True, "override": result}
 
 
-@app.delete("/v1/admin/users/{user_id}/features/{flag_key}", response_model=None)
+@app.delete("/v1/admin/users/{user_id}/features/{flag_key}")
 def admin_delete_user_feature(user_id: str, flag_key: str, request: Request) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
@@ -9351,7 +9341,7 @@ def admin_delete_user_feature(user_id: str, flag_key: str, request: Request) -> 
 
 # ── Admin user management routes ───────────────────────────────────────────────
 
-@app.get("/v1/admin/users", response_model=None)
+@app.get("/v1/admin/users")
 def admin_list_users(
     request: Request,
     search: str = "",
@@ -9401,7 +9391,7 @@ def admin_list_users(
     }
 
 
-@app.get("/v1/admin/users/{user_id}/detail", response_model=None)
+@app.get("/v1/admin/users/{user_id}/detail")
 def admin_get_user_detail(user_id: str, request: Request) -> dict[str, Any]:
     _require_admin(request)
     u = store.get_user(user_id)
@@ -9425,7 +9415,7 @@ def admin_get_user_detail(user_id: str, request: Request) -> dict[str, Any]:
     }
 
 
-@app.patch("/v1/admin/users/{user_id}", response_model=None)
+@app.patch("/v1/admin/users/{user_id}")
 def admin_patch_user(user_id: str, payload: PatchAdminUserRequest, request: Request) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
@@ -9458,7 +9448,7 @@ def admin_patch_user(user_id: str, payload: PatchAdminUserRequest, request: Requ
 
 # ── Device/Client version-check routes ────────────────────────────────────────
 
-@app.get("/v1/mobile/version-check", response_model=None)
+@app.get("/v1/mobile/version-check")
 def mobile_version_check(request: Request, platform: str = "android") -> dict[str, Any]:
     user = _mobile_user(request)
     safe_platform = str(platform or "android").strip().lower()
@@ -9483,7 +9473,7 @@ def mobile_version_check(request: Request, platform: str = "android") -> dict[st
     }
 
 
-@app.get("/v1/device/firmware-check", response_model=None)
+@app.get("/v1/device/firmware-check")
 def device_firmware_check(
     request: Request,
     device_id: str = "",
@@ -9511,7 +9501,7 @@ def device_firmware_check(
     }
 
 
-@app.post("/v1/ai/chat", response_model=None)
+@app.post("/v1/ai/chat")
 async def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
     import asyncio
     _enforce_same_origin(request)
@@ -9530,7 +9520,7 @@ async def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
     return {"reply": reply}
 
 
-@app.get("/v1/ai/chat/stream", response_model=None)
+@app.get("/v1/ai/chat/stream")
 async def ai_chat_stream(message: str, request: Request):
     """Stream AI chat reply as Server-Sent Events.
 
@@ -9945,7 +9935,7 @@ class GarminSyncRequest(BaseModel):
     target_date: str = Field(default="", max_length=10)  # YYYY-MM-DD; empty = today
 
 
-@app.post("/v1/garmin/sync", response_model=None)
+@app.post("/v1/garmin/sync")
 async def garmin_sync(payload: GarminSyncRequest, request: Request) -> dict[str, Any]:
     """Pull today's (or *target_date*'s) health data from Garmin Connect.
 
@@ -9984,7 +9974,7 @@ async def garmin_sync(payload: GarminSyncRequest, request: Request) -> dict[str,
     return result
 
 
-@app.get("/v1/garmin/status", response_model=None)
+@app.get("/v1/garmin/status")
 def garmin_status(request: Request) -> dict[str, Any]:
     """Return the current Garmin / fitness tracker status for the user."""
     _require_user(request)
@@ -10006,7 +9996,7 @@ def garmin_status(request: Request) -> dict[str, Any]:
     return status
 
 
-@app.get("/v1/report/weekly/pdf", response_model=None)
+@app.get("/v1/report/weekly/pdf")
 async def weekly_report_pdf(
     request: Request,
     renderer: str = "reportlab",
@@ -10060,7 +10050,7 @@ async def weekly_report_pdf(
     )
 
 
-@app.get("/v1/report/weekly/pdf/url", response_model=None)
+@app.get("/v1/report/weekly/pdf/url")
 async def weekly_report_pdf_url(
     request: Request,
     renderer: str = "reportlab",
@@ -10125,7 +10115,7 @@ async def weekly_report_pdf_url(
     return {"url": presigned, "expires_in": expires_in}
 
 
-@app.get("/v1/report/weekly/html", response_model=None)
+@app.get("/v1/report/weekly/html")
 async def weekly_report_html(request: Request) -> Response:
     """Return the weekly health report as a styled HTML document for preview."""
     import asyncio
@@ -10159,7 +10149,7 @@ class FitbitSyncRequest(BaseModel):
     target_date: str = Field(default="", max_length=10)  # YYYY-MM-DD; empty = today
 
 
-@app.get("/v1/fitbit/auth-url", response_model=None)
+@app.get("/v1/fitbit/auth-url")
 def fitbit_auth_url(request: Request) -> dict[str, Any]:
     """Return the Fitbit OAuth2 authorization URL for the mobile app to open."""
     _require_user(request)
@@ -10174,7 +10164,7 @@ def fitbit_auth_url(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.get("/v1/fitbit/callback", response_model=None)
+@app.get("/v1/fitbit/callback")
 async def fitbit_callback(code: str, request: Request) -> dict[str, Any]:
     """OAuth2 callback — exchange authorization code for access + refresh tokens.
 
@@ -10212,7 +10202,7 @@ async def fitbit_callback(code: str, request: Request) -> dict[str, Any]:
     }
 
 
-@app.post("/v1/fitbit/sync", response_model=None)
+@app.post("/v1/fitbit/sync")
 async def fitbit_sync(payload: FitbitSyncRequest, request: Request) -> dict[str, Any]:
     """Pull health data from Fitbit and ingest it into the user's profile.
 
@@ -10261,7 +10251,7 @@ class GoogleCalendarSyncRequest(BaseModel):
     max_results: int = Field(default=50, ge=1, le=250)
 
 
-@app.post("/v1/calendar/google/sync", response_model=None)
+@app.post("/v1/calendar/google/sync")
 async def calendar_google_sync(payload: GoogleCalendarSyncRequest, request: Request) -> dict[str, Any]:
     """Pull events from the authenticated user's Google Calendar and sync into their profile.
 
@@ -10299,7 +10289,7 @@ async def calendar_google_sync(payload: GoogleCalendarSyncRequest, request: Requ
     return result
 
 
-@app.get("/v1/calendar/schedule", response_model=None)
+@app.get("/v1/calendar/schedule")
 async def calendar_schedule(request: Request, days_ahead: int = 1) -> dict[str, Any]:
     """Return the user's upcoming schedule from the local calendar cache."""
     import asyncio
@@ -10322,7 +10312,7 @@ async def calendar_schedule(request: Request, days_ahead: int = 1) -> dict[str, 
     return result
 
 
-@app.post("/v1/command", response_model=None)
+@app.post("/v1/command")
 def v1_command(payload: CommandRequest, request: Request) -> dict[str, Any]:
     _enforce_same_origin(request)
     actor = _authenticated_actor(request)

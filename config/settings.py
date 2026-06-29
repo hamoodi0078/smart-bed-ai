@@ -291,6 +291,10 @@ class Settings(BaseSettings):
     user_profile_path: str = ""
     long_term_memory_path: str = ""
     islamic_prayer_cache_path: str = ""
+    database_url: str = Field(
+        "",
+        validation_alias=AliasChoices("DATABASE_URL", "database_url"),
+    )
 
     # ── Database pool ─────────────────────────────────────────────────
     # Sync pool (psycopg2 / SQLAlchemy QueuePool)
@@ -393,6 +397,13 @@ class Settings(BaseSettings):
         "",
         validation_alias=AliasChoices("FIREBASE_CREDENTIALS_JSON", "firebase_credentials_json"),
     )
+
+    @field_validator("firebase_credentials_path", mode="before")
+    @classmethod
+    def clean_firebase_quotes(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip("'\"")
+        return v
 
     # ── Sentry ────────────────────────────────────────────────────────
     sentry_dsn: str = Field(

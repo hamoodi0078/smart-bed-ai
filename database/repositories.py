@@ -225,7 +225,8 @@ class EventRepository:
             cutoff = utcnow() - timedelta(days=age_days)
             statement = delete(Event).where(Event.timestamp < cutoff)
             result = session.execute(statement)
-            return int(result.rowcount or 0)
+            rowcount = getattr(result, "rowcount", 0)
+            return int(rowcount or 0)
 
     def replace_mobile_timeline_events(
         self,
@@ -888,10 +889,18 @@ class MobileAuthRepository:
         now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
         revoked_any = False
 
+        db_key = access_key
+        if access_key and is_jwt(access_key):
+            try:
+                claims = decode_access_token(access_key)
+                db_key = str(claims.get("jti", "") or "").strip()
+            except JWTError:
+                pass
+
         with self.db.get_session() as session:
-            if access_key:
+            if db_key:
                 statement = select(MobileAuthSession).where(
-                    MobileAuthSession.access_token == access_key,
+                    MobileAuthSession.access_token == db_key,
                     MobileAuthSession.revoked.is_(False),
                 )
                 for row in session.execute(statement).scalars().all():
@@ -1117,9 +1126,16 @@ class BetaProgressRepository:
                 session.add(row)
                 session.flush()
 
+            row_marker_dt = row.last_summary_generated_at_utc
+            try:
+                marker_dt = from_iso(summary_marker) if summary_marker else None
+            except Exception:
+                marker_dt = None
+
             duplicate_vote = (
-                bool(summary_marker)
-                and str(row.last_summary_generated_at_utc or "").strip() == summary_marker
+                marker_dt is not None
+                and row_marker_dt is not None
+                and ensure_utc(row_marker_dt) == ensure_utc(marker_dt)
                 and str(row.last_vote or "").strip().lower() == normalized_vote
             )
 
@@ -1133,7 +1149,7 @@ class BetaProgressRepository:
             row.last_vote = normalized_vote
             row.last_vote_at_utc = now
             if summary_marker:
-                row.last_summary_generated_at_utc = summary_marker
+                row.last_summary_generated_at_utc = from_iso(summary_marker)
             row.updated_at = now
             session.add(row)
             session.flush()
@@ -1512,7 +1528,8 @@ class FeatureFlagRepository:
                     UserFeatureOverride.user_id == uid, UserFeatureOverride.flag_key == key
                 )
             )
-            return int(result.rowcount or 0) > 0
+            rowcount = getattr(result, "rowcount", 0)
+            return int(rowcount or 0) > 0
 
     def list_user_overrides(self, user_id: str) -> list[dict[str, Any]]:
         uid = str(user_id or "").strip()
@@ -1864,7 +1881,8 @@ class AsyncEventRepository:
             result = await session.execute(
                 delete(Event).where(Event.timestamp < cutoff)
             )
-            return int(result.rowcount or 0)
+            rowcount = getattr(result, "rowcount", 0)
+            return int(rowcount or 0)
 
 
 class AlarmRepository:
@@ -1946,7 +1964,8 @@ class AlarmRepository:
             result = session.execute(
                 delete(Alarm).where(Alarm.id == alarm_id, Alarm.user_id == user_id)
             )
-            return int(result.rowcount or 0) > 0
+            rowcount = getattr(result, "rowcount", 0)
+            return int(rowcount or 0) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -2190,7 +2209,8 @@ class OtpRepository:
             result = session.execute(
                 delete(OtpRequest).where(OtpRequest.expires_at < utcnow())
             )
-            return result.rowcount or 0
+            rowcount = getattr(result, "rowcount", 0)
+            return rowcount or 0
 
 
 class SpotifyTokenRepository:

@@ -1,17 +1,20 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../src/state/auth_controller.dart';
 import '../../theme/app_theme.dart';
 import '../subscription/subscription_screen.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _notificationsEnabled = true;
   bool _islamicModeEnabled = true;
   bool _partnerModeEnabled = false;
@@ -121,9 +124,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (shouldSignOut == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Signed out')),
-      );
+      await ref.read(authControllerProvider.notifier).signOut();
+      if (mounted) {
+        context.go('/auth');
+      }
     }
   }
 
@@ -459,7 +463,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const Divider(height: 1, color: Color(0xFF2A3A57)),
                   ListTile(
-                    leading: const Icon(Icons.warning_amber_rounded, color: Colors.red),
+                    leading: const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.red,
+                    ),
                     title: const Text(
                       'Reset All Settings',
                       style: TextStyle(

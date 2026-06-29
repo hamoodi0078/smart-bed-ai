@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../services/api_service.dart';
 import '../../services/push_notification_service.dart';
 import '../core/api_client.dart';
 import '../core/device_location_service.dart';
@@ -170,6 +171,7 @@ class AuthController extends Notifier<AuthViewState> {
       } catch (_) {}
     }
     await _store.clear();
+    await ApiService.clearToken();
     state = const AuthViewState.ready(session: null);
   }
 
@@ -263,14 +265,12 @@ class AuthController extends Notifier<AuthViewState> {
     MobileUser user = session.user;
     try {
       user = await _api.me(session.accessToken);
-    } on ApiException catch (error) {
-      if (error.statusCode == 401) {
-        rethrow;
-      }
+    } on ApiException catch (_) {
+      // /me failed — continue with user from login response
     }
-
     final hydrated = session.copyWith(user: user);
     await _store.write(hydrated);
+    await ApiService.saveToken(hydrated.accessToken);
     state = AuthViewState.ready(session: hydrated);
     unawaited(_syncRemoteProfileContext(hydrated));
     return hydrated;

@@ -3,9 +3,10 @@
 All module functionality is accessed via explicit imports in each file.
 No global namespace pollution.
 """
-
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv(override=True)
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any

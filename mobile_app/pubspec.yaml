@@ -58,7 +58,7 @@ dependencies:
   connectivity_plus: ^6.0.3
 
   # Storage / security
-  flutter_secure_storage: ^9.2.4
+  flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.3.2
   hive_flutter: ^1.1.0              # Local offline cache for sleep data, reduces API calls
 
@@ -80,7 +80,7 @@ dependencies:
   flutter_local_notifications: ^17.2.4   # Local scheduled alarms (wind-down, bedtime alerts)
 
   # Error tracking
-  sentry_flutter: ^8.3.0
+  sentry_flutter: ^9.4.1
 
 dev_dependencies:
   flutter_test:

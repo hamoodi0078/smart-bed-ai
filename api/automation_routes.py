@@ -56,6 +56,21 @@ from api.dependencies import (
 
 logger = logging.getLogger("api.automation_routes")
 
+def _get_service(request: Request, service_name: str) -> Any:
+    """Retrieve a service instance from app state."""
+    services = getattr(request.app.state, "services", {})
+    service = services.get(service_name)
+    if service is None:
+        raise HTTPException(status_code=503, detail=f"Service '{service_name}' not available")
+    return service
+
+def _get_profile(request: Request) -> Any:
+    """Retrieve the current user profile from request state."""
+    profile = getattr(request.state, "user_profile", None)
+    if profile is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return profile
+
 router = APIRouter(prefix="/v1/automation", tags=["automation"])
 
 

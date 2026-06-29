@@ -72,13 +72,13 @@ class TestWebAuthFlows(unittest.TestCase):
         self._patch_env.stop()
         self._tmp.cleanup()
 
-    def _register(self, email: str = "user@example.com", password: str = "secret123", name: str = "User"):
+    def _register(self, email: str = "user@example.com", password: str = "Secret1234", name: str = "User"):
         return self.client.post(
             "/v1/auth/register",
             json={"email": email, "password": password, "name": name},
         )
 
-    def _login(self, email: str = "user@example.com", password: str = "secret123"):
+    def _login(self, email: str = "user@example.com", password: str = "Secret1234"):
         return self.client.post(
             "/v1/auth/login",
             json={"email": email, "password": password},
@@ -185,8 +185,8 @@ class TestDeviceOwnershipIsolation(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_replaced_devices_do_not_leak_between_users(self):
-        u1 = self.store.create_user("u1@example.com", "secret123", "U1")
-        u2 = self.store.create_user("u2@example.com", "secret123", "U2")
+        u1 = self.store.create_user("u1@example.com", "Secret1234", "U1")
+        u2 = self.store.create_user("u2@example.com", "Secret1234", "U2")
 
         self.store.provision_device("bed-1", "code-1", model="x1")
         self.store.provision_device("bed-2", "code-2", model="x1")

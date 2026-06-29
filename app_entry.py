@@ -1,5 +1,8 @@
 """Application entrypoint and startup bootstrap for Smart Bed AI runtime."""
 
+
+
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -11,7 +14,8 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, cast
 from zoneinfo import ZoneInfo
-
+from dotenv import load_dotenv
+load_dotenv(override=True)
 from core.logger import setup_logging
 setup_logging()
 from loguru import logger

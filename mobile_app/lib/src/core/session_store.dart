@@ -9,7 +9,9 @@ class SessionStore {
 
   static const _sessionKey = 'smart_bed.mobile_auth_session';
 
-  FlutterSecureStorage get _storage => const FlutterSecureStorage();
+  FlutterSecureStorage get _storage => const FlutterSecureStorage(
+        aOptions: AndroidOptions(encryptedSharedPreferences: true),
+      );
 
   Future<AuthSession?> read() async {
     final raw = await _storage.read(key: _sessionKey);
@@ -29,7 +31,10 @@ class SessionStore {
   }
 
   Future<void> write(AuthSession session) async {
-    await _storage.write(key: _sessionKey, value: jsonEncode(session.toJson()));
+    await _storage.write(
+      key: _sessionKey,
+      value: jsonEncode(session.toJson()),
+    );
   }
 
   Future<void> clear() {

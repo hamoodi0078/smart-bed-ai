@@ -175,6 +175,10 @@ def create_app() -> FastAPI:
     from api.middleware.trace_id import TraceIDMiddleware
     application.add_middleware(TraceIDMiddleware)
 
+    # Error handling — catches and formats all custom and unhandled exceptions
+    from api.middleware.error_handler import ErrorHandlerMiddleware
+    application.add_middleware(ErrorHandlerMiddleware)
+
     # Rate limiting — hard import: app must not start without this protection
     from api.middleware.rate_limiter import RateLimitMiddleware
     application.add_middleware(RateLimitMiddleware)

@@ -36,7 +36,10 @@ class TestMobileAuthApi(unittest.TestCase):
         self._io_lock_patch = patch("Storage.io._path_io_lock", _noop_io_lock)
         self._patch_env = patch.dict(
             os.environ,
-            {"DATABASE_URL": self._database_url},
+            {
+                "DATABASE_URL": self._database_url,
+                "MOBILE_OTP_DEBUG": "1",
+            },
             clear=False,
         )
         self._io_lock_patch.start()
@@ -86,7 +89,7 @@ class TestMobileAuthApi(unittest.TestCase):
             "/v1/mobile/auth/register",
             json={
                 "email": "mobile@example.com",
-                "password": "secret123",
+                "password": "Secret1234",
                 "name": "Mobile User",
                 "client_name": "flutter_debug",
             },
@@ -115,7 +118,7 @@ class TestMobileAuthApi(unittest.TestCase):
     def test_mobile_access_works_after_legacy_session_maps_are_cleared(self):
         register = self.client.post(
             "/v1/mobile/auth/register",
-            json={"email": "dbsession@example.com", "password": "secret123", "name": "DB Session User"},
+            json={"email": "dbsession@example.com", "password": "Secret1234", "name": "DB Session User"},
         )
         self.assertEqual(register.status_code, 200)
         body = register.json()
@@ -145,7 +148,7 @@ class TestMobileAuthApi(unittest.TestCase):
     def test_mobile_bearer_can_call_existing_mobile_endpoints(self):
         register = self.client.post(
             "/v1/mobile/auth/register",
-            json={"email": "settings@example.com", "password": "secret123", "name": "Settings User"},
+            json={"email": "settings@example.com", "password": "Secret1234", "name": "Settings User"},
         )
         access_token = str(register.json().get("access_token", ""))
         headers = {"Authorization": f"Bearer {access_token}"}
@@ -178,7 +181,7 @@ class TestMobileAuthApi(unittest.TestCase):
     def test_refresh_rotates_mobile_session_and_logout_revokes_access(self):
         register = self.client.post(
             "/v1/mobile/auth/register",
-            json={"email": "refresh@example.com", "password": "secret123", "name": "Refresh User"},
+            json={"email": "refresh@example.com", "password": "Secret1234", "name": "Refresh User"},
         )
         register_body = register.json()
         old_access_token = str(register_body.get("access_token", ""))
@@ -216,7 +219,7 @@ class TestMobileAuthApi(unittest.TestCase):
         self.assertEqual(me.status_code, 401)
 
     def test_login_migrates_legacy_only_user_into_db_shadow(self):
-        legacy_hash = _legacy_sha256("secret123")
+        legacy_hash = _legacy_sha256("Secret1234")
         legacy_user = {
             "user_id": "usr_legacy_sync",
             "email": "legacy-only@example.com",
@@ -242,7 +245,7 @@ class TestMobileAuthApi(unittest.TestCase):
 
         login = self.client.post(
             "/v1/mobile/auth/login",
-            json={"email": "legacy-only@example.com", "password": "secret123", "client_name": "flutter_migrate"},
+            json={"email": "legacy-only@example.com", "password": "Secret1234", "client_name": "flutter_migrate"},
         )
         self.assertEqual(login.status_code, 200)
         body = login.json()

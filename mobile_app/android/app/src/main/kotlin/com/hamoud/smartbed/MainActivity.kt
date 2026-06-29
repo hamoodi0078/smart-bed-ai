@@ -1,4 +1,4 @@
-package com.example.mobile_app
+package com.hamoud.smartbed
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
@@ -15,21 +15,23 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+
     companion object {
         private const val CHANNEL = "smart_bed/device_connectivity"
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            CHANNEL,
+            CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "openWifiSettingsPanel" -> result.success(openWifiSettingsPanel())
                 "openBluetoothSettings" -> result.success(openBluetoothSettings())
-                "getBluetoothState" -> result.success(bluetoothStatePayload())
-                "listPairedBluetoothDevices" -> result.success(pairedBluetoothPayload())
+                "getBluetoothState" -> result.success(getBluetoothState())
+                "listPairedBluetoothDevices" -> result.success(listPairedBluetoothDevices())
                 else -> result.notImplemented()
             }
         }
@@ -41,15 +43,16 @@ class MainActivity : FlutterActivity() {
         } else {
             Intent(Settings.ACTION_WIFI_SETTINGS)
         }
-        return launchIntent(intent)
+        return launchIntentSafely(intent)
     }
 
     private fun openBluetoothSettings(): Boolean {
-        return launchIntent(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+        return launchIntentSafely(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
     }
 
-    private fun launchIntent(intent: Intent): Boolean {
+    private fun launchIntentSafely(intent: Intent): Boolean {
         return try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
             true
         } catch (_: ActivityNotFoundException) {
@@ -59,61 +62,64 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun bluetoothAdapter(): BluetoothAdapter? {
+    private fun getBluetoothAdapter(): BluetoothAdapter? {
         val manager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         return manager?.adapter
     }
 
     private fun hasBluetoothConnectPermission(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return true
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
         }
-        val granted = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.BLUETOOTH_CONNECT,
-        )
-        return granted == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun bluetoothStatePayload(): Map<String, Any> {
-        val adapter = bluetoothAdapter()
+    private fun getBluetoothState(): Map<String, Any> {
+        val adapter = getBluetoothAdapter()
         val supported = adapter != null
         val permissionRequired = supported && !hasBluetoothConnectPermission()
-        val enabled = supported && !permissionRequired && (adapter?.isEnabled == true)
+        val enabled = supported && !permissionRequired && adapter?.isEnabled == true
+
         return mapOf(
             "supported" to supported,
             "enabled" to enabled,
-            "permissionRequired" to permissionRequired,
+            "permissionRequired" to permissionRequired
         )
     }
 
-    private fun pairedBluetoothPayload(): Map<String, Any> {
-        val adapter = bluetoothAdapter()
+    private fun listPairedBluetoothDevices(): Map<String, Any> {
+        val adapter = getBluetoothAdapter()
+
         if (adapter == null) {
             return mapOf(
                 "supported" to false,
                 "permissionRequired" to false,
-                "devices" to emptyList<Map<String, Any>>(),
+                "devices" to emptyList<Map<String, Any>>()
             )
         }
+
         if (!hasBluetoothConnectPermission()) {
             return mapOf(
                 "supported" to true,
                 "permissionRequired" to true,
-                "devices" to emptyList<Map<String, Any>>(),
+                "devices" to emptyList<Map<String, Any>>()
             )
         }
 
-        val rows = try {
+        val devices = try {
             adapter.bondedDevices
                 ?.map { device ->
                     mapOf(
                         "name" to (device.name ?: "Unnamed device"),
                         "address" to (device.address ?: ""),
-                        "bondState" to device.bondState,
+                        "bondState" to device.bondState
                     )
                 }
-                ?.sortedBy { row -> (row["name"] as? String) ?: "" }
+                ?.sortedBy { it["name"] as? String ?: "" }
                 ?: emptyList()
         } catch (_: SecurityException) {
             emptyList()
@@ -122,7 +128,7 @@ class MainActivity : FlutterActivity() {
         return mapOf(
             "supported" to true,
             "permissionRequired" to false,
-            "devices" to rows,
+            "devices" to devices
         )
     }
 }

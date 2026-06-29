@@ -1,7 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'home/home_screen.dart';
-import 'islamic/islamic_screen.dart';
+import '../src/ui/screens/islamic_screen.dart';
 import 'report/sleep_report_screen.dart';
 import 'settings/settings_screen.dart';
 import 'dana/dana_screen.dart';

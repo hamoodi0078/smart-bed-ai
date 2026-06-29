@@ -391,7 +391,9 @@ class UserRoutine(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), unique=True, nullable=False, index=True)
     bedtime: Mapped[str] = mapped_column(String(5), nullable=False, default="22:30")   # "HH:MM"
     wake: Mapped[str] = mapped_column(String(5), nullable=False, default="07:00")      # "HH:MM"
-    weekends: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    weekends_different: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    weekend_bedtime: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    weekend_wake: Mapped[str | None] = mapped_column(String(5), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -408,7 +410,7 @@ class UserProfilePrefs(Base):
     email_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     location_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="auto")  # "auto" | "manual"
     country_code: Mapped[str] = mapped_column(String(8), nullable=False, default="KW")
-    city: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     theme_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="system")  # "system" | "dark" | "light"

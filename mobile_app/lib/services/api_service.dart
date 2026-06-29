@@ -101,6 +101,10 @@ class ApiService {
 
       final Map<String, dynamic> decoded = _decodeResponse(response);
       _throwIfError(response, decoded);
+      final dynamic token = decoded['token'] ?? decoded['access_token'];
+    if (token is String && token.isNotEmpty) {
+      await saveToken(token);
+    }
       return decoded;
     } catch (e) {
       return _errorMap(e);

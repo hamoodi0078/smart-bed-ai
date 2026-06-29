@@ -19,7 +19,7 @@ class AppConfig {
     }
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:8000';
+      return 'http://192.168.100.120:8000';
     }
 
     return 'http://127.0.0.1:8000';
@@ -45,6 +45,6 @@ class AppConfig {
       return trimmed;
     }
 
-    return uri.replace(host: '10.0.2.2').toString();
+    return uri.replace(host: '192.168.100.120').toString();
   }
 }

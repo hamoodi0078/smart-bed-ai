@@ -83,7 +83,7 @@ class TestMobileVerticalSliceContract(unittest.TestCase):
             "/v1/mobile/auth/register",
             json={
                 "email": "vertical@example.com",
-                "password": "secret123",
+                "password": "Secret1234",
                 "name": "Vertical User",
                 "client_name": "flutter_contract",
             },

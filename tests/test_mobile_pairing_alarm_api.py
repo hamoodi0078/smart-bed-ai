@@ -89,7 +89,7 @@ class TestMobilePairingAndAlarmApi(unittest.TestCase):
             "/v1/mobile/auth/register",
             json={
                 "email": email,
-                "password": "secret123",
+                "password": "Secret1234",
                 "name": "Pairing User",
                 "client_name": "flutter_pairing",
             },

@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from Storage.subscription_store import SubscriptionStore
 from subscriptions.billing import BillingService
 from subscriptions.paypal_provider import (
+    PayPalProvider,
     PayPalSubscriptionDetails,
     PayPalSubscriptionSession,
     PayPalWebhookVerification,
@@ -144,20 +145,33 @@ class TestBillingService(unittest.TestCase):
 
         self.assertEqual(result.user_id, "usr_webhook")
         self.assertTrue(result.verified)
-        self.assertEqual(self.store.get_subscription("usr_webhook").get("tier"), "standard")
-        self.assertEqual(
-            self.store.get_checkout_session(checkout["session_id"]).get("status"),
-            "completed",
-        )
+        
+        subscription = self.store.get_subscription("usr_webhook")
+        self.assertIsNotNone(subscription)
+        assert subscription is not None
+        self.assertEqual(subscription.get("tier"), "standard")
+        
+        session = self.store.get_checkout_session(checkout["session_id"])
+        self.assertIsNotNone(session)
+        assert session is not None
+        self.assertEqual(session.get("status"), "completed")
 
 
-class _FakePayPalProvider:
+class _FakePayPalProvider(PayPalProvider):
     configured = True
     environment = "sandbox"
     currency_code = "USD"
     _status_map: dict[str, str]
 
     def __init__(self) -> None:
+        super().__init__(
+            client_id="fake_id",
+            client_secret="fake_secret",
+            api_base="https://api-m.sandbox.paypal.com",
+            webhook_id="fake_webhook_id",
+            brand_name="fake_brand",
+            currency_code="USD",
+        )
         self._status_map = {"I-ENDPOINT": "ACTIVE"}
 
     def create_subscription(
@@ -274,7 +288,7 @@ class _FakeMobileAuthRepository:
     def __init__(self) -> None:
         self._tokens: dict[str, dict[str, str]] = {}
 
-    def issue_tokens(self, *, user_id: str, client_name: str = "") -> dict[str, str]:
+    def issue_tokens(self, *, user_id: str, client_name: str = "") -> dict[str, str | int]:
         access_token = f"access_{uuid.uuid4().hex}"
         refresh_token = f"refresh_{uuid.uuid4().hex}"
         self._tokens[access_token] = {
@@ -387,7 +401,7 @@ class TestMobileBillingEndpoints(unittest.TestCase):
             "/v1/mobile/auth/register",
             json={
                 "email": email,
-                "password": "secret123",
+                "password": "Secret1234",
                 "name": "Billing User",
                 "client_name": "flutter_billing",
             },
@@ -441,9 +455,14 @@ class TestMobileBillingEndpoints(unittest.TestCase):
         self.assertIn("payment=success", str(approve_response.headers.get("location", "")))
 
         subscription = self.store.get_subscription(user_id)
+        self.assertIsNotNone(subscription)
+        assert subscription is not None
         self.assertEqual(subscription.get("tier"), "standard")
         self.assertEqual(subscription.get("payment_provider"), "paypal")
+        
         checkout = self.store.get_checkout_session(session_id)
+        self.assertIsNotNone(checkout)
+        assert checkout is not None
         self.assertEqual(checkout.get("status"), "completed")
         self.assertEqual(checkout.get("provider_subscription_id"), "I-ENDPOINT")
 
@@ -636,10 +655,12 @@ class TestMobileBillingEndpoints(unittest.TestCase):
             headers=self._paypal_headers(tx_id),
         )
         self.assertEqual(replay.status_code, 400)
-        body = replay.json() if replay.headers.get("content-type", "").startswith("application/json") else {}
+        json_body = replay.json() if replay.headers.get("content-type", "").startswith("application/json") else {}
+        body = json_body if isinstance(json_body, dict) else {}
         detail = str(body.get("detail", "")).lower()
         if not detail:
-            detail = str(body.get("error", {}).get("message", "")).lower() if isinstance(body.get("error"), dict) else ""
+            err_val = body.get("error")
+            detail = str(err_val.get("message", "")).lower() if isinstance(err_val, dict) else ""
         if not detail:
             detail = replay.text.lower()
         self.assertIn("replay", detail)
