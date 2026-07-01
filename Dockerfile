@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     portaudio19-dev \
-    libatlas-base-dev \
+    libopenblas-dev \
     gcc \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -44,7 +44,7 @@ ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD gunicorn api.app_factory:app \
     --workers ${GUNICORN_WORKERS} \
     --worker-class uvicorn.workers.UvicornWorker \
-    --bind 0.0.0.0:8000 \
+    --bind 0.0.0.0:${PORT:-8000} \
     --timeout ${GUNICORN_TIMEOUT} \
     --keepalive ${GUNICORN_KEEPALIVE} \
     --max-requests 1000 \
