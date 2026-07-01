@@ -93,11 +93,6 @@ weasyprint==62.3                   # HTML/CSS → PDF renderer — weekly report
 qrcode[pil]==7.4.2
 tzdata==2024.1
 
-# ── Raspberry Pi sensors (optional — only needed on the Pi) ────
-adafruit-circuitpython-dht>=3.7.0   # AM2301A / DHT22 temperature + humidity
-max30102>=0.1.0                      # MAX30102 heart-rate + SpO2 (I2C)
-hrcalc>=1.0                          # Heart-rate calculation from MAX30102 IR/Red data
-
 # ── Monitoring (optional) ───────────────────────────────────────
 psutil==5.9.8
 
