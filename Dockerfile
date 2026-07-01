@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     portaudio19-dev \
-    libatlas-base-dev \
+    libopenblas-dev \
     gcc \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -20,7 +20,6 @@ RUN mkdir -p runtime_data output_audio local_music data
 COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# Build-time defaults — override at runtime with -e GUNICORN_WORKERS=8
 ARG GUNICORN_WORKERS=4
 ARG GUNICORN_TIMEOUT=120
 ARG GUNICORN_KEEPALIVE=5
@@ -32,19 +31,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT} \
     GUNICORN_KEEPALIVE=${GUNICORN_KEEPALIVE}
 
-EXPOSE 8000
+EXPOSE ${PORT:-8000}
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=20s \
-    CMD curl -f http://localhost:8000/healthz || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/healthz || exit 1
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-# Shell form so ${GUNICORN_WORKERS} is expanded at container start.
-# Override at runtime: docker run -e GUNICORN_WORKERS=8 ...
 CMD gunicorn api.app_factory:app \
     --workers ${GUNICORN_WORKERS} \
     --worker-class uvicorn.workers.UvicornWorker \
-    --bind 0.0.0.0:8000 \
+    --bind 0.0.0.0:${PORT:-8000} \
     --timeout ${GUNICORN_TIMEOUT} \
     --keepalive ${GUNICORN_KEEPALIVE} \
     --max-requests 1000 \
