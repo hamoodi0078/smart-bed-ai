@@ -36,7 +36,7 @@ pydantic-settings==2.5.0           # Typed env-var config (replaces untyped conf
 loguru==0.7.2                      # Structured logging across all AI modules
 
 # ── Retry & resilience ──────────────────────────────────────────────
-tenacity==8.3.0                    # Retry with backoff (replaces custom circuit breaker)
+tenacity==8.5.0                    # Retry with backoff — bumped from 8.3.0 to satisfy instructor>=8.4.1
 
 # ── Scheduling ──────────────────────────────────────────────────────
 APScheduler==3.10.4                # Cron-based scheduler (replaces manual hour/min windows)
