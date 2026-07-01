@@ -60,7 +60,7 @@ pgvector==0.3.2                    # PostgreSQL vector similarity — replaces C
 
 # ── Claude / Anthropic AI ────────────────────────────────────────────
 anthropic==0.40.0                 # Claude API client — prompt caching + streaming + adaptive thinking
-instructor==1.4.3                 # Structured LLM outputs via Pydantic — wraps any LLM client
+instructor==1.7.0                 # Bumped from 1.4.3 — supports openai>=2.0.0, resolves litellm conflict
 litellm==1.83.0                   # Universal LLM router — one interface for 100+ providers (Anthropic, OpenAI, Gemini…)
 langchain-core>=0.3.0,<0.4.0       # LangChain core abstractions: typed messages, PromptTemplate, output parsers, LCEL runnables
 
