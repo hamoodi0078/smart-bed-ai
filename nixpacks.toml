@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["python312", "gcc", "portaudio"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt", "pip install gunicorn"]
+
+[start]
+cmd = "gunicorn api.app_factory:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120"
