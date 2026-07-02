@@ -36,7 +36,7 @@ pydantic-settings==2.5.0           # Typed env-var config (replaces untyped conf
 loguru==0.7.2                      # Structured logging across all AI modules
 
 # ── Retry & resilience ──────────────────────────────────────────────
-tenacity==9.0.0                    # Retry with backoff (replaces custom circuit breaker)
+tenacity==8.3.0                    # Retry with backoff (replaces custom circuit breaker)
 
 # ── Scheduling ──────────────────────────────────────────────────────
 APScheduler==3.10.4                # Cron-based scheduler (replaces manual hour/min windows)
@@ -60,7 +60,7 @@ pgvector==0.3.2                    # PostgreSQL vector similarity — replaces C
 
 # ── Claude / Anthropic AI ────────────────────────────────────────────
 anthropic==0.40.0                 # Claude API client — prompt caching + streaming + adaptive thinking
-instructor==1.4.3                 # Structured LLM outputs via Pydantic — wraps any LLM client
+instructor==1.7.0                 # Bumped from 1.4.3 — supports openai>=2.0.0, resolves litellm conflict
 litellm==1.83.0                   # Universal LLM router — one interface for 100+ providers (Anthropic, OpenAI, Gemini…)
 langchain-core>=0.3.0,<0.4.0       # LangChain core abstractions: typed messages, PromptTemplate, output parsers, LCEL runnables
 
@@ -92,11 +92,6 @@ weasyprint==62.3                   # HTML/CSS → PDF renderer — weekly report
 # ── Utilities ───────────────────────────────────────────────────────
 qrcode[pil]==7.4.2
 tzdata==2024.1
-
-# ── Raspberry Pi sensors (optional — only needed on the Pi) ────
-adafruit-circuitpython-dht>=3.7.0   # AM2301A / DHT22 temperature + humidity
-max30102>=0.1.0                      # MAX30102 heart-rate + SpO2 (I2C)
-hrcalc>=1.0                          # Heart-rate calculation from MAX30102 IR/Red data
 
 # ── Monitoring (optional) ───────────────────────────────────────
 psutil==5.9.8
