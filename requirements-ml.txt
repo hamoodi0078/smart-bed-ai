@@ -1,0 +1,12 @@
+# ── Heavy ML packages — install separately on GPU/ML worker only ────
+# DO NOT include these in your main Railway web service.
+# Install with: pip install -r requirements-ml.txt
+
+pyannote.audio==3.3.0
+torch>=2.0.0,<2.13.0
+torchaudio>=2.2.0
+speechbrain>=0.5.14
+pytorch-metric-learning>=2.1.0
+lightning>=2.0.1
+sentence-transformers==3.0.1
+chromadb==0.5.3
