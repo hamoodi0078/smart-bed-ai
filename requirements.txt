@@ -79,8 +79,11 @@ slowapi==0.1.9                     # Battle-tested FastAPI rate limiter
 
 # ── Observability ───────────────────────────────────────────────────
 prometheus-client==0.21.0
-opentelemetry-sdk>=1.25.0          # Unpinned — lets pip satisfy chromadb + exporter version together
-opentelemetry-instrumentation-fastapi==0.47b0  # Bumped from 0.46b0 to match unpinned otel-sdk
+# Pinned as a matched set: api==1.26.0, sdk==1.26.0, instrumentation==0.47b0
+# semantic-conventions 0.47b0 requires api==1.26.0 exactly
+opentelemetry-api==1.26.0
+opentelemetry-sdk==1.26.0
+opentelemetry-instrumentation-fastapi==0.47b0
 sentry-sdk[fastapi]==2.8.0                     # Error tracking + performance monitoring
 
 # ── AWS ─────────────────────────────────────────────────────────────
