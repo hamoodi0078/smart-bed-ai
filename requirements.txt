@@ -60,7 +60,7 @@ pgvector==0.3.2                    # PostgreSQL vector similarity — replaces C
 
 # ── Claude / Anthropic AI ────────────────────────────────────────────
 anthropic==0.40.0                 # Claude API client — prompt caching + streaming + adaptive thinking
-openai>=1.52.0,<2.0.0             # Pinned to satisfy instructor<2.0.0 requirement; litellm downgraded to match
+openai>=1.52.0,<2.0.0             # Pinned: satisfies instructor<2.0.0; litellm 1.57.4 compatible
 instructor==1.7.0                 # Structured LLM outputs via Pydantic — requires openai>=1.52.0,<2.0.0
 litellm==1.57.4                   # Downgraded from 1.83.0 — last version compatible with openai<2.0.0
 langchain-core>=0.3.0,<0.4.0       # LangChain core abstractions: typed messages, PromptTemplate, output parsers, LCEL runnables
@@ -79,9 +79,9 @@ slowapi==0.1.9                     # Battle-tested FastAPI rate limiter
 
 # ── Observability ───────────────────────────────────────────────────
 prometheus-client==0.21.0
-opentelemetry-sdk==1.25.0                          # Distributed tracing (spans)
-opentelemetry-instrumentation-fastapi==0.46b0      # FastAPI auto-instrumentation
-sentry-sdk[fastapi]==2.8.0                         # Error tracking + performance monitoring (FastAPI + SQLAlchemy + logging integrations)
+opentelemetry-sdk>=1.25.0          # Unpinned — lets pip satisfy chromadb + exporter version together
+opentelemetry-instrumentation-fastapi==0.47b0  # Bumped from 0.46b0 to match unpinned otel-sdk
+sentry-sdk[fastapi]==2.8.0                     # Error tracking + performance monitoring
 
 # ── AWS ─────────────────────────────────────────────────────────────
 boto3==1.34.144                    # AWS SDK — S3 report storage, SES email delivery
