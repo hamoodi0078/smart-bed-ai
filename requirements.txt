@@ -36,7 +36,7 @@ pydantic-settings==2.5.0           # Typed env-var config (replaces untyped conf
 loguru==0.7.2                      # Structured logging across all AI modules
 
 # ── Retry & resilience ──────────────────────────────────────────────
-tenacity==9.0.0                    # Retry with backoff (replaces custom circuit breaker)
+tenacity==9.0.0                    # Retry with backoff — satisfies instructor>=9.0.0 requirement
 
 # ── Scheduling ──────────────────────────────────────────────────────
 APScheduler==3.10.4                # Cron-based scheduler (replaces manual hour/min windows)
@@ -60,8 +60,9 @@ pgvector==0.3.2                    # PostgreSQL vector similarity — replaces C
 
 # ── Claude / Anthropic AI ────────────────────────────────────────────
 anthropic==0.40.0                 # Claude API client — prompt caching + streaming + adaptive thinking
-instructor==1.7.0                 # Bumped from 1.4.3 — supports openai>=2.0.0, resolves litellm conflict
-litellm==1.83.0                   # Universal LLM router — one interface for 100+ providers (Anthropic, OpenAI, Gemini…)
+openai>=1.52.0,<2.0.0             # Pinned to satisfy instructor<2.0.0 requirement; litellm downgraded to match
+instructor==1.7.0                 # Structured LLM outputs via Pydantic — requires openai>=1.52.0,<2.0.0
+litellm==1.57.4                   # Downgraded from 1.83.0 — last version compatible with openai<2.0.0
 langchain-core>=0.3.0,<0.4.0       # LangChain core abstractions: typed messages, PromptTemplate, output parsers, LCEL runnables
 
 # ── Voice / AI ──────────────────────────────────────────────────────
