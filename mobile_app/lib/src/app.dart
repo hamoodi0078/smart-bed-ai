@@ -16,7 +16,6 @@ import '../screens/partner/partner_mode_screen.dart';
 import '../screens/scenes/scenes_gallery_screen.dart';
 import '../screens/alarm/smart_alarm_screen.dart';
 import '../screens/sleep_tips/sleep_tips_screen.dart';
-import '../screens/qr/qr_scanner_screen.dart';
 import '../screens/islamic/islamic_mode_screen.dart';
 import 'state/auth_controller.dart';
 import 'state/locale_controller.dart';
@@ -194,10 +193,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/sleep-tips',
         builder: (context, state) => const SleepTipsScreen(),
-      ),
-      GoRoute(
-        path: '/qr',
-        builder: (context, state) => const QRScannerScreen(),
       ),
       GoRoute(
         path: '/islamic-mode',
