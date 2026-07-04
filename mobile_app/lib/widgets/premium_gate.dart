@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
@@ -216,7 +216,7 @@ class _PremiumUpgradeSheet extends StatelessWidget {
                 children: [
                   Container(
                     padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
                         colors: [
@@ -300,7 +300,7 @@ class _PremiumUpgradeSheet extends StatelessWidget {
   }
 
   Widget _buildFeatureList() {
-    return Column(
+    return const Column(
       children: [
         _FeatureItem(
           icon: Icons.palette_rounded,

@@ -21,16 +21,16 @@ class _SmartAlarmScreenState extends ConsumerState<SmartAlarmScreen> {
   bool _isSaving = false;
 
   final List<_SleepCycle> _predictedCycles = [
-    _SleepCycle(phase: 'Light', startTime: '22:00', duration: 30, isOptimal: false),
-    _SleepCycle(phase: 'Deep', startTime: '22:30', duration: 90, isOptimal: false),
-    _SleepCycle(phase: 'REM', startTime: '00:00', duration: 60, isOptimal: false),
-    _SleepCycle(phase: 'Light', startTime: '01:00', duration: 30, isOptimal: true),
-    _SleepCycle(phase: 'Deep', startTime: '01:30', duration: 90, isOptimal: false),
-    _SleepCycle(phase: 'REM', startTime: '03:00', duration: 60, isOptimal: false),
-    _SleepCycle(phase: 'Light', startTime: '04:00', duration: 30, isOptimal: false),
-    _SleepCycle(phase: 'Deep', startTime: '04:30', duration: 90, isOptimal: false),
-    _SleepCycle(phase: 'Light', startTime: '06:00', duration: 30, isOptimal: true),
-    _SleepCycle(phase: 'REM', startTime: '06:30', duration: 45, isOptimal: true),
+    const _SleepCycle(phase: 'Light', startTime: '22:00', duration: 30, isOptimal: false),
+    const _SleepCycle(phase: 'Deep', startTime: '22:30', duration: 90, isOptimal: false),
+    const _SleepCycle(phase: 'REM', startTime: '00:00', duration: 60, isOptimal: false),
+    const _SleepCycle(phase: 'Light', startTime: '01:00', duration: 30, isOptimal: true),
+    const _SleepCycle(phase: 'Deep', startTime: '01:30', duration: 90, isOptimal: false),
+    const _SleepCycle(phase: 'REM', startTime: '03:00', duration: 60, isOptimal: false),
+    const _SleepCycle(phase: 'Light', startTime: '04:00', duration: 30, isOptimal: false),
+    const _SleepCycle(phase: 'Deep', startTime: '04:30', duration: 90, isOptimal: false),
+    const _SleepCycle(phase: 'Light', startTime: '06:00', duration: 30, isOptimal: true),
+    const _SleepCycle(phase: 'REM', startTime: '06:30', duration: 45, isOptimal: true),
   ];
 
   @override
@@ -254,7 +254,7 @@ class _SmartAlarmScreenState extends ConsumerState<SmartAlarmScreen> {
                 'Wake during light sleep phase',
                 style: TextStyle(color: AppColors.softWhite, fontSize: 13),
               ),
-              activeColor: AppColors.accent,
+              activeThumbColor: AppColors.accent,
               contentPadding: EdgeInsets.zero,
             ),
           ),
@@ -307,7 +307,7 @@ class _SmartAlarmScreenState extends ConsumerState<SmartAlarmScreen> {
                 'Suggest optimal bedtime based on cycles',
                 style: TextStyle(color: AppColors.softWhite, fontSize: 13),
               ),
-              activeColor: AppColors.purple,
+              activeThumbColor: AppColors.purple,
               contentPadding: EdgeInsets.zero,
             ),
           ),

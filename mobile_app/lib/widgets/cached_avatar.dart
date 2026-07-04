@@ -28,8 +28,8 @@ class CachedAvatar extends StatelessWidget {
         radius: radius,
         backgroundImage: imageProvider,
       ),
-      placeholder: (_, __) => _fallback(),
-      errorWidget: (_, __, ___) => _fallback(),
+      placeholder: (_, _) => _fallback(),
+      errorWidget: (_, _, _) => _fallback(),
     );
   }
 

@@ -15,7 +15,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
   late final AudioPlayer _player;
 
   final List<_Sound> _sounds = [
-    _Sound(
+    const _Sound(
       id: '1',
       name: 'Ocean Waves',
       description: 'Gentle waves on a peaceful shore',
@@ -24,7 +24,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
       isPremium: false,
       duration: '30 min',
     ),
-    _Sound(
+    const _Sound(
       id: '2',
       name: 'Rain on Window',
       description: 'Soft rainfall with distant thunder',
@@ -33,7 +33,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
       isPremium: false,
       duration: '45 min',
     ),
-    _Sound(
+    const _Sound(
       id: '3',
       name: 'Forest Night',
       description: 'Crickets and gentle wind in trees',
@@ -42,7 +42,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
       isPremium: false,
       duration: '60 min',
     ),
-    _Sound(
+    const _Sound(
       id: '4',
       name: 'White Noise',
       description: 'Pure white noise for deep focus',
@@ -51,7 +51,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
       isPremium: false,
       duration: 'Loop',
     ),
-    _Sound(
+    const _Sound(
       id: '5',
       name: 'Quran Recitation',
       description: 'Peaceful Quran verses (Surah Al-Mulk)',
@@ -60,7 +60,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
       isPremium: false,
       duration: '20 min',
     ),
-    _Sound(
+    const _Sound(
       id: '6',
       name: 'Fireplace',
       description: 'Crackling fire in a cozy cabin',
@@ -69,7 +69,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
       isPremium: true,
       duration: '60 min',
     ),
-    _Sound(
+    const _Sound(
       id: '7',
       name: 'Meditation Bell',
       description: 'Tibetan singing bowls',
@@ -78,7 +78,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen> {
       isPremium: true,
       duration: '15 min',
     ),
-    _Sound(
+    const _Sound(
       id: '8',
       name: 'Cat Purring',
       description: 'Soothing purr sounds',

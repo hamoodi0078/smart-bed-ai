@@ -325,7 +325,7 @@ class _AlarmCard extends StatelessWidget {
                       child: Switch(
                         value: alarm.isEnabled,
                         onChanged: (_) => onToggle(),
-                        activeColor: AppColors.accent,
+                        activeThumbColor: AppColors.accent,
                         activeTrackColor:
                             AppColors.accent.withValues(alpha: 0.4),
                       ),

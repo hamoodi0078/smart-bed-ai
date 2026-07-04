@@ -187,10 +187,10 @@ class _ConnectBedScreenState extends ConsumerState<ConnectBedScreen> {
                       ? MobileScanner(
                           onDetect: _onScanBarcode,
                         )
-                      : Center(
+                      : const Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
-                            children: const <Widget>[
+                            children: <Widget>[
                               Icon(Icons.qr_code_scanner_rounded, size: 52),
                               SizedBox(height: 10),
                               Text('Scanner paused'),

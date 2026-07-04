@@ -33,7 +33,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
       unlockedAt: DateTime.now().subtract(const Duration(days: 1)),
       points: 25,
     ),
-    _Achievement(
+    const _Achievement(
       id: '3',
       title: 'Perfect Week',
       description: 'Complete all wind-down sessions for a week',
@@ -44,7 +44,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
       maxProgress: 7,
       points: 50,
     ),
-    _Achievement(
+    const _Achievement(
       id: '4',
       title: 'Dana\'s Friend',
       description: 'Have 50 conversations with Dana',
@@ -55,7 +55,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
       maxProgress: 50,
       points: 30,
     ),
-    _Achievement(
+    const _Achievement(
       id: '5',
       title: 'Prayer Master',
       description: 'Never miss a prayer for 30 days',
@@ -66,7 +66,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
       maxProgress: 30,
       points: 100,
     ),
-    _Achievement(
+    const _Achievement(
       id: '6',
       title: 'Sleep Scholar',
       description: 'Maintain 85+ sleep score for a month',

@@ -101,7 +101,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     height: 100,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      gradient: LinearGradient(
+                                      gradient: const LinearGradient(
                                         colors: [AppColors.accent, AppColors.purple],
                                       ),
                                       border: Border.all(color: AppColors.white, width: 3),
@@ -256,7 +256,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        SingleChildScrollView(
+        const SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
@@ -357,10 +357,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           title: 'Sign Out',
           subtitle: 'Log out of your account',
           onTap: () async {
+            final navigator = Navigator.of(context);
             await ApiService.logout();
-            if (context.mounted) {
-              Navigator.of(context).pushReplacementNamed('/login');
-            }
+            navigator.pushReplacementNamed('/login');
           },
           isDestructive: true,
         ),

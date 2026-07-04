@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
@@ -13,7 +13,6 @@ class LedControlScreen extends StatefulWidget {
 class _LedControlScreenState extends State<LedControlScreen> {
   Color _selectedColor = const Color(0xFF00D4FF);
   double _brightness = 0.8;
-  bool _isOn = true;
   bool _isSending = false;
 
   final List<Color> _favoriteColors = [
@@ -28,7 +27,7 @@ class _LedControlScreenState extends State<LedControlScreen> {
   Future<void> _applyColor() async {
     setState(() => _isSending = true);
     
-    final colorHex = _selectedColor.value.toRadixString(16).substring(2);
+    final colorHex = _selectedColor.toARGB32().toRadixString(16).substring(2);
     final brightness = (_brightness * 100).toInt();
     
     await ApiService.setLighting('#$colorHex', brightness);
@@ -267,7 +266,7 @@ class _LedControlScreenState extends State<LedControlScreen> {
           spacing: 12,
           runSpacing: 12,
           children: _favoriteColors.map((color) {
-            final isSelected = _selectedColor.value == color.value;
+            final isSelected = _selectedColor == color;
             return GestureDetector(
               onTap: () => setState(() => _selectedColor = color),
               child: Container(

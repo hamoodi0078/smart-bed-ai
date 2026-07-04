@@ -124,7 +124,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
       ),
       child: Row(
         children: [
-          SizedBox(
+          const SizedBox(
             width: 90,
             height: 90,
             child: Stack(
@@ -134,9 +134,9 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
                   value: 0.78,
                   strokeWidth: 8,
                   backgroundColor: AppColors.cardBg,
-                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                 ),
-                const Column(
+                Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
@@ -211,7 +211,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
   }
 
   Widget _buildVitalStatsRow() {
-    return Row(
+    return const Row(
       children: [
         Expanded(
           child: _VitalCard(
@@ -221,16 +221,16 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
             color: AppColors.accent,
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: 10),
         Expanded(
           child: _VitalCard(
             icon: Icons.water_drop_rounded,
             label: 'Hydration',
             value: '60%',
-            color: const Color(0xFF4FC3F7),
+            color: Color(0xFF4FC3F7),
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: 10),
         Expanded(
           child: _VitalCard(
             icon: Icons.local_fire_department_rounded,
@@ -546,9 +546,9 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
 
   Widget _buildSleepInsightsCard() {
     final insights = [
-      _Insight('Your deep sleep improved by 8% this week', Icons.trending_up_rounded, Colors.green),
-      _Insight('Wind-down sessions correlate with better REM sleep', Icons.nightlight_round, AppColors.accent),
-      _Insight('Try sleeping 30 min earlier for optimal rest', Icons.tips_and_updates_rounded, AppColors.gold),
+      const _Insight('Your deep sleep improved by 8% this week', Icons.trending_up_rounded, Colors.green),
+      const _Insight('Wind-down sessions correlate with better REM sleep', Icons.nightlight_round, AppColors.accent),
+      const _Insight('Try sleeping 30 min earlier for optimal rest', Icons.tips_and_updates_rounded, AppColors.gold),
     ];
 
     return Container(

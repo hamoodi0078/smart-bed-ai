@@ -64,10 +64,10 @@ class _BedViewerScreenState extends State<BedViewerScreen> {
                             style: theme.textTheme.bodyLarge,
                           ),
                           const SizedBox(height: 16),
-                          Wrap(
+                          const Wrap(
                             spacing: 10,
                             runSpacing: 10,
-                            children: const <Widget>[
+                            children: <Widget>[
                               StatusPill(label: 'GLB loaded', tone: StatusTone.success),
                               StatusPill(label: 'Camera controls', tone: StatusTone.info),
                               StatusPill(label: 'Hotspots bound', tone: StatusTone.warning),

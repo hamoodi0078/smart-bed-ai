@@ -8,7 +8,7 @@ class JournalStore {
     await Hive.openBox(_boxName);
   }
 
-  static Box get _box => Hive.box(_boxName);
+  static Box<dynamic> get _box => Hive.box<dynamic>(_boxName);
 
   static Future<void> add(Map<String, dynamic> entry) async {
     await _box.add(entry);

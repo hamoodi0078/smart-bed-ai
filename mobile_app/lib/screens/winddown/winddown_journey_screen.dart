@@ -244,15 +244,15 @@ class _WindDownJourneyScreenState extends State<WindDownJourneyScreen>
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
           ),
-          child: Column(
+          child: const Column(
             children: [
-              const Icon(
+              Icon(
                 Icons.nightlight_round,
                 size: 64,
                 color: AppColors.accent,
               ),
-              const SizedBox(height: 16),
-              const Text(
+              SizedBox(height: 16),
+              Text(
                 'Ready for a restful night?',
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -261,8 +261,8 @@ class _WindDownJourneyScreenState extends State<WindDownJourneyScreen>
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 8),
-              const Text(
+              SizedBox(height: 8),
+              Text(
                 'This 6-minute journey will guide you through breathing, lighting, and ambient sounds.',
                 textAlign: TextAlign.center,
                 style: TextStyle(

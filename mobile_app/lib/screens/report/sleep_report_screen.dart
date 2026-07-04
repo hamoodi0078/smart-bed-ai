@@ -144,7 +144,7 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                 width: 72,
                 height: 4,
                 fit: BoxFit.fitWidth,
-                errorBuilder: (_, __, ___) => const LinearProgressIndicator(
+                errorBuilder: (_, _, _) => const LinearProgressIndicator(
                   minHeight: 2,
                   color: Color(0xFF00D4FF),
                   backgroundColor: Colors.transparent,
@@ -327,17 +327,17 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Avg Sleep',
                       style: TextStyle(
                         color: Color(0xFF9CA6BF),
                         fontSize: 12,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       _avgSleep,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: AppColors.accent,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -358,17 +358,17 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Nights Tracked',
                       style: TextStyle(
                         color: Color(0xFF9CA6BF),
                         fontSize: 12,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       _nightsTracked,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: AppColors.accent,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -435,7 +435,7 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                   show: true,
                   drawVerticalLine: false,
                   horizontalInterval: 2,
-                  getDrawingHorizontalLine: (_) => FlLine(
+                  getDrawingHorizontalLine: (_) => const FlLine(
                     color: Colors.white10,
                     strokeWidth: 1,
                   ),
@@ -468,7 +468,7 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
                 barTouchData: BarTouchData(
                   touchTooltipData: BarTouchTooltipData(
                     getTooltipColor: (_) => const Color(0xFF1E2D45),
-                    getTooltipItem: (group, _, rod, __) => BarTooltipItem(
+                    getTooltipItem: (group, _, rod, _) => BarTooltipItem(
                       '${rod.toY.toStringAsFixed(1)}h',
                       const TextStyle(color: AppColors.white, fontSize: 11),
                     ),
@@ -581,7 +581,7 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             "🌙 Dana's Insight",
             style: TextStyle(
               color: AppColors.white,
@@ -589,12 +589,12 @@ class _SleepReportScreenState extends State<SleepReportScreen> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
             _danaSummary.isNotEmpty
                 ? _danaSummary
                 : 'Keep your routine consistent for better sleep!',
-            style: TextStyle(
+            style: const TextStyle(
               color: AppColors.softWhite,
               fontSize: 12,
               fontStyle: FontStyle.italic,

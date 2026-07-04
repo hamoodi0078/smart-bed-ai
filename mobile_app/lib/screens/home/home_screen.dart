@@ -39,9 +39,9 @@ final homeDashboardProvider = FutureProvider.autoDispose<_HomeData>((ref) async 
     ApiService.getDeviceStatus(),
     ApiService.getUserMe(),
   ]);
-  final dashData = results[0] as Map<String, dynamic>;
-  final deviceData = results[1] as Map<String, dynamic>;
-  final userData = results[2] as Map<String, dynamic>;
+  final dashData = results[0];
+  final deviceData = results[1];
+  final userData = results[2];
 
   final allFailed = dashData['error'] == true &&
       deviceData['error'] == true &&
@@ -323,7 +323,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           // Animated gradient background
           AnimatedBuilder(
             animation: _bgAnimCtrl,
-            builder: (_, __) => Container(
+            builder: (_, _) => Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -514,7 +514,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: feed.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (_, i) {
               final item = feed[i];
               final status = item['status'] as String? ?? 'info';
@@ -709,12 +709,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.nightlight_round,
+              Icon(Icons.nightlight_round,
                   color: AppColors.accent, size: 18),
-              const SizedBox(width: 8),
-              const Expanded(
+              SizedBox(width: 8),
+              Expanded(
                 child: Text(
                   'Peace be with you. Ready for a restful night?',
                   style: TextStyle(

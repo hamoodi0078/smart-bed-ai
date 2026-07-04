@@ -14,12 +14,12 @@ class _SpotifyScreenState extends State<SpotifyScreen> {
   double _volume = 0.5;
   int? _sleepTimer;
 
-  final _currentTrack = _Track(
+  final _currentTrack = const _Track(
     title: 'Ocean Waves',
     artist: 'Nature Sounds',
     album: 'Sleep Collection',
-    duration: const Duration(minutes: 45),
-    position: const Duration(minutes: 12, seconds: 34),
+    duration: Duration(minutes: 45),
+    position: Duration(minutes: 12, seconds: 34),
   );
 
   final List<_Playlist> _playlists = const [

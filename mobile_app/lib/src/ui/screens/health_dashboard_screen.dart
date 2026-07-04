@@ -215,9 +215,9 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
   }
 
   Widget _buildVitalStatsRow() {
-    return Row(
+    return const Row(
       children: <Widget>[
-        const Expanded(
+        Expanded(
           child: _VitalCard(
             icon: Icons.bedtime_rounded,
             label: 'Avg Sleep',
@@ -225,8 +225,8 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
             color: SmartBedPalette.accent,
           ),
         ),
-        const SizedBox(width: 10),
-        const Expanded(
+        SizedBox(width: 10),
+        Expanded(
           child: _VitalCard(
             icon: Icons.water_drop_rounded,
             label: 'Hydration',
@@ -234,7 +234,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
             color: Color(0xFF4FC3F7),
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: 10),
         Expanded(
           child: _VitalCard(
             icon: Icons.local_fire_department_rounded,

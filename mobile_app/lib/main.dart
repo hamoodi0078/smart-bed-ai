@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
-import 'screens/main_shell.dart';
 import 'services/journal_store.dart';
 import 'services/local_notification_service.dart';
 import 'src/app.dart';

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class ErrorState extends StatelessWidget {
@@ -27,9 +27,9 @@ class ErrorState extends StatelessWidget {
               color: AppColors.orange,
             ),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'Oops!',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.white,
                 fontSize: 22,
                 fontWeight: FontWeight.w700,

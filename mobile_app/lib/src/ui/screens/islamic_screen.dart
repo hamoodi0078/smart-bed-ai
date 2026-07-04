@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
@@ -141,19 +141,19 @@ class IslamicScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(32),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 520),
-                child: PanelCard(
+                child: const PanelCard(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      const Icon(Icons.star_rounded, size: 56, color: Colors.amber),
-                      const SizedBox(height: 16),
-                      const Text(
+                      Icon(Icons.star_rounded, size: 56, color: Colors.amber),
+                      SizedBox(height: 16),
+                      Text(
                         'Premium Feature',
                         style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 10),
-                      const Text(
+                      SizedBox(height: 10),
+                      Text(
                         'Islamic Mode is available on the Premium plan. Upgrade to access prayer timings, Ramadan mode, and Tahajjud scheduling.',
                         textAlign: TextAlign.center,
                       ),

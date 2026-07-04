@@ -231,6 +231,7 @@ class _SleepJournalScreenState extends State<SleepJournalScreen> {
     ).then((result) {
       if (result != null && result is _JournalEntry) {
         JournalStore.add(_entryToMap(result));
+        if (!mounted) return;
         setState(() {
           _entries.insert(0, result);
         });
@@ -448,7 +449,7 @@ class _JournalCard extends StatelessWidget {
     
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
-    if (diff < 7) return '${diff} days ago';
+    if (diff < 7) return '$diff days ago';
     
     return '${date.day}/${date.month}/${date.year}';
   }

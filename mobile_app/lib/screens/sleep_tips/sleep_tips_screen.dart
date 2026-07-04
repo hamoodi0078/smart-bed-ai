@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 
 class SleepTipsScreen extends StatefulWidget {
@@ -12,7 +12,7 @@ class _SleepTipsScreenState extends State<SleepTipsScreen> with SingleTickerProv
   late TabController _tabController;
 
   final List<_SleepTip> _allTips = [
-    _SleepTip(
+    const _SleepTip(
       id: '1',
       category: 'Routine',
       title: 'Consistent Sleep Schedule',
@@ -21,7 +21,7 @@ class _SleepTipsScreenState extends State<SleepTipsScreen> with SingleTickerProv
       color: AppColors.purple,
       isNew: true,
     ),
-    _SleepTip(
+    const _SleepTip(
       id: '2',
       category: 'Environment',
       title: 'Optimal Bedroom Temperature',
@@ -30,7 +30,7 @@ class _SleepTipsScreenState extends State<SleepTipsScreen> with SingleTickerProv
       color: AppColors.accent,
       isNew: false,
     ),
-    _SleepTip(
+    const _SleepTip(
       id: '3',
       category: 'Diet',
       title: 'Avoid Caffeine After 2 PM',
@@ -39,7 +39,7 @@ class _SleepTipsScreenState extends State<SleepTipsScreen> with SingleTickerProv
       color: AppColors.orange,
       isNew: true,
     ),
-    _SleepTip(
+    const _SleepTip(
       id: '4',
       category: 'Environment',
       title: 'Darkness is Essential',
@@ -48,7 +48,7 @@ class _SleepTipsScreenState extends State<SleepTipsScreen> with SingleTickerProv
       color: AppColors.purple,
       isNew: false,
     ),
-    _SleepTip(
+    const _SleepTip(
       id: '5',
       category: 'Routine',
       title: 'Wind-Down Ritual',
@@ -57,7 +57,7 @@ class _SleepTipsScreenState extends State<SleepTipsScreen> with SingleTickerProv
       color: AppColors.accent,
       isNew: false,
     ),
-    _SleepTip(
+    const _SleepTip(
       id: '6',
       category: 'Technology',
       title: 'Limit Screen Time',
@@ -66,7 +66,7 @@ class _SleepTipsScreenState extends State<SleepTipsScreen> with SingleTickerProv
       color: AppColors.orange,
       isNew: true,
     ),
-    _SleepTip(
+    const _SleepTip(
       id: '7',
       category: 'Diet',
       title: 'Light Evening Meals',
@@ -75,7 +75,7 @@ class _SleepTipsScreenState extends State<SleepTipsScreen> with SingleTickerProv
       color: AppColors.gold,
       isNew: false,
     ),
-    _SleepTip(
+    const _SleepTip(
       id: '8',
       category: 'Exercise',
       title: 'Regular Physical Activity',

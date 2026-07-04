@@ -56,11 +56,11 @@ class LiveSensorCard extends ConsumerWidget {
               ),
               const Spacer(),
               sensorAsync.when(
-                data: (_) => _StatusDot(color: Colors.green, label: 'Live'),
+                data: (_) => const _StatusDot(color: Colors.green, label: 'Live'),
                 loading: () =>
-                    _StatusDot(color: AppColors.orange, label: 'Loading'),
-                error: (_, __) =>
-                    _StatusDot(color: Colors.red, label: 'Offline'),
+                    const _StatusDot(color: AppColors.orange, label: 'Loading'),
+                error: (_, _) =>
+                    const _StatusDot(color: Colors.red, label: 'Offline'),
               ),
             ],
           ),
@@ -68,7 +68,7 @@ class LiveSensorCard extends ConsumerWidget {
           sensorAsync.when(
             data: (data) => _SensorGrid(data: data),
             loading: () => const _SensorGrid(data: {}),
-            error: (_, __) => const _SensorGrid(data: {}),
+            error: (_, _) => const _SensorGrid(data: {}),
           ),
         ],
       ),
