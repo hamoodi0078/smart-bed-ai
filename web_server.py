@@ -444,6 +444,7 @@ class UserDeviceControlRequest(BaseModel):
     audio_on: bool = False
     alarm_on: bool = True
     light_level: int = Field(default=65, ge=0, le=100)
+    light_color: str = Field(default="", max_length=16)  # "#RRGGBB"; empty = keep current
 
 
 class UserActionRequest(BaseModel):
@@ -1288,11 +1289,14 @@ def _normalize_device_controls(payload: dict[str, Any] | None) -> dict[str, Any]
     except Exception:
         light_level = 65
     light_level = max(10, min(100, light_level))
+    raw_color = str(data.get("light_color", "") or "").strip().upper()
+    light_color = raw_color if re.fullmatch(r"#[0-9A-F]{6}", raw_color) else ""
     return {
         "lights_on": bool(data.get("lights_on", False)),
         "audio_on": bool(data.get("audio_on", False)),
         "alarm_on": bool(data.get("alarm_on", True)),
         "light_level": light_level,
+        "light_color": light_color,
     }
 
 

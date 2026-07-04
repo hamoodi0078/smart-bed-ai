@@ -83,81 +83,10 @@ class ApiService {
     return headers;
   }
 
-  static Future<Map<String, dynamic>> register(
-    String email,
-    String password,
-    String name,
-  ) async {
-    try {
-      final http.Response response = await _post(
-        Uri.parse('$baseUrl/v1/auth/register'),
-        headers: const <String, String>{'Content-Type': 'application/json'},
-        body: jsonEncode(<String, dynamic>{
-          'email': email,
-          'password': password,
-          'name': name,
-        }),
-      );
-
-      final Map<String, dynamic> decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      final dynamic token = decoded['token'] ?? decoded['access_token'];
-    if (token is String && token.isNotEmpty) {
-      await saveToken(token);
-    }
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
-  static Future<Map<String, dynamic>> login(
-    String email,
-    String password,
-  ) async {
-    try {
-      final http.Response response = await _post(
-        Uri.parse('$baseUrl/v1/auth/login'),
-        headers: const <String, String>{'Content-Type': 'application/json'},
-        body: jsonEncode(<String, dynamic>{
-          'email': email,
-          'password': password,
-        }),
-      );
-
-      final Map<String, dynamic> decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-
-      final dynamic token = decoded['token'] ?? decoded['access_token'];
-      if (token is String && token.isNotEmpty) {
-        await saveToken(token);
-      }
-
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
   static Future<void> logout() async {
     try {
       await clearToken();
     } catch (_) {}
-  }
-
-  static Future<Map<String, dynamic>> getBedStatus() async {
-    try {
-      final http.Response response = await _get(
-        Uri.parse('$baseUrl/v1/bed/status'),
-        headers: await _authHeaders(),
-      );
-
-      final Map<String, dynamic> decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
   }
 
   static Future<Map<String, dynamic>> setLighting(
@@ -165,34 +94,16 @@ class ApiService {
     int brightness,
   ) async {
     try {
+      // Persist desired LED state via the device-controls contract; the bed
+      // (Raspberry Pi) reads the same GET endpoint to apply it.
+      final String hex = color.startsWith('#') ? color : '#$color';
       final http.Response response = await _post(
-        Uri.parse('$baseUrl/v1/bed/lighting'),
+        Uri.parse('$baseUrl/v1/mobile/device-controls'),
         headers: await _authHeaders(),
         body: jsonEncode(<String, dynamic>{
-          'color': color,
-          'brightness': brightness,
-        }),
-      );
-
-      final Map<String, dynamic> decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
-  static Future<Map<String, dynamic>> setAlarm(
-    String time,
-    bool enabled,
-  ) async {
-    try {
-      final http.Response response = await _post(
-        Uri.parse('$baseUrl/v1/bed/alarms'),
-        headers: await _authHeaders(),
-        body: jsonEncode(<String, dynamic>{
-          'time': time,
-          'enabled': enabled,
+          'lights_on': true,
+          'light_level': brightness,
+          'light_color': hex.toUpperCase(),
         }),
       );
 
@@ -228,10 +139,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> getDashboard() async {
+  static Future<Map<String, dynamic>> getDeviceStatus() async {
     try {
       final http.Response response = await _get(
-        Uri.parse('$baseUrl/v1/mobile/dashboard'),
+        Uri.parse('$baseUrl/v1/device/status'),
         headers: await _authHeaders(),
       );
 
@@ -243,10 +154,25 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> getDeviceStatus() async {
+  static Future<Map<String, dynamic>> getUserMe() async {
     try {
       final http.Response response = await _get(
-        Uri.parse('$baseUrl/v1/device/status'),
+        Uri.parse('$baseUrl/v1/mobile/auth/me'),
+        headers: await _authHeaders(),
+      );
+
+      final Map<String, dynamic> decoded = _decodeResponse(response);
+      _throwIfError(response, decoded);
+      return decoded;
+    } catch (e) {
+      return _errorMap(e);
+    }
+  }
+
+  static Future<Map<String, dynamic>> getDashboard() async {
+    try {
+      final http.Response response = await _get(
+        Uri.parse('$baseUrl/v1/mobile/dashboard'),
         headers: await _authHeaders(),
       );
 
@@ -394,40 +320,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> getUserMe() async {
-    try {
-      final http.Response response = await _get(
-        Uri.parse('$baseUrl/v1/mobile/auth/me'),
-        headers: await _authHeaders(),
-      );
-
-      final Map<String, dynamic> decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
   static Future<Map<String, dynamic>> getPlan() async {
     try {
       final http.Response response = await _get(
         Uri.parse('$baseUrl/v1/mobile/plan'),
-        headers: await _authHeaders(),
-      );
-
-      final Map<String, dynamic> decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
-  static Future<Map<String, dynamic>> getUsage() async {
-    try {
-      final http.Response response = await _get(
-        Uri.parse('$baseUrl/v1/mobile/usage'),
         headers: await _authHeaders(),
       );
 
@@ -543,49 +439,6 @@ class ApiService {
 
   // ── Wind-down ────────────────────────────────────────────────────────────────
 
-  static Future<Map<String, dynamic>> startWindDown(String userId) async {
-    try {
-      final response = await _post(
-        Uri.parse('$baseUrl/v1/winddown/start'),
-        headers: await _authHeaders(),
-        body: jsonEncode(<String, dynamic>{'user_id': userId}),
-      );
-      final decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
-  static Future<Map<String, dynamic>> nextWindDownStep() async {
-    try {
-      final response = await _post(
-        Uri.parse('$baseUrl/v1/winddown/next'),
-        headers: await _authHeaders(),
-      );
-      final decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
-  static Future<Map<String, dynamic>> getBreathingPattern(String pattern) async {
-    try {
-      final response = await _get(
-        Uri.parse('$baseUrl/v1/winddown/breathing/$pattern?cycles=3'),
-        headers: await _authHeaders(),
-      );
-      final decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
   // ── Achievements ─────────────────────────────────────────────────────────────
 
   static Future<Map<String, dynamic>> getAchievements() async {
@@ -604,79 +457,7 @@ class ApiService {
 
   // ── Dream Journal ─────────────────────────────────────────────────────────────
 
-  static Future<Map<String, dynamic>> getDreamJournal() async {
-    try {
-      final response = await _get(
-        Uri.parse('$baseUrl/v1/automation/dream-journal'),
-        headers: await _authHeaders(),
-      );
-      final decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
-  static Future<Map<String, dynamic>> addDreamEntry(String content, {String mood = ''}) async {
-    try {
-      final response = await _post(
-        Uri.parse('$baseUrl/v1/automation/dream-journal'),
-        headers: await _authHeaders(),
-        body: jsonEncode(<String, dynamic>{'content': content, 'mood': mood}),
-      );
-      final decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
   // ── Health ───────────────────────────────────────────────────────────────────
-
-  static Future<Map<String, dynamic>> getHealthReport() async {
-    try {
-      final response = await _get(
-        Uri.parse('$baseUrl/v1/automation/health-report'),
-        headers: await _authHeaders(),
-      );
-      final decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
-  static Future<Map<String, dynamic>> getHydrationStatus() async {
-    try {
-      final response = await _get(
-        Uri.parse('$baseUrl/v1/automation/hydration'),
-        headers: await _authHeaders(),
-      );
-      final decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
-
-  static Future<Map<String, dynamic>> logWater(int glasses) async {
-    try {
-      final response = await _post(
-        Uri.parse('$baseUrl/v1/automation/hydration/log'),
-        headers: await _authHeaders(),
-        body: jsonEncode(<String, dynamic>{'glasses': glasses}),
-      );
-      final decoded = _decodeResponse(response);
-      _throwIfError(response, decoded);
-      return decoded;
-    } catch (e) {
-      return _errorMap(e);
-    }
-  }
 
   /// Registers the device's Expo/FCM push token with the backend.
   static Future<void> registerPushToken(String token, {String platform = 'android'}) async {

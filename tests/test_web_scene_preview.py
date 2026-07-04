@@ -105,6 +105,7 @@ class TestWebScenePreview(unittest.TestCase):
             "audio_on": False,
             "alarm_on": True,
             "light_level": 62,
+            "light_color": "",
         }
         profile = {
             "web_device_controls": {
