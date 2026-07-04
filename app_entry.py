@@ -207,7 +207,6 @@ from voice_handler import (
     handle_local_commands
 )
 
-from loguru import logger  # noqa: E402 (setup_logging already called above)
 
 
 def main():

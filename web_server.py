@@ -298,11 +298,6 @@ async def bed_error_handler(request: Request, exc: BedError) -> JSONResponse:
     return bed_error_to_response(exc, trace_id=trace_id)
 
 
-@app.exception_handler(APIError)
-async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
-    trace_id = getattr(request.state, "trace_id", "")
-    return error_response(exc.code, exc.message, trace_id=trace_id, retry_after=exc.retry_after)
-
 
 @app.middleware("http")
 async def trace_id_middleware(request: Request, call_next):
@@ -7206,7 +7201,7 @@ def mobile_auth_refresh(payload: MobileRefreshRequest, request: Request) -> dict
     tokens = _db_mobile_auth_repository().refresh_tokens(refresh_token)
     if not isinstance(tokens, dict) or not tokens:
         # Compatibility path for older sessions issued before DB-backed mobile auth.
-        _log("warning", "mobile_token_refresh_db_miss", reason="token_not_found_or_expired_in_db")
+        _event("warning", "mobile_token_refresh_db_miss", reason="token_not_found_or_expired_in_db")
         tokens = store.refresh_mobile_access_token(refresh_token)
     if not isinstance(tokens, dict) or not tokens:
         raise HTTPException(status_code=401, detail="Refresh token is invalid or expired")

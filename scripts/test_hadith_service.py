@@ -19,7 +19,7 @@ def test_daily_hadith():
     print("\n📖 Fetching daily hadith...")
     hadith = service.get_daily_hadith()
     
-    print(f"\n✅ Hadith of the Day:")
+    print("\n✅ Hadith of the Day:")
     print(f"   {hadith.get('hadith', 'N/A')}")
     print(f"\n   Source: {hadith.get('source', 'N/A')}")
     if hadith.get('chapter'):
@@ -50,12 +50,12 @@ def test_cache():
     if cache_path.exists():
         cached = service._read_cache(cache_path)
         if cached:
-            print(f"   ✅ Cached hadith found")
+            print("   ✅ Cached hadith found")
             print(f"   Source: {cached.get('api_source', 'unknown')}")
         else:
-            print(f"   ❌ Failed to read cache")
+            print("   ❌ Failed to read cache")
     else:
-        print(f"   ℹ️ No cache yet (will be created on first fetch)")
+        print("   ℹ️ No cache yet (will be created on first fetch)")
     
     print()
 
@@ -84,11 +84,11 @@ def test_sunnah_tips():
     
     print(f"\n📊 Total tips available: {service.get_tips_count()}")
     
-    print(f"\n🌟 Tip of the night:")
+    print("\n🌟 Tip of the night:")
     tip = service.get_tip_of_night()
     print(f"   {tip}")
     
-    print(f"\n🔀 Random tip:")
+    print("\n🔀 Random tip:")
     random_tip = service.get_random_tip()
     print(f"   {random_tip}")
     
@@ -126,9 +126,9 @@ def test_deterministic_selection():
     # Verify same call returns same result
     book2, number2 = service._get_deterministic_book_and_number()
     if book == book2 and number == number2:
-        print(f"   ✅ Deterministic: Same date returns same selection")
+        print("   ✅ Deterministic: Same date returns same selection")
     else:
-        print(f"   ❌ Error: Results differ on same date!")
+        print("   ❌ Error: Results differ on same date!")
     
     print()
 
@@ -146,7 +146,7 @@ def test_api_sources():
     
     print(f"\n📡 Primary API: {service.HADITH_API_BASE}")
     print(f"   Fallback API: {service.RANDOM_HADITH_API}")
-    print(f"   Local fallback: 5 hadiths")
+    print("   Local fallback: 5 hadiths")
     
     print()
 
@@ -161,22 +161,22 @@ def test_full_integration():
     # Get daily hadith
     hadith_service = HadithService()
     hadith = hadith_service.get_daily_hadith()
-    print(f"\n1. Daily Hadith:")
+    print("\n1. Daily Hadith:")
     print(f"   {hadith['hadith'][:80]}...")
     print(f"   — {hadith.get('source', 'Unknown')}")
     
     # Get sleep hadith
     sleep_hadith = hadith_service.get_sleep_hadith()
-    print(f"\n2. Sleep Hadith:")
+    print("\n2. Sleep Hadith:")
     print(f"   {sleep_hadith['hadith'][:80]}...")
     
     # Get sunnah tip
     sunnah_service = SunnahSleepTips()
     tip = sunnah_service.get_tip_of_night()
-    print(f"\n3. Sunnah Tip:")
+    print("\n3. Sunnah Tip:")
     print(f"   {tip[:80]}...")
     
-    print(f"\n✅ All Islamic content loaded successfully!")
+    print("\n✅ All Islamic content loaded successfully!")
     print()
 
 

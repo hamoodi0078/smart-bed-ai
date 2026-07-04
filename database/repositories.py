@@ -1325,7 +1325,7 @@ class UpdateRepository:
         safe_platform = str(platform or "all").strip().lower()
         with self.db.get_session() as session:
             prev = list(session.execute(
-                select(AppVersion).where(AppVersion.platform == safe_platform, AppVersion.is_active == True)
+                select(AppVersion).where(AppVersion.platform == safe_platform, AppVersion.is_active.is_(True))
             ).scalars().all())
             for v in prev:
                 v.is_active = False
@@ -1368,7 +1368,7 @@ class UpdateRepository:
         with self.db.get_session() as session:
             row = session.execute(
                 select(AppVersion).where(
-                    AppVersion.is_active == True,
+                    AppVersion.is_active.is_(True),
                     AppVersion.platform.in_([safe_platform, "all"]),
                 ).order_by(AppVersion.created_at.desc())
             ).scalars().first()
@@ -1398,7 +1398,7 @@ class UpdateRepository:
                                 published_by: str | None = None) -> dict[str, Any]:
         with self.db.get_session() as session:
             prev = list(session.execute(
-                select(FirmwareVersion).where(FirmwareVersion.is_active == True)
+                select(FirmwareVersion).where(FirmwareVersion.is_active.is_(True))
             ).scalars().all())
             for v in prev:
                 v.is_active = False
@@ -1436,7 +1436,7 @@ class UpdateRepository:
     def get_active_firmware_version(self, device_id: str = "") -> dict[str, Any] | None:
         with self.db.get_session() as session:
             row = session.execute(
-                select(FirmwareVersion).where(FirmwareVersion.is_active == True)
+                select(FirmwareVersion).where(FirmwareVersion.is_active.is_(True))
                 .order_by(FirmwareVersion.created_at.desc())
             ).scalars().first()
             if row is None:

@@ -211,7 +211,8 @@ class TestDenoiseIntegratedInTranscribePaths(unittest.TestCase):
 
     def test_denoise_called_in_transcribe_api_with_confidence(self):
         import ai.stt_manager as mod
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         stt = _make_stt()
         calls = []
 

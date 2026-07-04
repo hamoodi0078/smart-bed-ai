@@ -18,7 +18,7 @@ def test_geolocation():
     location = geo.get_location_from_ip()
     
     if location:
-        print(f"✅ Auto-detected location:")
+        print("✅ Auto-detected location:")
         print(f"   City: {location['city']}")
         print(f"   Country: {location['country']}")
         print(f"   Coordinates: ({location['latitude']}, {location['longitude']})")

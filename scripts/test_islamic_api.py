@@ -56,7 +56,7 @@ def test_quran_endpoints():
         data = response.json()
         print(f"   ✅ Fetched {len(data.get('verses', []))} verses")
     else:
-        print(f"   ⚠️ API unavailable (expected in offline mode)\n")
+        print("   ⚠️ API unavailable (expected in offline mode)\n")
     
     # Test 4: Get specific ayah
     print("📝 GET /v1/islamic/quran/ayah/1/1?edition=english")
@@ -153,7 +153,7 @@ def test_audio_endpoints():
         print(f"   ✅ Status: {response.status_code}")
         print(f"   URL: {data.get('url', 'N/A')[:60]}...\n")
     else:
-        print(f"   ⚠️ Endpoint not found (skipping)\n")
+        print("   ⚠️ Endpoint not found (skipping)\n")
     
     # Test 5: Check cache stats
     print("📊 GET /v1/islamic/quran/audio/cache/stats")
@@ -164,7 +164,7 @@ def test_audio_endpoints():
         print(f"   Total cached files: {data['total_files']}")
         print(f"   Cache size: {data['total_size_mb']} MB\n")
     else:
-        print(f"   ⚠️ Endpoint not found (skipping)\n")
+        print("   ⚠️ Endpoint not found (skipping)\n")
 
 
 def test_search_endpoint():
@@ -181,7 +181,7 @@ def test_search_endpoint():
         if data.get('story_results'):
             print(f"   Example: Prophet {data['story_results'][0]['name']}\n")
     else:
-        print(f"   ⚠️ Search endpoint not available (skipping)\n")
+        print("   ⚠️ Search endpoint not available (skipping)\n")
 
 
 def test_existing_endpoints():

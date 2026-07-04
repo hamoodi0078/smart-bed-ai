@@ -16,6 +16,8 @@ render_arabic_on_image(img, text, xy, font, fill) -> None  — draw Arabic onto 
 
 from __future__ import annotations
 
+from typing import Any
+
 import re
 import unicodedata
 

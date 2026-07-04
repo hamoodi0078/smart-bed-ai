@@ -12,7 +12,6 @@ TRANSLITERATION_MAP = {
     "hady": "calm",
     "hada": "calm",
     "nawm": "sleep",
-    "nawm": "sleep",
     "sukut": "quiet",
     "sokoot": "quiet",
     "moosica": "music",

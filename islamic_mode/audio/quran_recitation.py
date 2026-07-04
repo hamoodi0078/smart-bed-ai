@@ -335,7 +335,6 @@ class QuranRecitationService:
         return {
             "cache_dir": str(self.cache_dir),
             "total_files": total_files,
-            "total_size_mb": total_size / (1024 * 1024),
             "total_size_mb": round(total_size / (1024 * 1024), 2),
             "reciter": reciter_id or "all"
         }

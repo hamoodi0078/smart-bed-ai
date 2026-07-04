@@ -8,7 +8,7 @@ Defines data models and hooks for biometric data ingestion.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 logger = logging.getLogger("integrations.fitness_tracker_api")

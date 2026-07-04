@@ -338,7 +338,9 @@ class TestTranscribeFileWithDiarization(unittest.TestCase):
                 try:
                     result = stt.transcribe_file_with_diarization(tmp)
                 finally:
-                    import os; os.unlink(tmp)
+                    import os
+
+                    os.unlink(tmp)
 
         self.assertFalse(result["available"])
         self.assertEqual(result["reason"], "pyannote.audio not installed")
@@ -371,7 +373,9 @@ class TestTranscribeFileWithDiarization(unittest.TestCase):
                 try:
                     result = stt.transcribe_file_with_diarization(tmp, hf_token="tok")
                 finally:
-                    import os; os.unlink(tmp)
+                    import os
+
+                    os.unlink(tmp)
 
         self.assertTrue(result["available"])
         self.assertEqual(result["transcript"], "hello there")
@@ -394,7 +398,9 @@ class TestTranscribeFileWithDiarization(unittest.TestCase):
                 try:
                     result = stt.transcribe_file_with_diarization(tmp)
                 finally:
-                    import os; os.unlink(tmp)
+                    import os
+
+                    os.unlink(tmp)
 
         for key in ("available", "transcript", "confidence",
                     "num_speakers", "segments", "speaker_summary"):
@@ -422,7 +428,9 @@ class TestTranscribeFileWithDiarization(unittest.TestCase):
                 try:
                     stt.transcribe_file_with_diarization(tmp, hf_token="my-hf-token")
                 finally:
-                    import os; os.unlink(tmp)
+                    import os
+
+                    os.unlink(tmp)
 
         mock_cls.assert_called_once()
         call_kwargs = mock_cls.call_args[1]

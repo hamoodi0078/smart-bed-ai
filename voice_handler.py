@@ -2171,7 +2171,9 @@ def _infer_interim_intent_hint(text: str) -> dict:
         return {}
 
     words = [w for w in normalized.split(" ") if w]
-    has = lambda *tokens: any(t in normalized for t in tokens)
+
+    def has(*tokens: str) -> bool:
+        return any(t in normalized for t in tokens)
 
     if has("set alarm", "alarm for", "wake me"):
         return {"intent": "set_alarm", "category": "control", "normalized": normalized}
