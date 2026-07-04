@@ -1,6 +1,19 @@
+# Raspberry Pi 5 (Bookworm, aarch64) — install on the bed's Pi only.
+#   pip install -r requirements-pi.txt
+#
+# System packages required first (apt):
+#   sudo apt install -y portaudio19-dev python3-dev libopenblas-dev
+#
+# NOTE (Pi 5): the RP1 I/O chip removed the DMA/PWM path that rpi-ws281x
+# uses on Pi 4 and earlier. On Pi 5 the LED strips are driven over SPI
+# (pi5neo, LED_BACKEND=pi5-spi, data line on GPIO10/MOSI, enable SPI via
+# raspi-config). rpi-ws281x is kept for Pi 4 fallback hardware only.
+
 -r requirements.txt
+
 pygame>=2.6.0
 PyAudio>=0.2.14
 gpiozero>=2.0.1
-rpi-ws281x>=5.0.0
-
+lgpio>=0.2.2          # Pi 5 GPIO backend for gpiozero (RPi.GPIO does NOT work on Pi 5)
+rpi-ws281x>=5.0.0     # Pi 4 and earlier ONLY — unsupported on Pi 5
+pi5neo>=1.0.5         # WS2812/NeoPixel over SPI for Pi 5 (LED_BACKEND=pi5-spi)

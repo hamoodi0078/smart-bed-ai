@@ -282,6 +282,145 @@ class RaspberryPiWs281xBackend:
             frame_idx = (frame_idx + 1) % 10_000
 
 
+try:
+    from pi5neo import Pi5Neo  # WS2812 over SPI — the only supported path on Raspberry Pi 5
+except ImportError:
+    Pi5Neo = None
+
+
+class _Pi5SpiStrip:
+    """Adapter that presents the PixelStrip-ish surface over a pi5neo SPI device.
+
+    Raspberry Pi 5's RP1 I/O chip removed the DMA/PWM path rpi-ws281x relies
+    on, so WS2812 strips are driven over SPI instead (data on GPIO10/MOSI for
+    /dev/spidev0.0; a second strip needs SPI1 via dtoverlay).
+    """
+
+    def __init__(self, device: str, count: int):
+        if Pi5Neo is None:
+            raise RuntimeError("pi5neo is not installed (pip install pi5neo)")
+        self._count = max(1, int(count))
+        self._neo = Pi5Neo(str(device), self._count, 800)
+
+    def numPixels(self) -> int:
+        return self._count
+
+    def set_all(self, colors: list[tuple[int, int, int]]) -> None:
+        for idx, (r, g, b) in enumerate(colors[: self._count]):
+            self._neo.set_led_color(int(idx), int(r), int(g), int(b))
+        self._neo.update_strip()
+
+    def clear(self) -> None:
+        try:
+            self._neo.clear_strip()
+            self._neo.update_strip()
+        except Exception:
+            pass
+
+
+class RaspberryPi5SpiBackend(RaspberryPiWs281xBackend):
+    """Pi 5 LED backend: same animation engine, SPI transport instead of PWM/DMA.
+
+    NEEDS ON-DEVICE VERIFICATION (cannot be exercised off-hardware):
+    enable SPI (raspi-config), wire user strip data to GPIO10 (SPI0 MOSI).
+    The state strip uses SPI1 (/dev/spidev1.0, GPIO20) and requires
+    `dtoverlay=spi1-1cs` in /boot/firmware/config.txt; without it the
+    backend runs with the user strip only.
+    """
+
+    def __init__(
+        self,
+        *,
+        user_strip_led_count: int,
+        state_strip_led_count: int,
+        led_max_brightness: int = 255,
+        animation_fps: float = 20.0,
+        user_device: str = "/dev/spidev0.0",
+        state_device: str = "/dev/spidev1.0",
+    ):
+        # Deliberately not calling super().__init__ — it validates PWM pins
+        # and rpi-ws281x availability, neither of which applies over SPI.
+        self._led_max_brightness = max(8, min(255, int(led_max_brightness)))
+        self._animation_fps = max(4.0, min(60.0, float(animation_fps)))
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._dirty_event = threading.Event()
+        self._frame_state = _LedFrameState()
+        self._started = False
+        self._status = "LED hardware backend unavailable."
+        self._user_strip = None
+        self._state_strip = None
+
+        if not sys.platform.startswith("linux"):
+            self._status = "LED hardware disabled: non-Linux platform."
+            return
+        if Pi5Neo is None:
+            self._status = "LED hardware disabled: install pi5neo on the Raspberry Pi 5."
+            return
+
+        try:
+            self._user_strip = _Pi5SpiStrip(user_device, user_strip_led_count)
+        except Exception as exc:
+            self._status = f"LED hardware unavailable (SPI0 {user_device}): {exc}"
+            logger.warning("Failed to open Pi 5 SPI LED strip: %s", exc)
+            return
+
+        try:
+            self._state_strip = _Pi5SpiStrip(state_device, state_strip_led_count)
+        except Exception as exc:
+            # Run with the user strip only — SPI1 needs a dtoverlay that may
+            # not be configured; this must not take down the main strip.
+            logger.warning(
+                "Pi 5 state strip unavailable (%s): %s — running user strip only",
+                state_device,
+                exc,
+            )
+            self._state_strip = None
+
+        if self._state_strip is None:
+            # Reuse a zero-length placeholder so the render loop stays uniform.
+            class _NullStrip:
+                @staticmethod
+                def numPixels() -> int:
+                    return 0
+
+                @staticmethod
+                def set_all(colors) -> None:
+                    return
+
+                @staticmethod
+                def clear() -> None:
+                    return
+
+            self._state_strip = _NullStrip()
+
+        self._status = (
+            "Raspberry Pi 5 SPI WS2812 backend active: "
+            f"user {user_device} ({user_strip_led_count} LEDs), "
+            f"state {state_device} ({state_strip_led_count} LEDs)."
+        )
+        self._started = True
+        self._thread = threading.Thread(target=self._run_loop, name="pi5-led-backend", daemon=True)
+        self._thread.start()
+
+    def _fill_strip(self, strip, colors: list[tuple[int, int, int]]) -> None:
+        strip.set_all(colors)
+
+    def close(self) -> None:
+        self._stop_event.set()
+        strips = [self._user_strip, self._state_strip]
+        self._user_strip = None
+        self._state_strip = None
+        self._started = False
+        for strip in strips:
+            if strip is None:
+                continue
+            try:
+                strip.clear()
+            except Exception:
+                continue
+
+
 def build_led_backend(
     *,
     enabled: bool,
@@ -300,6 +439,14 @@ def build_led_backend(
     if not enabled:
         return NoopLedBackend("LED hardware backend disabled (LED_HARDWARE_ENABLED=0).")
     normalized_backend = str(backend_name or "auto").strip().lower()
+    if normalized_backend == "pi5-spi":
+        # Raspberry Pi 5: rpi-ws281x cannot work (no RP1 DMA/PWM path) — SPI only.
+        return RaspberryPi5SpiBackend(
+            user_strip_led_count=user_strip_led_count,
+            state_strip_led_count=state_strip_led_count,
+            led_max_brightness=led_max_brightness,
+            animation_fps=animation_fps,
+        )
     if normalized_backend not in {"auto", "ws281x"}:
         return NoopLedBackend(f"LED hardware backend '{normalized_backend}' is not supported.")
     return RaspberryPiWs281xBackend(

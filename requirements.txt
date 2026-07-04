@@ -50,7 +50,7 @@ numpy==1.26.4
 scikit-learn==1.5.0
 antropy==0.1.6
 statsmodels==0.14.2
-sentence-transformers==3.0.1
+# sentence-transformers==3.0.1  # moved to requirements-ml.txt — pulls torch (~2GB); ai/embedding_service.py degrades gracefully without it
 pgvector==0.3.2
 
 # ── Vector store (optional — uncomment only if using local ChromaDB) ──
