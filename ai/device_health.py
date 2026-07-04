@@ -20,7 +20,9 @@ def _is_writable_dir(path: Path) -> bool:
         return False
 
 
-def run_device_health_checks(settings, spotify, local_music, tts_player=None, led=None, sensor_monitor=None) -> List[HealthCheckResult]:
+def run_device_health_checks(
+    settings, spotify, local_music, tts_player=None, led=None, sensor_monitor=None
+) -> List[HealthCheckResult]:
     results: List[HealthCheckResult] = []
 
     results.append(
@@ -35,7 +37,9 @@ def run_device_health_checks(settings, spotify, local_music, tts_player=None, le
         HealthCheckResult(
             "SPOTIFY_CONFIG",
             spotify.is_configured(),
-            "Spotify token configured" if spotify.is_configured() else "Spotify token not configured",
+            "Spotify token configured"
+            if spotify.is_configured()
+            else "Spotify token not configured",
         )
     )
 
@@ -43,7 +47,9 @@ def run_device_health_checks(settings, spotify, local_music, tts_player=None, le
         HealthCheckResult(
             "LOCAL_MUSIC",
             local_music.is_ready(),
-            "Local music player ready" if local_music.is_ready() else "Install pygame for local music",
+            "Local music player ready"
+            if local_music.is_ready()
+            else "Install pygame for local music",
         )
     )
 
@@ -73,7 +79,9 @@ def run_device_health_checks(settings, spotify, local_music, tts_player=None, le
         or bool(getattr(settings, "sensor_motion_enabled", False))
     ) and sensor_monitor is not None:
         ready = bool(getattr(sensor_monitor, "is_available", lambda: False)())
-        detail = getattr(sensor_monitor, "status_line", lambda: "Sensor monitor status unavailable.")()
+        detail = getattr(
+            sensor_monitor, "status_line", lambda: "Sensor monitor status unavailable."
+        )()
         results.append(
             HealthCheckResult(
                 "SENSOR_INPUTS",
@@ -96,7 +104,9 @@ def run_device_health_checks(settings, spotify, local_music, tts_player=None, le
         HealthCheckResult(
             "OUTPUT_AUDIO",
             output_writable,
-            "Output audio folder writable" if output_writable else "output_audio folder is not writable",
+            "Output audio folder writable"
+            if output_writable
+            else "output_audio folder is not writable",
         )
     )
 

@@ -14,6 +14,7 @@ def _make_db() -> DatabaseConnection:
 
 def _seed_user(db: DatabaseConnection, email: str = "repo@example.com") -> str:
     import hashlib
+
     uid = "u-" + hashlib.md5(email.encode()).hexdigest()[:8]
     with db.get_session() as session:
         if session.get(User, uid) is None:
@@ -57,7 +58,9 @@ class TestOtpRepository(unittest.TestCase):
 
     def test_increment_attempts(self):
         expires = _utcnow() + timedelta(minutes=10)
-        self.repo.create(request_id="otp_inc", phone_number="+1", otp_digest="d", expires_at=expires)
+        self.repo.create(
+            request_id="otp_inc", phone_number="+1", otp_digest="d", expires_at=expires
+        )
         count = self.repo.increment_attempts("otp_inc")
         self.assertEqual(count, 1)
         count2 = self.repo.increment_attempts("otp_inc")
@@ -70,7 +73,9 @@ class TestOtpRepository(unittest.TestCase):
 
     def test_delete(self):
         expires = _utcnow() + timedelta(minutes=10)
-        self.repo.create(request_id="otp_del", phone_number="+1", otp_digest="d", expires_at=expires)
+        self.repo.create(
+            request_id="otp_del", phone_number="+1", otp_digest="d", expires_at=expires
+        )
         self.assertIsNotNone(self.repo.get("otp_del"))
         self.repo.delete("otp_del")
         self.assertIsNone(self.repo.get("otp_del"))
@@ -82,7 +87,9 @@ class TestOtpRepository(unittest.TestCase):
         past = _utcnow() - timedelta(minutes=5)
         future = _utcnow() + timedelta(minutes=5)
         self.repo.create(request_id="otp_past", phone_number="+1", otp_digest="d", expires_at=past)
-        self.repo.create(request_id="otp_future", phone_number="+2", otp_digest="d", expires_at=future)
+        self.repo.create(
+            request_id="otp_future", phone_number="+2", otp_digest="d", expires_at=future
+        )
         deleted = self.repo.cleanup_expired()
         self.assertEqual(deleted, 1)
         self.assertIsNone(self.repo.get("otp_past"))
@@ -134,7 +141,9 @@ class TestSpotifyTokenRepository(unittest.TestCase):
 
     def test_update_access_token(self):
         self.repo.upsert("user_k4", access_token="orig", expires_at="2025-01-01T00:00:00Z")
-        self.repo.update_access_token("user_k4", access_token="refreshed_at", expires_at="2027-01-01T00:00:00Z")
+        self.repo.update_access_token(
+            "user_k4", access_token="refreshed_at", expires_at="2027-01-01T00:00:00Z"
+        )
         got = self.repo.get("user_k4")
         self.assertEqual(got["access_token"], "refreshed_at")
         self.assertEqual(got["expires_at"], "2027-01-01T00:00:00Z")
@@ -152,7 +161,9 @@ class TestSpotifyTokenRepository(unittest.TestCase):
         self.repo.delete("nonexistent")  # should not raise
 
     def test_upsert_preserves_refresh_token_on_update(self):
-        self.repo.upsert("user_k6", access_token="a", refresh_token="rt_keep", expires_at="2026-01-01T00:00:00Z")
+        self.repo.upsert(
+            "user_k6", access_token="a", refresh_token="rt_keep", expires_at="2026-01-01T00:00:00Z"
+        )
         self.repo.upsert("user_k6", access_token="a2", expires_at="2027-01-01T00:00:00Z")
         got = self.repo.get("user_k6")
         self.assertEqual(got["refresh_token"], "rt_keep")

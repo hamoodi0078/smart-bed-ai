@@ -86,7 +86,8 @@ class SleepSession:
         if not isinstance(log, list):
             return []
         filtered = [
-            item for item in log
+            item
+            for item in log
             if isinstance(item, dict) and str(item.get("user_id")) == str(user_id)
         ]
         safe_limit = max(1, int(limit))

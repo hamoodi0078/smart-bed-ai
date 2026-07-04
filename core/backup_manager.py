@@ -53,9 +53,7 @@ class BackupManager:
     ):
         self._runtime_data_dir = Path(runtime_data_dir).resolve()
         self._backup_root = (
-            Path(backup_root).resolve()
-            if backup_root
-            else self._runtime_data_dir / "backups"
+            Path(backup_root).resolve() if backup_root else self._runtime_data_dir / "backups"
         )
         self._retention = dict(_DEFAULT_RETENTION)
         if isinstance(retention, dict):
@@ -99,7 +97,9 @@ class BackupManager:
 
                 logger.info(
                     "Backup completed: type={} files={} dest={}",
-                    backup_type, len(files_backed_up), dest_dir,
+                    backup_type,
+                    len(files_backed_up),
+                    dest_dir,
                 )
                 return {
                     "ok": True,
@@ -199,7 +199,11 @@ class BackupManager:
 
     def list_backups(self, backup_type: str = "") -> list[dict[str, Any]]:
         """List available backups, optionally filtered by type."""
-        types = [backup_type] if backup_type in ("daily", "weekly", "monthly") else ["daily", "weekly", "monthly"]
+        types = (
+            [backup_type]
+            if backup_type in ("daily", "weekly", "monthly")
+            else ["daily", "weekly", "monthly"]
+        )
         results: list[dict[str, Any]] = []
         for btype in types:
             type_dir = self._backup_root / btype
@@ -254,7 +258,9 @@ class BackupManager:
             replace_existing=True,
         )
         self._scheduler.start()
-        logger.info("Backup scheduler started (daily/weekly/monthly at {:02d}:00)", _BACKUP_SCHEDULE_HOUR)
+        logger.info(
+            "Backup scheduler started (daily/weekly/monthly at {:02d}:00)", _BACKUP_SCHEDULE_HOUR
+        )
 
     def stop_scheduler(self) -> None:
         """Stop the background backup scheduler."""
@@ -297,11 +303,13 @@ class BackupManager:
             fp = dest_dir / rel
             checksum = _file_checksum(fp)
             size = fp.stat().st_size if fp.exists() else 0
-            entries.append({
-                "relative_path": rel,
-                "checksum": checksum,
-                "size_bytes": size,
-            })
+            entries.append(
+                {
+                    "relative_path": rel,
+                    "checksum": checksum,
+                    "size_bytes": size,
+                }
+            )
         return {
             "version": 1,
             "backup_type": backup_type,
@@ -313,12 +321,14 @@ class BackupManager:
     def _update_state(self, backup_type: str, now: datetime, file_count: int, dest: str) -> None:
         state = self._load_state()
         state[f"last_{backup_type}"] = now.isoformat()
-        state.setdefault("history", []).append({
-            "type": backup_type,
-            "timestamp": now.isoformat(),
-            "files_count": file_count,
-            "destination": dest,
-        })
+        state.setdefault("history", []).append(
+            {
+                "type": backup_type,
+                "timestamp": now.isoformat(),
+                "files_count": file_count,
+                "destination": dest,
+            }
+        )
         state["history"] = state["history"][-100:]
         self._save_state(state)
 

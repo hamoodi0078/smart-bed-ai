@@ -31,6 +31,7 @@ logger = logging.getLogger("integrations.garmin_client")
 
 try:
     from garminconnect import Garmin as _Garmin, GarminConnectAuthenticationError
+
     _GARMIN_AVAILABLE = True
 except ImportError:
     _Garmin = None  # type: ignore[assignment]
@@ -105,7 +106,9 @@ class GarminClient:
                 if self._tokenstore:
                     Path(self._tokenstore).parent.mkdir(parents=True, exist_ok=True)
                     self._client.garth.dump(self._tokenstore)
-                    logger.info("Garmin: token saved to %s — password cleared from memory", self._tokenstore)
+                    logger.info(
+                        "Garmin: token saved to %s — password cleared from memory", self._tokenstore
+                    )
             self._authenticated = True
             logger.info("Garmin Connect: logged in as %s", self._email)
             return True
@@ -166,7 +169,9 @@ class GarminClient:
                 "resting_heart_rate": resting,
                 "min_heart_rate": min(hr_samples) if hr_samples else None,
                 "max_heart_rate": max(hr_samples) if hr_samples else None,
-                "avg_heart_rate": round(sum(hr_samples) / len(hr_samples), 1) if hr_samples else None,
+                "avg_heart_rate": round(sum(hr_samples) / len(hr_samples), 1)
+                if hr_samples
+                else None,
                 "samples": len(hr_samples),
             }
         except Exception as exc:
@@ -288,8 +293,7 @@ class GarminClient:
             "date": ds,
             "source": "garmin",
             "available": any(
-                d.get("available", False)
-                for d in [stats, hr, hrv, sleep, battery, stress]
+                d.get("available", False) for d in [stats, hr, hrv, sleep, battery, stress]
             ),
             # FitnessTrackerAPI-compatible keys
             "heart_rate": hr.get("resting_heart_rate") or stats.get("resting_heart_rate"),
@@ -314,6 +318,7 @@ class GarminClient:
 def build_client_from_settings() -> GarminClient:
     """Construct a GarminClient from the project settings."""
     from config.settings import settings
+
     return GarminClient(
         email=settings.garmin_email,
         password=settings.garmin_password,

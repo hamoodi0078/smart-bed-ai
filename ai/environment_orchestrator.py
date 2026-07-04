@@ -65,7 +65,9 @@ class EnvironmentOrchestrator:
         led.set_user_brightness(float(scene.get("brightness", 0.4)))
 
         profile["environment"]["last_scene_key"] = scene.get("key", "")
-        profile["environment"]["last_scene_applied_at"] = datetime.now().isoformat(timespec="seconds")
+        profile["environment"]["last_scene_applied_at"] = datetime.now().isoformat(
+            timespec="seconds"
+        )
         return scene.get("line", "")
 
     def status_line(self, profile: dict) -> str:
@@ -116,7 +118,9 @@ class EnvironmentOrchestrator:
         normalized = str(text or "").strip().lower()
         if not normalized:
             return ""
-        if any(token in normalized for token in ("sleep", "wind down", "wind-down", "bedtime", "night")):
+        if any(
+            token in normalized for token in ("sleep", "wind down", "wind-down", "bedtime", "night")
+        ):
             return "sleep"
         if any(token in normalized for token in ("morning", "wake", "good morning", "sunrise")):
             return "morning"

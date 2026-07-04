@@ -83,7 +83,10 @@ class SleepPlaylists:
                 timeout=20,
             )
             if response.status_code not in (200, 202, 204):
-                return {"success": False, "message": f"Spotify play failed ({response.status_code})."}
+                return {
+                    "success": False,
+                    "message": f"Spotify play failed ({response.status_code}).",
+                }
         except Exception as exc:
             return {"success": False, "message": str(exc)}
 

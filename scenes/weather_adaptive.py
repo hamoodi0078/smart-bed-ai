@@ -17,6 +17,7 @@ import requests
 
 try:
     import pyowm
+
     _PYOWM_AVAILABLE = True
 except ImportError:
     pyowm = None  # type: ignore[assignment]
@@ -70,13 +71,27 @@ class WeatherAdaptive:
 
     _OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
     _WMO_CONDITION: dict[int, str] = {
-        0: "clear", 1: "clouds", 2: "clouds", 3: "clouds",
-        45: "fog", 48: "fog",
-        51: "drizzle", 53: "drizzle", 55: "drizzle",
-        61: "rain", 63: "rain", 65: "rain",
-        71: "snow", 73: "snow", 75: "snow",
-        80: "rain", 81: "rain", 82: "rain",
-        95: "thunderstorm", 96: "thunderstorm", 99: "thunderstorm",
+        0: "clear",
+        1: "clouds",
+        2: "clouds",
+        3: "clouds",
+        45: "fog",
+        48: "fog",
+        51: "drizzle",
+        53: "drizzle",
+        55: "drizzle",
+        61: "rain",
+        63: "rain",
+        65: "rain",
+        71: "snow",
+        73: "snow",
+        75: "snow",
+        80: "rain",
+        81: "rain",
+        82: "rain",
+        95: "thunderstorm",
+        96: "thunderstorm",
+        99: "thunderstorm",
     }
 
     def _fetch_open_meteo(self) -> dict[str, Any]:
@@ -251,7 +266,9 @@ class WeatherAdaptive:
             boost = float(wa.get("brightness_boost_cloudy", 0.20))
             brightness_mod = boost
             color_mod = "#FFF8DC"  # Warmer tone to combat gloom
-            message = f"Cloudy day ({clouds}% clouds). Boosting indoor brightness +{int(boost * 100)}%."
+            message = (
+                f"Cloudy day ({clouds}% clouds). Boosting indoor brightness +{int(boost * 100)}%."
+            )
 
         # Rain/drizzle/thunderstorm
         elif condition in ("rain", "drizzle", "thunderstorm"):
@@ -292,7 +309,11 @@ class WeatherAdaptive:
         wa["last_condition"] = condition
 
         if brightness_mod == 0.0 and not color_mod:
-            return {"adjusted": False, "reason": "No weather adjustment needed.", "weather": weather}
+            return {
+                "adjusted": False,
+                "reason": "No weather adjustment needed.",
+                "weather": weather,
+            }
 
         return {
             "adjusted": True,

@@ -28,7 +28,9 @@ class DreamJournalManager:
             return False
         return profile["dream_journal"].get("last_prompt_date", "") != now.date().isoformat()
 
-    def start_dream_prompt_session(self, profile: dict, stt_manager, tts_manager, audio_player) -> str:
+    def start_dream_prompt_session(
+        self, profile: dict, stt_manager, tts_manager, audio_player
+    ) -> str:
         self.ensure_profile_shape(profile)
         self.is_prompting = True
         profile["dream_journal"]["last_prompt_date"] = datetime.now().date().isoformat()

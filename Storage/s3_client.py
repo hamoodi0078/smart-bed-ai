@@ -27,6 +27,7 @@ logger = logging.getLogger("Storage.s3_client")
 try:
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
+
     _BOTO3_AVAILABLE = True
 except ImportError:
     _BOTO3_AVAILABLE = False
@@ -136,6 +137,7 @@ class S3Client:
 # Factory
 # ---------------------------------------------------------------------------
 
+
 def build_s3_client_from_settings() -> "S3Client | None":
     """Build an S3Client from config/settings.py.  Returns None if not configured."""
     if not _BOTO3_AVAILABLE:
@@ -144,6 +146,7 @@ def build_s3_client_from_settings() -> "S3Client | None":
 
     try:
         from config.settings import settings
+
         bucket = str(getattr(settings, "aws_s3_bucket", "") or "").strip()
         if not bucket:
             return None

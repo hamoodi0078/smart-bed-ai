@@ -11,7 +11,9 @@ SummaryPayload = Dict[str, Any]
 
 def _as_event_count(events: list[Any], event_type: str) -> int:
     key = str(event_type or "").strip().lower()
-    return sum(1 for row in events if str(getattr(row, "event_type", "") or "").strip().lower() == key)
+    return sum(
+        1 for row in events if str(getattr(row, "event_type", "") or "").strip().lower() == key
+    )
 
 
 def _format_optional_minutes(minutes: int | None) -> str:
@@ -63,7 +65,9 @@ def build_daily_summary(
         total_sleep_minutes = sleep_session.total_sleep_minutes
         restlessness_score = sleep_session.restlessness_score
         plain_lines.append(f"Total sleep: {_format_optional_minutes(total_sleep_minutes)}")
-        plain_lines.append(f"Restlessness score: {_format_optional_float(restlessness_score, digits=1)}")
+        plain_lines.append(
+            f"Restlessness score: {_format_optional_float(restlessness_score, digits=1)}"
+        )
         whatsapp_lines.append(
             f"3) Sleep: {_format_optional_minutes(total_sleep_minutes)} | Restlessness: {_format_optional_float(restlessness_score, digits=1)}"
         )
@@ -96,11 +100,23 @@ def build_monthly_summary(
     sessions = sleep_repo.get_sessions_for_month(user_id, year, month, limit=40)
 
     nights_tracked = len(sessions)
-    sleep_minutes_values = [int(row.total_sleep_minutes) for row in sessions if row.total_sleep_minutes is not None]
-    restlessness_values = [float(row.restlessness_score) for row in sessions if row.restlessness_score is not None]
+    sleep_minutes_values = [
+        int(row.total_sleep_minutes) for row in sessions if row.total_sleep_minutes is not None
+    ]
+    restlessness_values = [
+        float(row.restlessness_score) for row in sessions if row.restlessness_score is not None
+    ]
 
-    average_sleep_minutes = int(round(sum(sleep_minutes_values) / len(sleep_minutes_values))) if sleep_minutes_values else None
-    average_restlessness = round(sum(restlessness_values) / len(restlessness_values), 2) if restlessness_values else None
+    average_sleep_minutes = (
+        int(round(sum(sleep_minutes_values) / len(sleep_minutes_values)))
+        if sleep_minutes_values
+        else None
+    )
+    average_restlessness = (
+        round(sum(restlessness_values) / len(restlessness_values), 2)
+        if restlessness_values
+        else None
+    )
     winddowns_completed_total = sum(int(row.winddowns_completed or 0) for row in sessions)
 
     summary_title = f"Your Manues monthly sleep report – {year}-{month:02d}"

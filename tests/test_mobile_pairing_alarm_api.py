@@ -43,7 +43,9 @@ class TestMobilePairingAndAlarmApi(unittest.TestCase):
         self._io_lock_patch.start()
         self.store = SubscriptionStore(db_path=self.db_path)
         self.store.hash_password = lambda password: _legacy_sha256(password)
-        self.store.check_password = lambda password, stored_hash: stored_hash == _legacy_sha256(password)
+        self.store.check_password = lambda password, stored_hash: (
+            stored_hash == _legacy_sha256(password)
+        )
         self._patch_store = patch.object(web_server, "store", self.store)
         self._patch_profile = patch.object(web_server, "PROFILE_PATH", self.profile_path)
         self._patch_env.start()

@@ -22,7 +22,9 @@ class DanaTherapist:
         if previous_sleep_score >= 85:
             return "You slept well last night. Let's reinforce what worked so it stays consistent."
         if previous_sleep_score >= 65:
-            return "Last night was moderate. With a small adjustment tonight, your sleep can improve."
+            return (
+                "Last night was moderate. With a small adjustment tonight, your sleep can improve."
+            )
         return "Last night looked difficult. Let's be gentle and focus on safety, calm, and recovery tonight."
 
     def get_pattern_insight(self, bad_nights_this_week: int) -> str:

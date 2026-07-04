@@ -2,6 +2,7 @@
 
 These are fully self-contained: no profile state, no user auth.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -30,6 +31,7 @@ def readyz() -> dict[str, Any]:
     # Database
     try:
         from database.connection import DatabaseConnection
+
         db_conn = DatabaseConnection()
         db_ok = db_conn.health_check()
         checks["database"] = {"ok": db_ok}
@@ -42,6 +44,7 @@ def readyz() -> dict[str, Any]:
     # Redis
     try:
         import redis as _redis
+
         r = _redis.from_url(settings.celery_broker_url, socket_connect_timeout=2)
         r.ping()
         checks["redis"] = {"ok": True}
@@ -52,6 +55,7 @@ def readyz() -> dict[str, Any]:
     checks["ok"] = all_ok
     if not all_ok:
         from fastapi.responses import JSONResponse
+
         return JSONResponse(status_code=503, content=checks)
     return checks
 
@@ -62,6 +66,7 @@ def healthz_detailed() -> dict[str, Any]:
 
     try:
         from database.connection import DatabaseConnection
+
         db_conn = DatabaseConnection()
         checks["database"] = {"ok": db_conn.health_check(), "version": db_conn.schema_version()}
     except Exception as exc:
@@ -70,8 +75,8 @@ def healthz_detailed() -> dict[str, Any]:
     try:
         disk = shutil.disk_usage("/")
         checks["disk"] = {
-            "total_gb": round(disk.total / (1024 ** 3), 2),
-            "free_gb": round(disk.free / (1024 ** 3), 2),
+            "total_gb": round(disk.total / (1024**3), 2),
+            "free_gb": round(disk.free / (1024**3), 2),
             "used_pct": round((disk.used / disk.total) * 100, 1),
         }
     except Exception:

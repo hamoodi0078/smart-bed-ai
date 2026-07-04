@@ -159,8 +159,7 @@ def run_smoke(
     items = timeline_body.get("items", [])
     _require(isinstance(items, list), "timeline items is not a list")
     found_command = any(
-        isinstance(row, dict)
-        and str(row.get("command_id", "") or "") == command_id
+        isinstance(row, dict) and str(row.get("command_id", "") or "") == command_id
         for row in items
     )
     _require(found_command, "timeline did not include the command created in this smoke run")

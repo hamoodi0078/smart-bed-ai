@@ -11,6 +11,7 @@ Environment / settings used:
   SENSOR_HEART_RATE_ENABLED   (default: False)
   SENSOR_HEART_RATE_SAMPLE_COUNT (default: 100  — frames per reading batch)
 """
+
 from __future__ import annotations
 
 import logging
@@ -41,9 +42,11 @@ except Exception as _exc:
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class HeartRateReading:
     """A single heart-rate + SpO₂ reading."""
+
     heart_rate_bpm: float | None = None
     spo2_pct: float | None = None
     heart_rate_valid: bool = False
@@ -54,6 +57,7 @@ class HeartRateReading:
 # ---------------------------------------------------------------------------
 # Sensor monitor
 # ---------------------------------------------------------------------------
+
 
 class HeartRateSensorMonitor:
     """Polls a MAX30102 sensor via I²C at a configurable interval."""
@@ -117,9 +121,7 @@ class HeartRateSensorMonitor:
                 return reading
 
             except Exception as exc:
-                logger.debug(
-                    "MAX30102 read retry %d/%d: %s", attempt + 1, self._max_retries, exc
-                )
+                logger.debug("MAX30102 read retry %d/%d: %s", attempt + 1, self._max_retries, exc)
                 time.sleep(0.5)
 
         return HeartRateReading()
@@ -170,6 +172,7 @@ class HeartRateSensorMonitor:
 # Noop fallback
 # ---------------------------------------------------------------------------
 
+
 class NoopHeartRateMonitor:
     """Placeholder used when the real sensor is unavailable."""
 
@@ -199,6 +202,7 @@ class NoopHeartRateMonitor:
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
+
 
 def build_heart_rate_monitor(settings: Any) -> HeartRateSensorMonitor | NoopHeartRateMonitor:
     """Create a heart-rate monitor from app settings.

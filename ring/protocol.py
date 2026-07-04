@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import struct
@@ -37,8 +38,8 @@ from ring.models import (
 # ---------------------------------------------------------------------------
 
 COLMI_SERVICE_UUID = "6e40fff0-b5a3-f393-e0a9-e50e24dcca9e"
-COLMI_TX_CHAR_UUID = "6e40fff1-b5a3-f393-e0a9-e50e24dcca9e"   # Write to ring
-COLMI_RX_CHAR_UUID = "6e40fff2-b5a3-f393-e0a9-e50e24dcca9e"   # Receive from ring
+COLMI_TX_CHAR_UUID = "6e40fff1-b5a3-f393-e0a9-e50e24dcca9e"  # Write to ring
+COLMI_RX_CHAR_UUID = "6e40fff2-b5a3-f393-e0a9-e50e24dcca9e"  # Receive from ring
 
 # BLE device name prefixes for COLMI rings
 COLMI_NAME_PREFIXES = ("R02", "R06", "R10", "COLMI", "QRing")
@@ -66,6 +67,7 @@ PACKET_SIZE = 16
 # ---------------------------------------------------------------------------
 # Checksum
 # ---------------------------------------------------------------------------
+
 
 def _checksum(data: bytes) -> int:
     """XOR checksum of all bytes (COLMI protocol)."""
@@ -97,6 +99,7 @@ def _validate_packet(data: bytes) -> bool:
 # ---------------------------------------------------------------------------
 # Command builders — send TO ring
 # ---------------------------------------------------------------------------
+
 
 def cmd_set_time(dt: datetime | None = None) -> bytes:
     """Build a SET_TIME command to sync the ring's clock."""
@@ -175,6 +178,7 @@ def cmd_read_temperature() -> bytes:
 # ---------------------------------------------------------------------------
 # Response parsers — received FROM ring
 # ---------------------------------------------------------------------------
+
 
 def parse_tag(data: bytes) -> int:
     """Extract the command tag from a 16-byte packet."""
@@ -261,11 +265,13 @@ def parse_hr_log(data: bytes, base_date: datetime | None = None) -> list[RingHrL
         if hr == 0 or hr == 255:
             continue
         ts = base.replace(minute=0) + __import__("datetime").timedelta(minutes=(i - 1) * 5)
-        entries.append(RingHrLogEntry(
-            timestamp=ts,
-            heart_rate_bpm=float(hr),
-            valid=True,
-        ))
+        entries.append(
+            RingHrLogEntry(
+                timestamp=ts,
+                heart_rate_bpm=float(hr),
+                valid=True,
+            )
+        )
     return entries
 
 
@@ -293,6 +299,7 @@ def parse_sleep_log(data: bytes, sleep_date: Any = None) -> RingSleepRecord | No
             return None
 
         from datetime import date as date_type
+
         d = sleep_date if isinstance(sleep_date, date_type) else None
 
         return RingSleepRecord(
@@ -323,6 +330,7 @@ def parse_step_log(data: bytes, step_date: Any = None) -> RingStepRecord | None:
         calories = struct.unpack_from("<H", data, 5)[0]
 
         from datetime import date as date_type
+
         d = step_date if isinstance(step_date, date_type) else None
 
         return RingStepRecord(

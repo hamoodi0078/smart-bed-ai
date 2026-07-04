@@ -14,7 +14,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
-
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -141,7 +140,13 @@ class PersonalityEvolution:
 
         formal_indicators = ["please", "could you", "would you", "kindly", "thank you"]
         casual_indicators = ["hey", "yo", "lol", "haha", "cool", "ok", "yeah"]
-        spiritual_indicators = ["alhamdulillah", "mashallah", "inshallah", "bismillah", "subhanallah"]
+        spiritual_indicators = [
+            "alhamdulillah",
+            "mashallah",
+            "inshallah",
+            "bismillah",
+            "subhanallah",
+        ]
         analytical_indicators = ["data", "stats", "score", "percentage", "average", "compare"]
 
         formal_count = sum(1 for w in formal_indicators if w in text)
@@ -171,7 +176,15 @@ class PersonalityEvolution:
         stage = stage_info["stage"]
         name = str(profile.get("preferences", {}).get("name", "")).strip()
         hour = now.hour
-        time_greeting = "Good morning" if 5 <= hour < 12 else ("Good afternoon" if 12 <= hour < 17 else ("Good evening" if 17 <= hour < 22 else "Night time"))
+        time_greeting = (
+            "Good morning"
+            if 5 <= hour < 12
+            else (
+                "Good afternoon"
+                if 12 <= hour < 17
+                else ("Good evening" if 17 <= hour < 22 else "Night time")
+            )
+        )
 
         if stage == 1:
             if name:
@@ -243,7 +256,9 @@ class PersonalityEvolution:
             ]
 
         if style == "spiritual":
-            instructions["guidelines"].append("Include Islamic phrases naturally (InshaAllah, MashaAllah)")
+            instructions["guidelines"].append(
+                "Include Islamic phrases naturally (InshaAllah, MashaAllah)"
+            )
         elif style == "casual":
             instructions["guidelines"].append("Keep language relaxed and conversational")
         elif style == "analytical":
@@ -296,11 +311,13 @@ class PersonalityEvolution:
         self.ensure_shape(profile)
         p = profile["personality"]
         memories = p.get("shared_memories", [])
-        memories.append({
-            "text": str(memory).strip()[:500],
-            "category": str(category).strip(),
-            "created_at": _utcnow().isoformat(),
-        })
+        memories.append(
+            {
+                "text": str(memory).strip()[:500],
+                "category": str(category).strip(),
+                "created_at": _utcnow().isoformat(),
+            }
+        )
         p["shared_memories"] = memories[-100:]
 
     def get_relevant_memory(self, profile: dict, context: str = "") -> str | None:

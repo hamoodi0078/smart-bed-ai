@@ -47,17 +47,18 @@ try:
         OccupancySensing,
         PressureMeasurement,
     )
+
     _ZIGPY_AVAILABLE = True
 except ImportError:
     _ZIGPY_AVAILABLE = False
     logger.warning("zigpy not installed — Zigbee coordinator disabled.")
 
 _RADIO_MODULES: dict[str, str] = {
-    "ezsp":   "bellows.zigbee.application",
-    "znp":    "zigpy_znp.zigbee.application",
+    "ezsp": "bellows.zigbee.application",
+    "znp": "zigpy_znp.zigbee.application",
     "deconz": "zigpy_deconz.zigbee.application",
     "zigate": "zigpy_zigate.zigbee.application",
-    "xbee":   "zigpy_xbee.zigbee.application",
+    "xbee": "zigpy_xbee.zigbee.application",
 }
 
 # ---------------------------------------------------------------------------
@@ -65,12 +66,12 @@ _RADIO_MODULES: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 _CLUSTER_MAP = {
-    0x0402: "temperature",     # Temperature Measurement
-    0x0405: "humidity",        # Relative Humidity
-    0x0400: "illuminance",     # Illuminance
-    0x0406: "motion",          # Occupancy Sensing
-    0x0403: "pressure",        # Pressure Measurement
-    0x0001: "battery",         # Power Configuration
+    0x0402: "temperature",  # Temperature Measurement
+    0x0405: "humidity",  # Relative Humidity
+    0x0400: "illuminance",  # Illuminance
+    0x0406: "motion",  # Occupancy Sensing
+    0x0403: "pressure",  # Pressure Measurement
+    0x0001: "battery",  # Power Configuration
 }
 
 # Attribute IDs for measured value
@@ -80,6 +81,7 @@ _MEASURED_VALUE_ATTR = 0x0000
 # ---------------------------------------------------------------------------
 # Coordinator
 # ---------------------------------------------------------------------------
+
 
 class ZigbeeCoordinator:
     """Manages a Zigbee radio, device registry, and sensor event routing."""
@@ -94,7 +96,9 @@ class ZigbeeCoordinator:
     ):
         self._radio = str(radio or os.getenv("ZIGBEE_RADIO", "ezsp")).strip().lower()
         self._port = str(port or os.getenv("ZIGBEE_PORT", "/dev/ttyUSB0")).strip()
-        self._db = str(database_path or os.getenv("ZIGBEE_DATABASE", "runtime_data/zigbee.db")).strip()
+        self._db = str(
+            database_path or os.getenv("ZIGBEE_DATABASE", "runtime_data/zigbee.db")
+        ).strip()
         self._channel = max(11, min(26, int(channel)))
         self._app: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -111,7 +115,9 @@ class ZigbeeCoordinator:
     def start(self) -> bool:
         """Start Zigbee coordinator in a background thread."""
         if not _ZIGPY_AVAILABLE:
-            logger.error("zigpy not installed. Run: pip install zigpy zigpy-znp bellows zigpy-deconz")
+            logger.error(
+                "zigpy not installed. Run: pip install zigpy zigpy-znp bellows zigpy-deconz"
+            )
             return False
         if not self._port:
             logger.warning("ZIGBEE_PORT not set — Zigbee coordinator disabled.")
@@ -154,14 +160,17 @@ class ZigbeeCoordinator:
 
         try:
             import importlib
+
             radio_module = importlib.import_module(module_path)
             ControllerApplication = radio_module.ControllerApplication
         except ImportError as exc:
             logger.error(
-                "Zigbee radio library not installed for '%s'. err=%s\n"
-                "Install: pip install %s",
-                self._radio, exc,
-                {"ezsp": "bellows", "znp": "zigpy-znp", "deconz": "zigpy-deconz"}.get(self._radio, "zigpy"),
+                "Zigbee radio library not installed for '%s'. err=%s\nInstall: pip install %s",
+                self._radio,
+                exc,
+                {"ezsp": "bellows", "znp": "zigpy-znp", "deconz": "zigpy-deconz"}.get(
+                    self._radio, "zigpy"
+                ),
             )
             return
 
@@ -233,13 +242,17 @@ class ZigbeeCoordinator:
 
         # ZCL value scaling
         scaled = _scale_zcl_value(cluster_id, value)
-        logger.debug("Zigbee sensor %s %s=%.2f (cluster=0x%04x)", ieee, sensor_type, scaled, cluster_id)
+        logger.debug(
+            "Zigbee sensor %s %s=%.2f (cluster=0x%04x)", ieee, sensor_type, scaled, cluster_id
+        )
 
         # Publish to MQTT
         if self._mqtt_client:
             try:
                 topic = f"danah/zigbee/{ieee}/{sensor_type}"
-                self._mqtt_client.publish(topic, {"value": scaled, "ieee": ieee, "type": sensor_type})
+                self._mqtt_client.publish(
+                    topic, {"value": scaled, "ieee": ieee, "type": sensor_type}
+                )
                 # Also publish to standard sensor topic
                 self._mqtt_client.publish_sensor(sensor_type, scaled)
             except Exception as exc:
@@ -284,6 +297,7 @@ class ZigbeeCoordinator:
 # ZCL value scaling helpers
 # ---------------------------------------------------------------------------
 
+
 def _scale_zcl_value(cluster_id: int, raw: Any) -> float:
     try:
         v = float(raw)
@@ -309,6 +323,7 @@ def _scale_zcl_value(cluster_id: int, raw: Any) -> float:
     # Illuminance: raw is 10000 * log10(lux) + 1
     if cluster_id == 0x0400:
         import math
+
         try:
             return round(10 ** ((v - 1) / 10000), 2)
         except Exception:

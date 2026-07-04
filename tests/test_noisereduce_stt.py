@@ -19,6 +19,7 @@ def _make_wav(
 ) -> bytes:
     """Build an in-memory WAV with a sine wave plus low-level noise."""
     import random
+
     rng = random.Random(42)
     n = sample_rate * duration_ms // 1000
     samples: list[int] = []
@@ -46,21 +47,22 @@ def _make_wav(
 
 def _make_stt() -> object:
     from ai.stt_manager import STTManager
+
     return STTManager(api_key="test_key")
 
 
 class TestNoiseReduceAvailability(unittest.TestCase):
-
     def test_module_flag_is_bool(self):
         import ai.stt_manager as mod
+
         self.assertIn("_NOISEREDUCE_AVAILABLE", dir(mod))
         self.assertIsInstance(mod._NOISEREDUCE_AVAILABLE, bool)
 
 
 class TestDenoiseWavBytesUnavailable(unittest.TestCase):
-
     def test_returns_original_bytes_when_unavailable(self):
         import ai.stt_manager as mod
+
         with patch.object(mod, "_NOISEREDUCE_AVAILABLE", False):
             stt = _make_stt()
             wav = _make_wav()
@@ -69,8 +71,8 @@ class TestDenoiseWavBytesUnavailable(unittest.TestCase):
 
     def test_returns_original_bytes_when_nr_none(self):
         import ai.stt_manager as mod
-        with patch.object(mod, "_NOISEREDUCE_AVAILABLE", False), \
-             patch.object(mod, "_nr", None):
+
+        with patch.object(mod, "_NOISEREDUCE_AVAILABLE", False), patch.object(mod, "_nr", None):
             stt = _make_stt()
             wav = _make_wav()
             result = stt._denoise_wav_bytes(wav)
@@ -78,9 +80,9 @@ class TestDenoiseWavBytesUnavailable(unittest.TestCase):
 
 
 class TestDenoiseWavBytesAvailable(unittest.TestCase):
-
     def test_returns_bytes(self):
         import ai.stt_manager as mod
+
         if not mod._NOISEREDUCE_AVAILABLE:
             self.skipTest("noisereduce not installed")
         stt = _make_stt()
@@ -90,6 +92,7 @@ class TestDenoiseWavBytesAvailable(unittest.TestCase):
 
     def test_output_is_valid_wav(self):
         import ai.stt_manager as mod
+
         if not mod._NOISEREDUCE_AVAILABLE:
             self.skipTest("noisereduce not installed")
         stt = _make_stt()
@@ -102,6 +105,7 @@ class TestDenoiseWavBytesAvailable(unittest.TestCase):
 
     def test_preserves_sample_rate(self):
         import ai.stt_manager as mod
+
         if not mod._NOISEREDUCE_AVAILABLE:
             self.skipTest("noisereduce not installed")
         stt = _make_stt()
@@ -113,6 +117,7 @@ class TestDenoiseWavBytesAvailable(unittest.TestCase):
 
     def test_preserves_channel_count_stereo(self):
         import ai.stt_manager as mod
+
         if not mod._NOISEREDUCE_AVAILABLE:
             self.skipTest("noisereduce not installed")
         stt = _make_stt()
@@ -123,6 +128,7 @@ class TestDenoiseWavBytesAvailable(unittest.TestCase):
 
     def test_output_length_similar_to_input(self):
         import ai.stt_manager as mod
+
         if not mod._NOISEREDUCE_AVAILABLE:
             self.skipTest("noisereduce not installed")
         stt = _make_stt()
@@ -133,9 +139,9 @@ class TestDenoiseWavBytesAvailable(unittest.TestCase):
 
 
 class TestDenoiseWavBytesFallback(unittest.TestCase):
-
     def test_returns_original_on_corrupt_bytes(self):
         import ai.stt_manager as mod
+
         if not mod._NOISEREDUCE_AVAILABLE:
             self.skipTest("noisereduce not installed")
         stt = _make_stt()
@@ -146,6 +152,7 @@ class TestDenoiseWavBytesFallback(unittest.TestCase):
     def test_returns_original_on_24bit_wav(self):
         """24-bit PCM (sampwidth=3) is unsupported — should fall back unchanged."""
         import ai.stt_manager as mod
+
         if not mod._NOISEREDUCE_AVAILABLE:
             self.skipTest("noisereduce not installed")
         # Build a minimal 24-bit WAV header manually
@@ -168,6 +175,7 @@ class TestDenoiseIntegratedInTranscribePaths(unittest.TestCase):
 
     def test_denoise_called_in_microphone_once_via_api(self):
         import ai.stt_manager as mod
+
         stt = _make_stt()
         calls = []
 
@@ -187,20 +195,23 @@ class TestDenoiseIntegratedInTranscribePaths(unittest.TestCase):
 
         class _FakeRecognizer:
             energy_threshold = 180.0
+
             def adjust_for_ambient_noise(self, *a, **kw):
                 pass
+
             def listen(self, *a, **kw):
                 return _FakeAudio()
 
         class _FakeMic:
             def __enter__(self):
                 return self
+
             def __exit__(self, *a):
                 pass
 
         import unittest.mock as mock
-        with mock.patch.object(mod, "sr") as mock_sr, \
-             mock.patch("requests.post") as mock_post:
+
+        with mock.patch.object(mod, "sr") as mock_sr, mock.patch("requests.post") as mock_post:
             mock_sr.Recognizer.return_value = _FakeRecognizer()
             mock_sr.Microphone.return_value = _FakeMic()
             mock_post.return_value.raise_for_status = lambda: None
@@ -213,6 +224,7 @@ class TestDenoiseIntegratedInTranscribePaths(unittest.TestCase):
         import ai.stt_manager as mod
         import tempfile
         import pathlib
+
         stt = _make_stt()
         calls = []
 
@@ -231,6 +243,7 @@ class TestDenoiseIntegratedInTranscribePaths(unittest.TestCase):
 
         try:
             import unittest.mock as mock
+
             with mock.patch("requests.post") as mock_post:
                 mock_post.return_value.raise_for_status = lambda: None
                 mock_post.return_value.json.return_value = {}

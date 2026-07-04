@@ -81,7 +81,10 @@ class TestTherapistFollowup(unittest.TestCase):
         self.assertEqual(normalize_followup_tone("unknown"), "soft")
 
     def test_islamic_followup_tone_changes_prompt_wording(self):
-        profile = {"daily_life": {}, "preferences": {"therapist_followup_tone": "islamic supportive"}}
+        profile = {
+            "daily_life": {},
+            "preferences": {"therapist_followup_tone": "islamic supportive"},
+        }
         record_therapist_concern(
             profile,
             user_text="I feel worried about my future",
@@ -95,7 +98,11 @@ class TestTherapistFollowup(unittest.TestCase):
             user_text="good morning",
             now=datetime(2026, 2, 21, 9, 0, 0),
         )
-        self.assertTrue(("allah" in prompt.lower()) or ("alhamdulillah" in prompt.lower()) or ("pray" in prompt.lower()))
+        self.assertTrue(
+            ("allah" in prompt.lower())
+            or ("alhamdulillah" in prompt.lower())
+            or ("pray" in prompt.lower())
+        )
 
 
 if __name__ == "__main__":

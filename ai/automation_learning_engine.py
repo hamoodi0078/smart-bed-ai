@@ -13,7 +13,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
-
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -100,7 +99,9 @@ class AutomationLearningEngine:
     # Learning queries
     # ------------------------------------------------------------------
 
-    def should_trigger(self, profile: dict, automation_id: str, now: datetime | None = None) -> dict[str, Any]:
+    def should_trigger(
+        self, profile: dict, automation_id: str, now: datetime | None = None
+    ) -> dict[str, Any]:
         """Determine if an automation should be triggered based on learned preferences."""
         now = now or _utcnow()
         self.ensure_shape(profile)
@@ -186,17 +187,19 @@ class AutomationLearningEngine:
             prefs = al.get("automation_preferences", {}).get(aid, {})
             timing = al.get("timing_adjustments", {}).get(aid, {})
 
-            report.append({
-                "automation_id": aid,
-                "total_triggers": total,
-                "accepted": accepted,
-                "declined": declined,
-                "snoozed": snoozed,
-                "acceptance_rate": rate,
-                "disabled": prefs.get("disabled", False),
-                "preferred_hour": timing.get("preferred_hour"),
-                "health": "good" if rate >= 60 else ("moderate" if rate >= 30 else "poor"),
-            })
+            report.append(
+                {
+                    "automation_id": aid,
+                    "total_triggers": total,
+                    "accepted": accepted,
+                    "declined": declined,
+                    "snoozed": snoozed,
+                    "acceptance_rate": rate,
+                    "disabled": prefs.get("disabled", False),
+                    "preferred_hour": timing.get("preferred_hour"),
+                    "health": "good" if rate >= 60 else ("moderate" if rate >= 30 else "poor"),
+                }
+            )
 
         report.sort(key=lambda x: x.get("acceptance_rate", 0), reverse=True)
         return report
@@ -227,8 +230,12 @@ class AutomationLearningEngine:
                 insights.append(f"You prefer '{aid}' around {adj['preferred_hour']}:00.")
 
         # Weekend vs weekday
-        weekday_accepted = sum(1 for r in recent if r.get("response") == "accepted" and int(r.get("weekday", 0)) < 5)
-        weekend_accepted = sum(1 for r in recent if r.get("response") == "accepted" and int(r.get("weekday", 0)) >= 5)
+        weekday_accepted = sum(
+            1 for r in recent if r.get("response") == "accepted" and int(r.get("weekday", 0)) < 5
+        )
+        weekend_accepted = sum(
+            1 for r in recent if r.get("response") == "accepted" and int(r.get("weekday", 0)) >= 5
+        )
         weekday_total = sum(1 for r in recent if int(r.get("weekday", 0)) < 5)
         weekend_total = sum(1 for r in recent if int(r.get("weekday", 0)) >= 5)
 
@@ -248,7 +255,9 @@ class AutomationLearningEngine:
             "acceptance_rate": round(accepted / total * 100, 1) if total > 0 else 0,
             "declined_rate": round(declined / total * 100, 1) if total > 0 else 0,
             "insights": insights,
-            "message": f"This month: {total} automations, {accepted} accepted ({accepted / total * 100:.0f}%)." if total > 0 else "",
+            "message": f"This month: {total} automations, {accepted} accepted ({accepted / total * 100:.0f}%)."
+            if total > 0
+            else "",
         }
 
     # ------------------------------------------------------------------
@@ -257,6 +266,7 @@ class AutomationLearningEngine:
 
     def _get_acceptance_rate(self, al: dict, automation_id: str) -> float | None:
         import math
+
         responses = al.get("responses", [])
         relevant = [r for r in responses if r.get("automation_id") == automation_id]
         if len(relevant) < self._min_samples:
@@ -270,7 +280,10 @@ class AutomationLearningEngine:
             age_factor = max(0.0, (now_iso[:10] > ts[:10]) - 0) if ts else 1.0
             try:
                 from datetime import datetime
-                days_old = (datetime.fromisoformat(now_iso[:10]) - datetime.fromisoformat(ts[:10])).days
+
+                days_old = (
+                    datetime.fromisoformat(now_iso[:10]) - datetime.fromisoformat(ts[:10])
+                ).days
                 weight = math.exp(-days_old / 14.0)
             except Exception:
                 weight = 1.0
@@ -281,7 +294,9 @@ class AutomationLearningEngine:
             return None
         return round(accepted_weight / total_weight * 100, 1)
 
-    def _update_timing_preference(self, al: dict, automation_id: str, response: str, now: datetime) -> None:
+    def _update_timing_preference(
+        self, al: dict, automation_id: str, response: str, now: datetime
+    ) -> None:
         if response == "snoozed":
             timing = al.setdefault("timing_adjustments", {}).setdefault(automation_id, {})
             snooze_count = int(timing.get("snooze_count", 0)) + 1
@@ -293,7 +308,8 @@ class AutomationLearningEngine:
                 timing["adjusted_at"] = now.isoformat()
                 logger.info(
                     "Timing adjusted for %s: preferred hour -> %d",
-                    automation_id, timing["preferred_hour"],
+                    automation_id,
+                    timing["preferred_hour"],
                 )
 
         elif response == "accepted":
@@ -305,6 +321,7 @@ class AutomationLearningEngine:
 
             if len(accepted_hours) >= 5:
                 from collections import Counter
+
                 most_common = Counter(accepted_hours).most_common(1)
                 if most_common:
                     timing["preferred_hour"] = most_common[0][0]

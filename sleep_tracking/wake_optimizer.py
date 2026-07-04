@@ -17,6 +17,7 @@ from loguru import logger
 
 try:
     import antropy as ant
+
     _ANTROPY_AVAILABLE = True
 except ImportError:
     ant = None  # type: ignore[assignment]
@@ -117,7 +118,7 @@ class WakeOptimizer:
 
     def _update_baseline(self) -> None:
         """Compute rolling baseline from recent stable readings."""
-        recent = list(self._readings)[-self._baseline_window:]
+        recent = list(self._readings)[-self._baseline_window :]
         if len(recent) < 5:
             return
         self._baseline = float(np.mean([r.value for r in recent]))
@@ -156,10 +157,7 @@ class WakeOptimizer:
     def _is_light_sleep(self, now: datetime) -> bool:
         """Check if restlessness events indicate light sleep phase."""
         window_start = now - timedelta(minutes=self._light_sleep_window)
-        recent_events = [
-            ts for ts in self._restlessness_events
-            if ts >= window_start
-        ]
+        recent_events = [ts for ts in self._restlessness_events if ts >= window_start]
         return len(recent_events) >= self._light_sleep_events
 
     # ------------------------------------------------------------------
@@ -171,8 +169,7 @@ class WakeOptimizer:
             now = _utcnow()
             readings_count = len(self._readings)
             recent_restlessness = sum(
-                1 for ts in self._restlessness_events
-                if (now - ts).total_seconds() < 900
+                1 for ts in self._restlessness_events if (now - ts).total_seconds() < 900
             )
             time_to_alarm = None
             if self._alarm_time:
@@ -332,7 +329,9 @@ class WakeOptimizer:
         elif avg_rmssd >= 40:
             score = int(70 + (avg_rmssd - 40) / 2)
             rating = "good"
-            recommendation = "Good HRV recovery. Maintain consistent sleep schedule for further improvement."
+            recommendation = (
+                "Good HRV recovery. Maintain consistent sleep schedule for further improvement."
+            )
         elif avg_rmssd >= 25:
             score = int(50 + (avg_rmssd - 25) / 1.5)
             rating = "moderate"
@@ -340,11 +339,15 @@ class WakeOptimizer:
         elif avg_rmssd >= 15:
             score = int(30 + (avg_rmssd - 15) / 1)
             rating = "below_average"
-            recommendation = "Below-average HRV. Prioritize sleep consistency, avoid alcohol and late screens."
+            recommendation = (
+                "Below-average HRV. Prioritize sleep consistency, avoid alcohol and late screens."
+            )
         else:
             score = max(0, int(avg_rmssd * 2))
             rating = "poor"
-            recommendation = "Poor HRV recovery. Consult a physician if this persists. Prioritize sleep hygiene."
+            recommendation = (
+                "Poor HRV recovery. Consult a physician if this persists. Prioritize sleep hygiene."
+            )
 
         return {
             "available": True,
@@ -476,7 +479,9 @@ class WakeOptimizer:
     # Background monitoring
     # ------------------------------------------------------------------
 
-    def start_monitoring(self, pressure_read_fn: Callable[[], float], poll_seconds: float = 5.0) -> None:
+    def start_monitoring(
+        self, pressure_read_fn: Callable[[], float], poll_seconds: float = 5.0
+    ) -> None:
         """Start continuous pressure monitoring in a background thread."""
         if self._thread is not None and self._thread.is_alive():
             return

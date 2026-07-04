@@ -192,6 +192,10 @@ class BathroomAutomation:
 
     def _update_avg_duration(self, profile: dict) -> None:
         history = profile["bathroom_trips"].get("history", [])
-        durations = [float(t.get("duration_seconds", 0)) for t in history[-30:] if t.get("duration_seconds")]
+        durations = [
+            float(t.get("duration_seconds", 0)) for t in history[-30:] if t.get("duration_seconds")
+        ]
         if durations:
-            profile["bathroom_trips"]["avg_duration_seconds"] = round(sum(durations) / len(durations), 1)
+            profile["bathroom_trips"]["avg_duration_seconds"] = round(
+                sum(durations) / len(durations), 1
+            )

@@ -14,8 +14,8 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-_CRITICAL_DEBT_HOURS = 10.0   # ≥ 10h cumulative debt triggers a critical alert
-_HIGH_DEBT_HOURS = 5.0        # boundary between moderate and high
+_CRITICAL_DEBT_HOURS = 10.0  # ≥ 10h cumulative debt triggers a critical alert
+_HIGH_DEBT_HOURS = 5.0  # boundary between moderate and high
 
 
 class SleepDebtTracker:
@@ -41,7 +41,10 @@ class SleepDebtTracker:
     def calculate_debt(self, profile: dict, days: int = 7) -> dict[str, Any]:
         """Calculate rolling sleep debt for the last N days."""
         self.ensure_shape(profile)
-        target = float(profile.get("preferences", {}).get("sleep_target_hours", self._default_target) or self._default_target)
+        target = float(
+            profile.get("preferences", {}).get("sleep_target_hours", self._default_target)
+            or self._default_target
+        )
         sleep = profile.get("sleep", {})
         bed_hist = sleep.get("bedtime_history", [])
         wake_hist = sleep.get("wake_history", [])
@@ -63,12 +66,14 @@ class SleepDebtTracker:
                 deficit = target - hours
                 total_actual += hours
                 total_target += target
-                nightly.append({
-                    "date": bed.date().isoformat(),
-                    "hours_slept": round(hours, 2),
-                    "target": target,
-                    "deficit": round(deficit, 2),
-                })
+                nightly.append(
+                    {
+                        "date": bed.date().isoformat(),
+                        "hours_slept": round(hours, 2),
+                        "target": target,
+                        "deficit": round(deficit, 2),
+                    }
+                )
             except Exception:
                 continue
 
@@ -106,44 +111,54 @@ class SleepDebtTracker:
         strategies: list[dict[str, Any]] = []
 
         if debt <= 2.0:
-            strategies.append({
-                "name": "early_bedtime",
-                "description": f"Go to bed 30 minutes early tonight to recover {min(debt, 0.5):.1f} hours.",
-                "extra_sleep_per_night": 0.5,
-                "nights_needed": max(1, int(debt / 0.5 + 0.5)),
-            })
+            strategies.append(
+                {
+                    "name": "early_bedtime",
+                    "description": f"Go to bed 30 minutes early tonight to recover {min(debt, 0.5):.1f} hours.",
+                    "extra_sleep_per_night": 0.5,
+                    "nights_needed": max(1, int(debt / 0.5 + 0.5)),
+                }
+            )
         elif debt <= 5.0:
-            strategies.append({
-                "name": "gradual_recovery",
-                "description": "Go to bed 30 minutes early each night this week.",
-                "extra_sleep_per_night": 0.5,
-                "nights_needed": max(1, int(debt / 0.5 + 0.5)),
-            })
-            strategies.append({
-                "name": "weekend_catchup",
-                "description": "Sleep 1-1.5 extra hours on Saturday and Sunday.",
-                "extra_sleep_per_night": 1.25,
-                "nights_needed": max(1, int(debt / 1.25 + 0.5)),
-            })
+            strategies.append(
+                {
+                    "name": "gradual_recovery",
+                    "description": "Go to bed 30 minutes early each night this week.",
+                    "extra_sleep_per_night": 0.5,
+                    "nights_needed": max(1, int(debt / 0.5 + 0.5)),
+                }
+            )
+            strategies.append(
+                {
+                    "name": "weekend_catchup",
+                    "description": "Sleep 1-1.5 extra hours on Saturday and Sunday.",
+                    "extra_sleep_per_night": 1.25,
+                    "nights_needed": max(1, int(debt / 1.25 + 0.5)),
+                }
+            )
         else:
-            strategies.append({
-                "name": "intensive_recovery",
-                "description": "Priority: Sleep 1 hour extra each night for a full week.",
-                "extra_sleep_per_night": 1.0,
-                "nights_needed": max(1, int(debt / 1.0 + 0.5)),
-            })
-            strategies.append({
-                "name": "nap_supplement",
-                "description": "Add a 20-minute power nap at 2 PM on workdays.",
-                "extra_sleep_per_day": 0.33,
-                "days_needed": max(1, int(debt / 0.33 + 0.5)),
-            })
+            strategies.append(
+                {
+                    "name": "intensive_recovery",
+                    "description": "Priority: Sleep 1 hour extra each night for a full week.",
+                    "extra_sleep_per_night": 1.0,
+                    "nights_needed": max(1, int(debt / 1.0 + 0.5)),
+                }
+            )
+            strategies.append(
+                {
+                    "name": "nap_supplement",
+                    "description": "Add a 20-minute power nap at 2 PM on workdays.",
+                    "extra_sleep_per_day": 0.33,
+                    "days_needed": max(1, int(debt / 0.33 + 0.5)),
+                }
+            )
 
         profile["sleep_debt"]["recovery_plan_active"] = True
         target_days = strategies[0].get("nights_needed", 7)
         profile["sleep_debt"]["recovery_target_date"] = (
-            _utcnow() + timedelta(days=target_days)
-        ).date().isoformat()
+            (_utcnow() + timedelta(days=target_days)).date().isoformat()
+        )
 
         return {
             "needed": True,
@@ -287,10 +302,12 @@ class SleepDebtTracker:
 
     def _append_debt_history(self, profile: dict, debt: float) -> None:
         history = profile["sleep_debt"].get("debt_history", [])
-        history.append({
-            "date": _utcnow().date().isoformat(),
-            "debt": round(debt, 2),
-        })
+        history.append(
+            {
+                "date": _utcnow().date().isoformat(),
+                "debt": round(debt, 2),
+            }
+        )
         profile["sleep_debt"]["debt_history"] = history[-90:]
 
     @staticmethod

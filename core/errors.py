@@ -75,7 +75,11 @@ class VoiceProcessingError(BedError):
     """Raised when voice pipeline (STT/TTS/LLM) encounters an error."""
 
     def __init__(self, stage: str = "", detail: str = ""):
-        msg = f"Voice processing failed at {stage}: {detail}" if stage else detail or "Voice processing error"
+        msg = (
+            f"Voice processing failed at {stage}: {detail}"
+            if stage
+            else detail or "Voice processing error"
+        )
         super().__init__(msg)
         self.stage = stage
         self.detail = detail
@@ -85,7 +89,11 @@ class ConfigurationError(BedError):
     """Raised for invalid or missing configuration."""
 
     def __init__(self, key: str = "", message: str = ""):
-        msg = f"Configuration error for '{key}': {message}" if key else message or "Configuration error"
+        msg = (
+            f"Configuration error for '{key}': {message}"
+            if key
+            else message or "Configuration error"
+        )
         super().__init__(msg)
         self.key = key
 
@@ -107,7 +115,9 @@ class APIError(Exception):
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
-def error_response(code: str, message: str, trace_id: str, retry_after: int | None = None) -> JSONResponse:
+def error_response(
+    code: str, message: str, trace_id: str, retry_after: int | None = None
+) -> JSONResponse:
     normalized_code = str(code or INTERNAL_ERROR).strip() or INTERNAL_ERROR
     status_code = _STATUS_BY_CODE.get(normalized_code, 500)
     retry_value = int(retry_after) if retry_after is not None else None

@@ -34,6 +34,7 @@ try:
         Table,
         TableStyle,
     )
+
     _REPORTLAB_AVAILABLE = True
 except ImportError:
     _REPORTLAB_AVAILABLE = False
@@ -55,39 +56,70 @@ def _styles():
             base.add(ParagraphStyle(name=name, **kwargs))
         return base[name]
 
-    _add("ReportTitle",
-         fontSize=22, leading=28, textColor=_BRAND_DARK,
-         fontName="Helvetica-Bold", spaceAfter=4)
-    _add("ReportSubtitle",
-         fontSize=11, leading=16, textColor=_GREY,
-         fontName="Helvetica", spaceAfter=12)
-    _add("SectionHeader",
-         fontSize=13, leading=18, textColor=_WHITE,
-         fontName="Helvetica-Bold", spaceAfter=6,
-         backColor=_BRAND_TEAL, leftIndent=6, rightIndent=6,
-         borderPadding=(4, 6, 4, 6))
-    _add("MetricLabel",
-         fontSize=9, leading=13, textColor=_GREY,
-         fontName="Helvetica")
-    _add("MetricValue",
-         fontSize=11, leading=15, textColor=_BRAND_DARK,
-         fontName="Helvetica-Bold")
-    _add("BulletItem",
-         fontSize=10, leading=14, textColor=_BRAND_DARK,
-         fontName="Helvetica", leftIndent=12, spaceAfter=3,
-         bulletText="•")
-    _add("Footer",
-         fontSize=8, leading=11, textColor=_GREY,
-         fontName="Helvetica", alignment=TA_CENTER)
-    _add("ScoreGood",
-         fontSize=13, leading=17, textColor=colors.HexColor("#16A34A"),
-         fontName="Helvetica-Bold")
-    _add("ScoreWarn",
-         fontSize=13, leading=17, textColor=colors.HexColor("#D97706"),
-         fontName="Helvetica-Bold")
-    _add("ScoreBad",
-         fontSize=13, leading=17, textColor=colors.HexColor("#DC2626"),
-         fontName="Helvetica-Bold")
+    _add(
+        "ReportTitle",
+        fontSize=22,
+        leading=28,
+        textColor=_BRAND_DARK,
+        fontName="Helvetica-Bold",
+        spaceAfter=4,
+    )
+    _add(
+        "ReportSubtitle",
+        fontSize=11,
+        leading=16,
+        textColor=_GREY,
+        fontName="Helvetica",
+        spaceAfter=12,
+    )
+    _add(
+        "SectionHeader",
+        fontSize=13,
+        leading=18,
+        textColor=_WHITE,
+        fontName="Helvetica-Bold",
+        spaceAfter=6,
+        backColor=_BRAND_TEAL,
+        leftIndent=6,
+        rightIndent=6,
+        borderPadding=(4, 6, 4, 6),
+    )
+    _add("MetricLabel", fontSize=9, leading=13, textColor=_GREY, fontName="Helvetica")
+    _add("MetricValue", fontSize=11, leading=15, textColor=_BRAND_DARK, fontName="Helvetica-Bold")
+    _add(
+        "BulletItem",
+        fontSize=10,
+        leading=14,
+        textColor=_BRAND_DARK,
+        fontName="Helvetica",
+        leftIndent=12,
+        spaceAfter=3,
+        bulletText="•",
+    )
+    _add(
+        "Footer", fontSize=8, leading=11, textColor=_GREY, fontName="Helvetica", alignment=TA_CENTER
+    )
+    _add(
+        "ScoreGood",
+        fontSize=13,
+        leading=17,
+        textColor=colors.HexColor("#16A34A"),
+        fontName="Helvetica-Bold",
+    )
+    _add(
+        "ScoreWarn",
+        fontSize=13,
+        leading=17,
+        textColor=colors.HexColor("#D97706"),
+        fontName="Helvetica-Bold",
+    )
+    _add(
+        "ScoreBad",
+        fontSize=13,
+        leading=17,
+        textColor=colors.HexColor("#DC2626"),
+        fontName="Helvetica-Bold",
+    )
 
     return base
 
@@ -105,16 +137,24 @@ def _bar(value: float, max_value: float, width: float = 200, height: float = 10)
     ratio = min(1.0, max(0.0, value / max_value)) if max_value else 0.0
     filled = width * ratio
     empty = width - filled
-    fill_color = _BRAND_TEAL if ratio >= 0.6 else (_BRAND_ACCENT if ratio >= 0.3 else colors.HexColor("#DC2626"))
+    fill_color = (
+        _BRAND_TEAL
+        if ratio >= 0.6
+        else (_BRAND_ACCENT if ratio >= 0.3 else colors.HexColor("#DC2626"))
+    )
     data = [["", ""]]
     col_widths = [filled, empty] if filled > 0 else [0.1, width - 0.1]
     t = Table(data, colWidths=col_widths, rowHeights=[height])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, 0), fill_color),
-        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#E5E7EB")),
-        ("GRID", (0, 0), (-1, -1), 0, colors.white),
-        ("ROUNDEDCORNERS", [4]),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, 0), fill_color),
+                ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#E5E7EB")),
+                ("GRID", (0, 0), (-1, -1), 0, colors.white),
+                ("ROUNDEDCORNERS", [4]),
+            ]
+        )
+    )
     return t
 
 
@@ -193,20 +233,26 @@ class WeeklyReportPDF:
                 num_val = float(str(value).replace("%", "").replace("h", "").strip())
             except Exception:
                 num_val = 0.0
-            data.append([
-                Paragraph(label, getSampleStyleSheet()["Normal"]),
-                _bar(num_val, bar_max, width=usable_w * 0.38, height=9),
-                Paragraph(f"<b>{value}</b> {unit}", getSampleStyleSheet()["Normal"]),
-            ])
+            data.append(
+                [
+                    Paragraph(label, getSampleStyleSheet()["Normal"]),
+                    _bar(num_val, bar_max, width=usable_w * 0.38, height=9),
+                    Paragraph(f"<b>{value}</b> {unit}", getSampleStyleSheet()["Normal"]),
+                ]
+            )
 
         t = Table(data, colWidths=col_w, rowHeights=[22] * len(data))
-        t.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("GRID", (0, 0), (-1, -1), 0, colors.white),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [_BRAND_LIGHT, colors.white]),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ]))
+        t.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("GRID", (0, 0), (-1, -1), 0, colors.white),
+                    ("ROWBACKGROUNDS", (0, 0), (-1, -1), [_BRAND_LIGHT, colors.white]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ]
+            )
+        )
         return t
 
     def _add_sleep_section(self, story, styles, sleep: dict):
@@ -280,16 +326,20 @@ class WeeklyReportPDF:
         total = int(automations.get("total_triggered", 0))
         types = automations.get("types", [])
 
-        story.append(Paragraph(
-            f"<b>{total}</b> automations triggered this week.",
-            styles["MetricLabel"],
-        ))
+        story.append(
+            Paragraph(
+                f"<b>{total}</b> automations triggered this week.",
+                styles["MetricLabel"],
+            )
+        )
         if types:
             story.append(Spacer(1, 4))
-            story.append(Paragraph(
-                "Types: " + ", ".join(str(t) for t in types if t),
-                styles["MetricLabel"],
-            ))
+            story.append(
+                Paragraph(
+                    "Types: " + ", ".join(str(t) for t in types if t),
+                    styles["MetricLabel"],
+                )
+            )
 
     def _add_recommendations(self, story, styles, recommendations: list):
         self._section_header(story, styles, "Recommendations")
@@ -300,10 +350,12 @@ class WeeklyReportPDF:
         story.append(Spacer(1, 16))
         story.append(HRFlowable(width="100%", thickness=0.5, color=_GREY, spaceAfter=6))
         generated = str(report.get("generated_at", ""))[:19].replace("T", " ")
-        story.append(Paragraph(
-            f"Generated by Danah Smart Bed AI  ·  {generated}  ·  Confidential",
-            styles["Footer"],
-        ))
+        story.append(
+            Paragraph(
+                f"Generated by Danah Smart Bed AI  ·  {generated}  ·  Confidential",
+                styles["Footer"],
+            )
+        )
 
 
 def generate_weekly_pdf(report: dict[str, Any], output_path: str | Path) -> str:

@@ -22,9 +22,21 @@ class StressDetector:
     """Multi-signal stress detection with adaptive intervention."""
 
     MOOD_STRESS_KEYWORDS = {
-        "stressed", "anxious", "overwhelmed", "worried", "nervous",
-        "panic", "tense", "frustrated", "angry", "upset", "restless",
-        "cant sleep", "can't sleep", "insomnia", "racing thoughts",
+        "stressed",
+        "anxious",
+        "overwhelmed",
+        "worried",
+        "nervous",
+        "panic",
+        "tense",
+        "frustrated",
+        "angry",
+        "upset",
+        "restless",
+        "cant sleep",
+        "can't sleep",
+        "insomnia",
+        "racing thoughts",
     }
 
     def __init__(
@@ -163,45 +175,55 @@ class StressDetector:
         interventions: list[dict[str, Any]] = []
 
         # Always offer breathing exercise for stress
-        interventions.append({
-            "type": "breathing_exercise",
-            "technique": "4-7-8" if score >= self._high_threshold else "4-6",
-            "duration_minutes": 5,
-            "message": "Let's do a quick breathing exercise to reset.",
-            "priority": "high" if score >= self._high_threshold else "medium",
-        })
+        interventions.append(
+            {
+                "type": "breathing_exercise",
+                "technique": "4-7-8" if score >= self._high_threshold else "4-6",
+                "duration_minutes": 5,
+                "message": "Let's do a quick breathing exercise to reset.",
+                "priority": "high" if score >= self._high_threshold else "medium",
+            }
+        )
 
         # Calm scene
-        interventions.append({
-            "type": "led_scene",
-            "action": "calm_reset",
-            "color": "#00CED1",
-            "brightness": 0.20,
-            "animation": "breathing",
-        })
+        interventions.append(
+            {
+                "type": "led_scene",
+                "action": "calm_reset",
+                "color": "#00CED1",
+                "brightness": 0.20,
+                "animation": "breathing",
+            }
+        )
 
         # Overthinking-specific
         if "overthinking" in signals:
-            interventions.append({
-                "type": "prompt",
-                "message": "Would you like to do an overthinking dump? Say what's on your mind.",
-                "action": "overthinking_dump",
-            })
+            interventions.append(
+                {
+                    "type": "prompt",
+                    "message": "Would you like to do an overthinking dump? Say what's on your mind.",
+                    "action": "overthinking_dump",
+                }
+            )
 
         # Music suggestion
-        interventions.append({
-            "type": "music_suggestion",
-            "query": "calm ambient meditation",
-            "reason": "Calming music to reduce stress.",
-        })
+        interventions.append(
+            {
+                "type": "music_suggestion",
+                "query": "calm ambient meditation",
+                "reason": "Calming music to reduce stress.",
+            }
+        )
 
         # High stress: suggest professional help
         if score >= self._high_threshold and self._is_persistent_stress(profile, now):
-            interventions.append({
-                "type": "recommendation",
-                "message": "You've been stressed for several days. Consider talking to someone you trust or a professional.",
-                "priority": "high",
-            })
+            interventions.append(
+                {
+                    "type": "recommendation",
+                    "message": "You've been stressed for several days. Consider talking to someone you trust or a professional.",
+                    "priority": "high",
+                }
+            )
 
         self._last_intervention_at = now
         self._log_intervention(profile, score, now)
@@ -251,7 +273,8 @@ class StressDetector:
         history = profile.get("stress", {}).get("history", [])
         cutoff = (now - timedelta(days=self._persistent_days)).date().isoformat()
         recent_high = [
-            h for h in history
+            h
+            for h in history
             if str(h.get("date", "")) >= cutoff and int(h.get("score", 0)) >= self._threshold
         ]
         unique_dates = set(str(h.get("date", "")) for h in recent_high)

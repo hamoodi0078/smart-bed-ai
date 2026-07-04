@@ -14,6 +14,7 @@ available.
 Environment / settings used:
   SENSOR_TEMPERATURE_PIN  (default: GPIO 4)
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,9 +45,11 @@ except Exception as _exc:
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class TemperatureReading:
     """A single temperature + humidity reading."""
+
     temperature_c: float | None = None
     humidity_pct: float | None = None
     valid: bool = False
@@ -74,6 +77,7 @@ def _board_pin(gpio_number: int) -> Any:
 # ---------------------------------------------------------------------------
 # Sensor monitor
 # ---------------------------------------------------------------------------
+
 
 class TemperatureSensorMonitor:
     """Polls an AM2301A / DHT22 sensor at a configurable interval."""
@@ -159,7 +163,11 @@ class TemperatureSensorMonitor:
             return
 
         def _run() -> None:
-            logger.info("AM2301A polling started (GPIO %d, every %.1fs).", self._gpio_pin, self._poll_interval)
+            logger.info(
+                "AM2301A polling started (GPIO %d, every %.1fs).",
+                self._gpio_pin,
+                self._poll_interval,
+            )
             while not self._stop.is_set():
                 reading = self.read()
                 if reading.valid:
@@ -187,6 +195,7 @@ class TemperatureSensorMonitor:
 # ---------------------------------------------------------------------------
 # Noop fallback (matches the same interface)
 # ---------------------------------------------------------------------------
+
 
 class NoopTemperatureMonitor:
     """Placeholder used when the real sensor is unavailable."""
@@ -217,6 +226,7 @@ class NoopTemperatureMonitor:
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
+
 
 def build_temperature_monitor(settings: Any) -> TemperatureSensorMonitor | NoopTemperatureMonitor:
     """Create a temperature monitor from app settings.

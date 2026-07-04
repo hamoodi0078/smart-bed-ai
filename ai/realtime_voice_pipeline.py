@@ -34,7 +34,9 @@ class RealtimeVoicePipeline:
         normalized = str(text or "").strip().lower()
         if not normalized:
             return ""
-        if any(token in normalized for token in ("sleep", "wind down", "wind-down", "bedtime", "night")):
+        if any(
+            token in normalized for token in ("sleep", "wind down", "wind-down", "bedtime", "night")
+        ):
             return "sleep"
         if any(token in normalized for token in ("morning", "wake", "good morning", "sunrise")):
             return "morning"
@@ -91,7 +93,9 @@ class RealtimeVoicePipeline:
                     if not queued and (not self.player.is_playing()):
                         self.player.play_file(audio_path)
 
-        worker = threading.Thread(target=_playback_worker, name="realtime-tts-playback", daemon=True)
+        worker = threading.Thread(
+            target=_playback_worker, name="realtime-tts-playback", daemon=True
+        )
         worker.start()
 
         buffer = ""

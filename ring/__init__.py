@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from typing import TYPE_CHECKING
@@ -36,10 +37,12 @@ def build_ring_client(settings: object) -> "RingBleClient | NoopRingClient":
     enabled = bool(getattr(settings, "ring_enabled", False))
     if not enabled:
         from ring.ble_client import NoopRingClient
+
         return NoopRingClient(reason="Ring disabled by configuration (RING_ENABLED=0).")
 
     try:
         from ring.ble_client import RingBleClient  # noqa: F811
+
         return RingBleClient(
             ble_address=str(getattr(settings, "ring_ble_address", "") or ""),
             model=str(getattr(settings, "ring_model", "colmi_r02") or "colmi_r02"),
@@ -50,7 +53,9 @@ def build_ring_client(settings: object) -> "RingBleClient | NoopRingClient":
         )
     except ImportError:
         from ring.ble_client import NoopRingClient
+
         return NoopRingClient(reason="Ring disabled: install bleak (pip install bleak>=0.21.0).")
     except Exception as exc:
         from ring.ble_client import NoopRingClient
+
         return NoopRingClient(reason=f"Ring init failed: {exc}")

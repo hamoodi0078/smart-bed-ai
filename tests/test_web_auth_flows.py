@@ -47,7 +47,9 @@ class TestWebAuthFlows(unittest.TestCase):
 
         # Keep auth tests independent from optional bcrypt installation state.
         self.store.hash_password = lambda password: _legacy_sha256(password)
-        self.store.check_password = lambda password, stored_hash: stored_hash == _legacy_sha256(password)
+        self.store.check_password = lambda password, stored_hash: (
+            stored_hash == _legacy_sha256(password)
+        )
 
         self._patch_env = patch.dict(
             os.environ,
@@ -93,7 +95,9 @@ class TestWebAuthFlows(unittest.TestCase):
         self._patch_env.stop()
         self._tmp.cleanup()
 
-    def _register(self, email: str = "user@example.com", password: str = "Secret1234", name: str = "User"):
+    def _register(
+        self, email: str = "user@example.com", password: str = "Secret1234", name: str = "User"
+    ):
         return self.client.post(
             "/v1/auth/register",
             json={"email": email, "password": password, "name": name},
@@ -183,8 +187,17 @@ class TestWebAuthFlows(unittest.TestCase):
 
         self.assertIsNone(self.store.get_user(user_id))
         self.assertIsNone(self.store.get_admin_user(user_id))
-        self.assertFalse(any(s.get("user_id") == user_id for s in self.store.db.get("user_sessions", {}).values()))
-        self.assertFalse(any(s.get("user_id") == user_id for s in self.store.db.get("admin_sessions", {}).values()))
+        self.assertFalse(
+            any(
+                s.get("user_id") == user_id for s in self.store.db.get("user_sessions", {}).values()
+            )
+        )
+        self.assertFalse(
+            any(
+                s.get("user_id") == user_id
+                for s in self.store.db.get("admin_sessions", {}).values()
+            )
+        )
 
         profile_after = json.loads(self.profile_path.read_text(encoding="utf-8"))
         self.assertNotIn(user_id, profile_after.get("web_settings", {}))
@@ -200,7 +213,9 @@ class TestDeviceOwnershipIsolation(unittest.TestCase):
         self.db_path = Path(self._tmp.name) / "subscription_db.json"
         self.store = SubscriptionStore(db_path=self.db_path)
         self.store.hash_password = lambda password: _legacy_sha256(password)
-        self.store.check_password = lambda password, stored_hash: stored_hash == _legacy_sha256(password)
+        self.store.check_password = lambda password, stored_hash: (
+            stored_hash == _legacy_sha256(password)
+        )
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -225,7 +240,8 @@ class TestDeviceOwnershipIsolation(unittest.TestCase):
         leaked = [
             row
             for row in u2_timeline
-            if row.get("event") == "device_replaced" and (row.get("data") or {}).get("device_id") == "bed-1"
+            if row.get("event") == "device_replaced"
+            and (row.get("data") or {}).get("device_id") == "bed-1"
         ]
         self.assertEqual(leaked, [])
 

@@ -26,13 +26,21 @@ class TestProactiveAutomation(unittest.TestCase):
         suggestions = self.engine.evaluate(
             self.profile,
             now=now,
-            session_state={"interrupt_count_today": 0, "active_goals_count": 1, "bedtime_drift_alert": "Predictive alert: drift"},
+            session_state={
+                "interrupt_count_today": 0,
+                "active_goals_count": 1,
+                "bedtime_drift_alert": "Predictive alert: drift",
+            },
         )
         self.assertEqual(suggestions, [])
 
     def test_dedup_same_day_and_window(self):
         now = datetime(2026, 2, 22, 20, 0, 0)
-        session_state = {"interrupt_count_today": 0, "active_goals_count": 1, "bedtime_drift_alert": "Predictive alert: drift"}
+        session_state = {
+            "interrupt_count_today": 0,
+            "active_goals_count": 1,
+            "bedtime_drift_alert": "Predictive alert: drift",
+        }
 
         first = self.engine.evaluate(self.profile, now=now, session_state=session_state)
         self.assertTrue(any(s.get("key") == "bedtime_drift_intervention" for s in first))
@@ -48,7 +56,11 @@ class TestProactiveAutomation(unittest.TestCase):
         suggestions = self.engine.evaluate(
             self.profile,
             now=now,
-            session_state={"interrupt_count_today": 5, "active_goals_count": 1, "bedtime_drift_alert": ""},
+            session_state={
+                "interrupt_count_today": 5,
+                "active_goals_count": 1,
+                "bedtime_drift_alert": "",
+            },
         )
         keys = {s.get("key") for s in suggestions}
         self.assertIn("overload_simplification_prompt", keys)
@@ -58,7 +70,11 @@ class TestProactiveAutomation(unittest.TestCase):
         suggestions = self.engine.evaluate(
             self.profile,
             now=now,
-            session_state={"interrupt_count_today": 0, "active_goals_count": 1, "bedtime_drift_alert": ""},
+            session_state={
+                "interrupt_count_today": 0,
+                "active_goals_count": 1,
+                "bedtime_drift_alert": "",
+            },
         )
         keys = {s.get("key") for s in suggestions}
         self.assertIn("adaptive_morning_ramp", keys)
@@ -68,7 +84,11 @@ class TestProactiveAutomation(unittest.TestCase):
         suggestions = self.engine.evaluate(
             self.profile,
             now=now,
-            session_state={"interrupt_count_today": 0, "active_goals_count": 1, "bedtime_drift_alert": ""},
+            session_state={
+                "interrupt_count_today": 0,
+                "active_goals_count": 1,
+                "bedtime_drift_alert": "",
+            },
         )
         keys = {s.get("key") for s in suggestions}
         self.assertIn("night_wake_rescue", keys)
@@ -78,7 +98,11 @@ class TestProactiveAutomation(unittest.TestCase):
         suggestions = self.engine.evaluate(
             self.profile,
             now=now,
-            session_state={"interrupt_count_today": 1, "active_goals_count": 4, "bedtime_drift_alert": ""},
+            session_state={
+                "interrupt_count_today": 1,
+                "active_goals_count": 4,
+                "bedtime_drift_alert": "",
+            },
         )
         keys = {s.get("key") for s in suggestions}
         self.assertIn("goal_overload_simplification", keys)

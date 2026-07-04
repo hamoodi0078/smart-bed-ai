@@ -35,6 +35,7 @@ def _is_relative_to(path: Path, base: Path) -> bool:
 
 def _assert_safe_sensitive_json_path(label: str, path: Path) -> None:
     import os
+
     override = os.getenv("ALLOW_INSECURE_REPO_DATA_PATHS", "0") == "1"
     resolved = path.resolve()
     repo_data_dir = (BASE_DIR / "data").resolve()
@@ -76,7 +77,7 @@ class Settings(BaseSettings):
         if v in _unsafe or len(v) < 32:
             raise ValueError(
                 "SECRET_KEY is unsafe or too short (minimum 32 characters). "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\" "
+                'Generate one with: python -c "import secrets; print(secrets.token_hex(32))" '
                 "and set it as SECRET_KEY in your .env file."
             )
         return v
@@ -92,7 +93,9 @@ class Settings(BaseSettings):
     deepgram_api_key: str = ""
     deepgram_tts_api_key: str = Field(
         "",
-        validation_alias=AliasChoices("DEEPGRAM_TTS_API_KEY", "TTS_API_KEY", "DEEPGRAM_API_KEY", "deepgram_tts_api_key"),
+        validation_alias=AliasChoices(
+            "DEEPGRAM_TTS_API_KEY", "TTS_API_KEY", "DEEPGRAM_API_KEY", "deepgram_tts_api_key"
+        ),
     )
     deepgram_voice_agent_model: str = "voice-agent-conversational"
     deepgram_voice_agent_url: str = "https://agent.deepgram.com/v1/agent/converse"
@@ -157,7 +160,9 @@ class Settings(BaseSettings):
     wake_word_mic_index: int = -1
     wake_word_voice_timeout_seconds: int = Field(
         3,
-        validation_alias=AliasChoices("WAKE_WORD_TIMEOUT_SECONDS", "wake_word_voice_timeout_seconds"),
+        validation_alias=AliasChoices(
+            "WAKE_WORD_TIMEOUT_SECONDS", "wake_word_voice_timeout_seconds"
+        ),
     )
     wake_word_phrase_limit_seconds: int = 3
     wake_word_barge_in_timeout_seconds: int = 1
@@ -377,7 +382,9 @@ class Settings(BaseSettings):
     )
     google_calendar_client_secret: str = Field(
         "",
-        validation_alias=AliasChoices("GOOGLE_CALENDAR_CLIENT_SECRET", "google_calendar_client_secret"),
+        validation_alias=AliasChoices(
+            "GOOGLE_CALENDAR_CLIENT_SECRET", "google_calendar_client_secret"
+        ),
     )
     google_calendar_token_uri: str = "https://oauth2.googleapis.com/token"
     google_calendar_scopes: str = "https://www.googleapis.com/auth/calendar.readonly"
@@ -458,7 +465,9 @@ class Settings(BaseSettings):
     )
     aws_s3_presigned_url_expiry_seconds: int = Field(
         3600,
-        validation_alias=AliasChoices("AWS_S3_PRESIGNED_URL_EXPIRY_SECONDS", "aws_s3_presigned_url_expiry_seconds"),
+        validation_alias=AliasChoices(
+            "AWS_S3_PRESIGNED_URL_EXPIRY_SECONDS", "aws_s3_presigned_url_expiry_seconds"
+        ),
     )
 
     # ── Islamic ───────────────────────────────────────────────────────
@@ -480,13 +489,19 @@ class Settings(BaseSettings):
 
         rdd = Path(_resolve(self.runtime_data_dir, BASE_DIR / "runtime_data"))
         self.runtime_data_dir = str(rdd)
-        self.subscription_db_path = _resolve(self.subscription_db_path, rdd / "subscription_db.json")
+        self.subscription_db_path = _resolve(
+            self.subscription_db_path, rdd / "subscription_db.json"
+        )
         self.user_profile_path = _resolve(self.user_profile_path, rdd / "user_profile.json")
-        self.long_term_memory_path = _resolve(self.long_term_memory_path, rdd / "long_term_memory.json")
+        self.long_term_memory_path = _resolve(
+            self.long_term_memory_path, rdd / "long_term_memory.json"
+        )
         self.voice_circuit_reset_signal_path = _resolve(
             self.voice_circuit_reset_signal_path, rdd / "voice_circuit_reset_signal.json"
         )
-        self.islamic_prayer_cache_path = _resolve(self.islamic_prayer_cache_path, rdd / "prayer_times_cache.json")
+        self.islamic_prayer_cache_path = _resolve(
+            self.islamic_prayer_cache_path, rdd / "prayer_times_cache.json"
+        )
 
         return self
 

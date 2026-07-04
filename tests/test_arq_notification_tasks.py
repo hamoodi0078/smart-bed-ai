@@ -25,12 +25,14 @@ class TestSendPushNotification(unittest.TestCase):
         mock_sender.send_to_user.return_value = mock_result
 
         with patch("notifications.expo_sender.ExpoPushSender", return_value=mock_sender):
-            result = _run(send_push_notification(
-                CTX,
-                user_id="u-1",
-                notification_type="dana_checkin",
-                template_vars={"days": 3, "user_name": "u-1"},
-            ))
+            result = _run(
+                send_push_notification(
+                    CTX,
+                    user_id="u-1",
+                    notification_type="dana_checkin",
+                    template_vars={"days": 3, "user_name": "u-1"},
+                )
+            )
 
         self.assertEqual(result, mock_result)
         mock_sender.send_to_user.assert_called_once()
@@ -43,12 +45,14 @@ class TestSendPushNotification(unittest.TestCase):
 
         with patch("notifications.expo_sender.ExpoPushSender", return_value=mock_sender):
             with self.assertRaises(RuntimeError):
-                _run(send_push_notification(
-                    CTX,
-                    user_id="u-2",
-                    notification_type="dana_checkin",
-                    template_vars={},
-                ))
+                _run(
+                    send_push_notification(
+                        CTX,
+                        user_id="u-2",
+                        notification_type="dana_checkin",
+                        template_vars={},
+                    )
+                )
 
 
 class TestSendWhatsappNotification(unittest.TestCase):
@@ -59,13 +63,15 @@ class TestSendWhatsappNotification(unittest.TestCase):
         mock_notifier.send_dana_checkin.return_value = {"sent": True}
 
         with patch("notifications.whatsapp_notifier.WhatsAppNotifier", return_value=mock_notifier):
-            result = _run(send_whatsapp_notification(
-                CTX,
-                method="dana_checkin",
-                phone="+96511111111",
-                user_id="u-3",
-                extra={"days_inactive": 5},
-            ))
+            result = _run(
+                send_whatsapp_notification(
+                    CTX,
+                    method="dana_checkin",
+                    phone="+96511111111",
+                    user_id="u-3",
+                    extra={"days_inactive": 5},
+                )
+            )
 
         self.assertEqual(result, {"sent": True})
         mock_notifier.send_dana_checkin.assert_called_once_with("+96511111111", "u-3", 5)
@@ -77,13 +83,15 @@ class TestSendWhatsappNotification(unittest.TestCase):
         mock_notifier.send_streak_message.return_value = {"sent": True}
 
         with patch("notifications.whatsapp_notifier.WhatsAppNotifier", return_value=mock_notifier):
-            result = _run(send_whatsapp_notification(
-                CTX,
-                method="streak_message",
-                phone="+96511111111",
-                user_id="u-4",
-                extra={"streak_days": 7},
-            ))
+            result = _run(
+                send_whatsapp_notification(
+                    CTX,
+                    method="streak_message",
+                    phone="+96511111111",
+                    user_id="u-4",
+                    extra={"streak_days": 7},
+                )
+            )
 
         mock_notifier.send_streak_message.assert_called_once_with("+96511111111", "u-4", 7)
 
@@ -93,13 +101,15 @@ class TestSendWhatsappNotification(unittest.TestCase):
         mock_notifier = MagicMock()
 
         with patch("notifications.whatsapp_notifier.WhatsAppNotifier", return_value=mock_notifier):
-            result = _run(send_whatsapp_notification(
-                CTX,
-                method="unknown_method",
-                phone="+96511111111",
-                user_id="u-5",
-                extra={},
-            ))
+            result = _run(
+                send_whatsapp_notification(
+                    CTX,
+                    method="unknown_method",
+                    phone="+96511111111",
+                    user_id="u-5",
+                    extra={},
+                )
+            )
 
         self.assertFalse(result["sent"])
         self.assertIn("unknown_method", result["reason"])
@@ -114,12 +124,14 @@ class TestSendFcmNotification(unittest.TestCase):
         mock_sender.send_to_user.return_value = mock_result
 
         with patch("notifications.fcm_sender.FcmSender", return_value=mock_sender):
-            result = _run(send_fcm_notification(
-                CTX,
-                user_id="u-6",
-                notification_type="weekly_report",
-                template_vars={"user_name": "u-6"},
-            ))
+            result = _run(
+                send_fcm_notification(
+                    CTX,
+                    user_id="u-6",
+                    notification_type="weekly_report",
+                    template_vars={"user_name": "u-6"},
+                )
+            )
 
         self.assertEqual(result, mock_result)
 
@@ -131,12 +143,14 @@ class TestSendFcmNotification(unittest.TestCase):
 
         with patch("notifications.fcm_sender.FcmSender", return_value=mock_sender):
             with self.assertRaises(ConnectionError):
-                _run(send_fcm_notification(
-                    CTX,
-                    user_id="u-7",
-                    notification_type="dana_checkin",
-                    template_vars={},
-                ))
+                _run(
+                    send_fcm_notification(
+                        CTX,
+                        user_id="u-7",
+                        notification_type="dana_checkin",
+                        template_vars={},
+                    )
+                )
 
 
 class TestSendWeeklyReportNotification(unittest.TestCase):
@@ -148,11 +162,13 @@ class TestSendWeeklyReportNotification(unittest.TestCase):
         mock_sender.send_to_user.return_value = mock_result
 
         with patch("notifications.expo_sender.ExpoPushSender", return_value=mock_sender):
-            result = _run(send_weekly_report_notification(
-                CTX,
-                user_id="u-8",
-                template_vars={"user_name": "u-8"},
-            ))
+            result = _run(
+                send_weekly_report_notification(
+                    CTX,
+                    user_id="u-8",
+                    template_vars={"user_name": "u-8"},
+                )
+            )
 
         self.assertEqual(result, mock_result)
 

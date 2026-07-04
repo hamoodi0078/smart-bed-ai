@@ -21,6 +21,7 @@ logger = logging.getLogger("reports.html_report_renderer")
 
 try:
     import weasyprint as _wp
+
     _WEASYPRINT_AVAILABLE = True
 except ImportError:
     _WEASYPRINT_AVAILABLE = False
@@ -124,15 +125,12 @@ ul.recs li {{ margin-bottom: 5px; }}
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _bar_html(value: float, max_value: float) -> str:
     ratio = min(1.0, max(0.0, value / max_value)) if max_value else 0.0
     pct = round(ratio * 100, 1)
     cls = "bar-good" if ratio >= 0.6 else ("bar-warn" if ratio >= 0.3 else "bar-bad")
-    return (
-        f'<div class="bar-outer">'
-        f'<div class="bar-inner {cls}" style="width:{pct}%"></div>'
-        f'</div>'
-    )
+    return f'<div class="bar-outer"><div class="bar-inner {cls}" style="width:{pct}%"></div></div>'
 
 
 def _metric_rows(rows: list[tuple[str, Any, str, float, float]]) -> str:
@@ -154,6 +152,7 @@ def _metric_rows(rows: list[tuple[str, Any, str, float, float]]) -> str:
 # ---------------------------------------------------------------------------
 # Section renderers
 # ---------------------------------------------------------------------------
+
 
 def _sleep_section(sleep: dict) -> str:
     avg = float(sleep.get("avg_hours", 0))
@@ -178,7 +177,9 @@ def _wellness_section(wellness: dict) -> str:
     high_stress = int(wellness.get("high_stress_days", 0))
     overthinking = int(wellness.get("overthinking_entries", 0))
     trend = str(wellness.get("stress_trend", "stable")).lower()
-    trend_cls = f"trend-{trend}" if trend in ("improving", "worsening", "stable") else "trend-stable"
+    trend_cls = (
+        f"trend-{trend}" if trend in ("improving", "worsening", "stable") else "trend-stable"
+    )
 
     rows = [
         ("Average stress level", f"{avg_stress:.0f}", "/ 100", avg_stress, 100),
@@ -214,8 +215,13 @@ def _prayer_section(prayer: dict) -> str:
     rows = [
         ("Prayer reminders sent", str(reminders), "this week", reminders, max(reminders, 35)),
         ("Reminders acknowledged", str(acked), f"/ {reminders}", acked, max(reminders, 1)),
-        ("Tahajjud prayed", str(tahajjud_prayed), f"/ {tahajjud_attempted} attempts",
-         tahajjud_prayed, max(tahajjud_attempted, 7)),
+        (
+            "Tahajjud prayed",
+            str(tahajjud_prayed),
+            f"/ {tahajjud_attempted} attempts",
+            tahajjud_prayed,
+            max(tahajjud_attempted, 7),
+        ),
     ]
     return '<div class="section-header">Prayer &amp; Spirituality</div>' + _metric_rows(rows)
 
@@ -243,6 +249,7 @@ def _recommendations_section(recommendations: list) -> str:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def render_html(report: dict[str, Any]) -> str:
     """Return a complete styled HTML document for the weekly health report."""

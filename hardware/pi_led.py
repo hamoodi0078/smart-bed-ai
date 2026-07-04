@@ -110,7 +110,9 @@ class RaspberryPiWs281xBackend:
                 f"state pin {state_strip_pin} ({state_strip_led_count} LEDs)."
             )
             self._started = True
-            self._thread = threading.Thread(target=self._run_loop, name="pi-led-backend", daemon=True)
+            self._thread = threading.Thread(
+                target=self._run_loop, name="pi-led-backend", daemon=True
+            )
             self._thread.start()
         except Exception as exc:
             self._status = f"LED hardware unavailable: {exc}"
@@ -132,7 +134,9 @@ class RaspberryPiWs281xBackend:
         return strip
 
     def is_available(self) -> bool:
-        return bool(self._started and self._user_strip is not None and self._state_strip is not None)
+        return bool(
+            self._started and self._user_strip is not None and self._state_strip is not None
+        )
 
     def status_line(self) -> str:
         return self._status
@@ -181,7 +185,9 @@ class RaspberryPiWs281xBackend:
         value -= 170
         return value * 3, 0, 255 - value * 3
 
-    def _user_pixels_for_frame(self, frame_state: _LedFrameState, frame_idx: int, count: int) -> list[tuple[int, int, int]]:
+    def _user_pixels_for_frame(
+        self, frame_state: _LedFrameState, frame_idx: int, count: int
+    ) -> list[tuple[int, int, int]]:
         base_color = tuple(int(c) for c in frame_state.user_color)
         base_brightness = max(0.0, min(1.0, float(frame_state.user_brightness)))
         animation = str(frame_state.user_animation or "solid").strip().lower()
@@ -229,7 +235,9 @@ class RaspberryPiWs281xBackend:
             return
         with self._lock:
             frame_state = self._frame_state
-        user_pixels = self._user_pixels_for_frame(frame_state, frame_idx, int(user_strip.numPixels()))
+        user_pixels = self._user_pixels_for_frame(
+            frame_state, frame_idx, int(user_strip.numPixels())
+        )
         state_color = self._scaled_rgb(frame_state.state_color, float(frame_state.state_brightness))
         state_pixels = [state_color] * int(state_strip.numPixels())
         self._fill_strip(user_strip, user_pixels)
@@ -257,7 +265,9 @@ class RaspberryPiWs281xBackend:
                 _render_failures = 0
             except Exception as exc:
                 _render_failures += 1
-                self._status = f"LED hardware render failed ({_render_failures}/{_max_render_failures}): {exc}"
+                self._status = (
+                    f"LED hardware render failed ({_render_failures}/{_max_render_failures}): {exc}"
+                )
                 logger.warning(
                     "Raspberry Pi LED render failed (%s/%s): %s",
                     _render_failures,

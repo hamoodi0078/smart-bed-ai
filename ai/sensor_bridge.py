@@ -143,14 +143,22 @@ class SensorBridge:
         self._temperature = float(temperature_c)
         if humidity_pct is not None:
             self._humidity = float(humidity_pct)
-        logger.debug("SensorBridge temperature updated: %.1f°C, humidity: %s%%", self._temperature, self._humidity)
+        logger.debug(
+            "SensorBridge temperature updated: %.1f°C, humidity: %s%%",
+            self._temperature,
+            self._humidity,
+        )
 
     def update_heart_rate(self, heart_rate_bpm: float, spo2_pct: float | None = None) -> None:
         """Accept a reading from the MAX30102 driver (or any source)."""
         self._heart_rate = float(heart_rate_bpm)
         if spo2_pct is not None:
             self._spo2 = float(spo2_pct)
-        logger.debug("SensorBridge heart rate updated: %.0f bpm, SpO2: %s%%", self._heart_rate, getattr(self, '_spo2', None))
+        logger.debug(
+            "SensorBridge heart rate updated: %.0f bpm, SpO2: %s%%",
+            self._heart_rate,
+            getattr(self, "_spo2", None),
+        )
 
     # ------------------------------------------------------------------
     # Environmental data accessors (populated by MQTT/Zigbee/GPIO)
@@ -203,7 +211,9 @@ class SensorBridge:
         name = str(user_name or "").strip()
         prefix = f"{name}, " if name else ""
         if event_name == "bed_entered_evening":
-            return f"{prefix}welcome in. I can start a calm evening wind-down whenever you are ready."
+            return (
+                f"{prefix}welcome in. I can start a calm evening wind-down whenever you are ready."
+            )
         if event_name == "wake_detected_morning":
             return f"{prefix}good morning. I can start a gentle wake routine and today plan in under one minute."
         return ""
@@ -223,6 +233,7 @@ class SensorBridge:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _extract_value(payload: Any) -> float | None:
     if isinstance(payload, (int, float)):

@@ -49,7 +49,9 @@ class TestTTSManager(unittest.TestCase):
     def test_resolve_audio_profile_uses_whisper_window(self):
         manager = TTSManager(api_key="key")
 
-        profile = manager.resolve_audio_profile(now=datetime(2026, 2, 25, 1, 30), emotion_state="neutral")
+        profile = manager.resolve_audio_profile(
+            now=datetime(2026, 2, 25, 1, 30), emotion_state="neutral"
+        )
 
         self.assertEqual(profile.get("name"), "whisper_night")
         self.assertLess(float(profile.get("pace_multiplier", 1.0)), 1.0)
@@ -57,7 +59,9 @@ class TestTTSManager(unittest.TestCase):
     def test_resolve_audio_profile_distressed_reduces_pace(self):
         manager = TTSManager(api_key="key")
 
-        profile = manager.resolve_audio_profile(now=datetime(2026, 2, 25, 14, 0), emotion_state="distressed")
+        profile = manager.resolve_audio_profile(
+            now=datetime(2026, 2, 25, 14, 0), emotion_state="distressed"
+        )
 
         self.assertLess(float(profile.get("pace_multiplier", 1.0)), 1.0)
 

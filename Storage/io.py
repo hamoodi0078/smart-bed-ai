@@ -14,6 +14,7 @@ from typing import Iterator
 import aiofiles
 import aiofiles.os
 from loguru import logger as _LOG
+
 _LOCK_TIMEOUT_SECONDS = 10.0
 _LOCK_POLL_SECONDS = 0.05
 _ATOMIC_REPLACE_RETRIES = 6
@@ -58,10 +59,7 @@ def confine_path(base_dir: Path, candidate: str | Path) -> Path:
     if target == base or str(target).startswith(str(base) + os.sep):
         return target
 
-    raise ValueError(
-        f"Path traversal blocked: {target} is outside allowed directory {base}"
-    )
-
+    raise ValueError(f"Path traversal blocked: {target} is outside allowed directory {base}")
 
 
 def _local_lock_for(path: Path) -> RLock:
@@ -120,9 +118,13 @@ def _quarantine_corrupt_file(path: Path, reason: str) -> None:
     corrupt_path = path.with_name(f"{path.stem}.corrupt.{stamp}{path.suffix}")
     try:
         os.replace(str(path), str(corrupt_path))
-        _LOG.error("json_corrupt_file_quarantined path={} backup={} reason={}", path, corrupt_path, reason)
+        _LOG.error(
+            "json_corrupt_file_quarantined path={} backup={} reason={}", path, corrupt_path, reason
+        )
     except OSError as exc:
-        _LOG.error("json_corrupt_file_detected path={} reason={} quarantine_error={}", path, reason, exc)
+        _LOG.error(
+            "json_corrupt_file_detected path={} reason={} quarantine_error={}", path, reason, exc
+        )
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -159,6 +161,7 @@ async def async_atomic_write_json(path: str | Path, data: dict) -> None:
 
 
 # ── aiofiles-based helpers for simple cache files (no cross-process locking) ──
+
 
 async def async_read_text(path: str | Path) -> str:
     """Read a text file asynchronously. Returns empty string if missing."""
@@ -258,8 +261,12 @@ def atomic_write_json(path: str | Path, data: dict) -> None:
                     replaced = True
                     break
                 except OSError as exc:
-                    if (attempt >= _ATOMIC_REPLACE_RETRIES) or (not _should_retry_atomic_replace(exc)):
-                        raise RuntimeError(f"Unable to atomically write JSON file: {json_path}") from exc
+                    if (attempt >= _ATOMIC_REPLACE_RETRIES) or (
+                        not _should_retry_atomic_replace(exc)
+                    ):
+                        raise RuntimeError(
+                            f"Unable to atomically write JSON file: {json_path}"
+                        ) from exc
                     delay = _ATOMIC_REPLACE_BASE_DELAY_SECONDS * float(attempt + 1)
                     time.sleep(delay)
             if not replaced:

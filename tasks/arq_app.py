@@ -32,12 +32,14 @@ from tasks.arq_tasks import (
 
 def _redis_settings() -> RedisSettings:
     from config import settings
+
     return RedisSettings.from_dsn(settings.arq_redis_url)
 
 
 # ---------------------------------------------------------------------------
 # Worker lifecycle
 # ---------------------------------------------------------------------------
+
 
 async def startup(ctx: dict) -> None:
     """Initialise shared async resources once per worker process."""
@@ -76,6 +78,7 @@ async def shutdown(ctx: dict) -> None:
 # Worker settings
 # ---------------------------------------------------------------------------
 
+
 class WorkerSettings:
     functions = [
         send_daily_email_summary,
@@ -92,8 +95,8 @@ class WorkerSettings:
     # process starts (after env vars are loaded), not at module import time.
     redis_settings = property(lambda self: _redis_settings())
     max_jobs = 10
-    job_timeout = 300       # seconds — max runtime per job before it is cancelled
-    keep_result = 3600      # seconds — keep job result key in Redis
+    job_timeout = 300  # seconds — max runtime per job before it is cancelled
+    keep_result = 3600  # seconds — keep job result key in Redis
     retry_jobs = True
     max_tries = 3
     queue_name = "arq:default"

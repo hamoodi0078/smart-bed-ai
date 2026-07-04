@@ -39,7 +39,9 @@ class NotificationScheduler:
     def schedule_wind_down(self, user_id: str, hour: int = 21, minute: int = 0) -> dict:
         scheduled = self._read_scheduled()
         user_key = str(user_id)
-        user_entry = scheduled.get(user_key, {}) if isinstance(scheduled.get(user_key, {}), dict) else {}
+        user_entry = (
+            scheduled.get(user_key, {}) if isinstance(scheduled.get(user_key, {}), dict) else {}
+        )
         user_entry["wind_down"] = {
             "hour": int(hour),
             "minute": int(minute),
@@ -52,7 +54,9 @@ class NotificationScheduler:
     def schedule_alarm(self, user_id: str, hour: int, minute: int) -> dict:
         scheduled = self._read_scheduled()
         user_key = str(user_id)
-        user_entry = scheduled.get(user_key, {}) if isinstance(scheduled.get(user_key, {}), dict) else {}
+        user_entry = (
+            scheduled.get(user_key, {}) if isinstance(scheduled.get(user_key, {}), dict) else {}
+        )
         user_entry["alarm"] = {
             "hour": int(hour),
             "minute": int(minute),
@@ -62,7 +66,9 @@ class NotificationScheduler:
         self._write_scheduled(scheduled)
         return user_entry["alarm"]
 
-    def check_inactivity(self, user_id: str, last_active_date: str, threshold_days: int = 3) -> dict:
+    def check_inactivity(
+        self, user_id: str, last_active_date: str, threshold_days: int = 3
+    ) -> dict:
         try:
             last_active = datetime.datetime.fromisoformat(str(last_active_date)).date()
         except ValueError:

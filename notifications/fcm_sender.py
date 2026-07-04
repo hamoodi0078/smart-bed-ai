@@ -22,6 +22,7 @@ from notifications.notification_types import NOTIFICATION_TEMPLATES, Notificatio
 try:
     import firebase_admin
     from firebase_admin import credentials, messaging
+
     _FCM_AVAILABLE = True
 except ImportError:
     _FCM_AVAILABLE = False
@@ -65,6 +66,7 @@ def _is_initialized() -> bool:
 
 
 # ── Token storage backends ────────────────────────────────────────────────────
+
 
 class _TokenStore(ABC):
     @abstractmethod
@@ -147,6 +149,7 @@ class _PgTokenStore(_TokenStore):
     def _get_conn(self):
         try:
             import psycopg2
+
             if self._conn is None or self._conn.closed:
                 self._conn = psycopg2.connect(self._url)
                 self._conn.autocommit = True
@@ -207,6 +210,7 @@ def _build_token_store(fallback_path: str) -> _TokenStore:
 
 # ── FcmSender ─────────────────────────────────────────────────────────────────
 
+
 class FcmSender:
     """FCM push notification sender with the same interface as ExpoPushSender."""
 
@@ -246,9 +250,7 @@ class FcmSender:
                 token=fcm_token,
                 android=messaging.AndroidConfig(priority="high"),
                 apns=messaging.APNSConfig(
-                    payload=messaging.APNSPayload(
-                        aps=messaging.Aps(sound="default")
-                    )
+                    payload=messaging.APNSPayload(aps=messaging.Aps(sound="default"))
                 ),
             )
             message_id = messaging.send(msg)
@@ -256,7 +258,9 @@ class FcmSender:
         except Exception as exc:
             return {"sent": False, "error": str(exc)}
 
-    def send_multicast(self, fcm_tokens: list[str], title: str, body: str, data: dict | None = None) -> dict:
+    def send_multicast(
+        self, fcm_tokens: list[str], title: str, body: str, data: dict | None = None
+    ) -> dict:
         if not _is_initialized():
             return {"sent": False, "error": "Firebase not initialized"}
         if not fcm_tokens:
@@ -268,9 +272,7 @@ class FcmSender:
                 tokens=fcm_tokens,
                 android=messaging.AndroidConfig(priority="high"),
                 apns=messaging.APNSConfig(
-                    payload=messaging.APNSPayload(
-                        aps=messaging.Aps(sound="default")
-                    )
+                    payload=messaging.APNSPayload(aps=messaging.Aps(sound="default"))
                 ),
             )
             response = messaging.send_each_for_multicast(msg)
@@ -327,28 +329,34 @@ class FcmSender:
         log.append(entry)
         self._write_json(self._log_path, log)
 
-    def send_to_user(self, user_id: str, notification_type, template_vars: dict | None = None) -> dict:
+    def send_to_user(
+        self, user_id: str, notification_type, template_vars: dict | None = None
+    ) -> dict:
         template_vars = template_vars or {}
         resolved = self._resolve_notification_type(notification_type)
         if resolved is None:
             result = {"sent": False, "error": "Invalid notification type."}
-            self._append_log({
-                "user_id": str(user_id),
-                "notification_type": str(notification_type),
-                "timestamp": self._now(),
-                "result": result,
-            })
+            self._append_log(
+                {
+                    "user_id": str(user_id),
+                    "notification_type": str(notification_type),
+                    "timestamp": self._now(),
+                    "result": result,
+                }
+            )
             return result
 
         fcm_token = self.get_token(user_id)
         if not fcm_token:
             result = {"sent": False, "error": f"No FCM token for user_id={user_id}"}
-            self._append_log({
-                "user_id": str(user_id),
-                "notification_type": resolved.value,
-                "timestamp": self._now(),
-                "result": result,
-            })
+            self._append_log(
+                {
+                    "user_id": str(user_id),
+                    "notification_type": resolved.value,
+                    "timestamp": self._now(),
+                    "result": result,
+                }
+            )
             return result
 
         template = NOTIFICATION_TEMPLATES.get(resolved, {})
@@ -357,12 +365,14 @@ class FcmSender:
         data = {"type": resolved.value, **template_vars}
         result = self.send(fcm_token=fcm_token, title=title, body=body, data=data)
 
-        self._append_log({
-            "user_id": str(user_id),
-            "notification_type": resolved.value,
-            "title": title,
-            "body": body,
-            "timestamp": self._now(),
-            "result": result,
-        })
+        self._append_log(
+            {
+                "user_id": str(user_id),
+                "notification_type": resolved.value,
+                "title": title,
+                "body": body,
+                "timestamp": self._now(),
+                "result": result,
+            }
+        )
         return result

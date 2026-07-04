@@ -39,6 +39,7 @@ automation_reply_handler: "Callable[[str], object] | None" = None
 automation_runtime_hooks: dict[str, object] = {}
 automation_profile_ref: dict | None = None
 
+
 def _is_in_quiet_window(now_local: datetime, quiet_window: str) -> bool:
     """Return True if *now_local* falls inside the configured quiet window.
 
@@ -73,6 +74,7 @@ def _parse_datetime_like(value) -> datetime | None:
             return None
     return None
 
+
 def _has_pending_work_planning_reminder_today(now: datetime) -> bool:
     today = now.date()
     for item in planned_reminders:
@@ -90,20 +92,31 @@ def _has_pending_work_planning_reminder_today(now: datetime) -> bool:
             return True
     return False
 
+
 def init_automations():
     if automation_registry.list():
         return
     for automation in build_default_automations():
         automation_registry.register(automation)
 
+
 def run_automations():
     global sleep_mode_active
     profile = automation_profile_ref if isinstance(automation_profile_ref, dict) else {}
     disk_profile = load_profile()
     if isinstance(disk_profile, dict):
-        disk_prefs = disk_profile.get("preferences", {}) if isinstance(disk_profile.get("preferences", {}), dict) else {}
+        disk_prefs = (
+            disk_profile.get("preferences", {})
+            if isinstance(disk_profile.get("preferences", {}), dict)
+            else {}
+        )
         profile_prefs = profile.setdefault("preferences", {})
-        for key in ("quiet_window", "quiet_mode_active", "quiet_hours_override_until_utc", "timezone"):
+        for key in (
+            "quiet_window",
+            "quiet_mode_active",
+            "quiet_hours_override_until_utc",
+            "timezone",
+        ):
             if key in disk_prefs:
                 profile_prefs[key] = disk_prefs.get(key)
     prefs = profile.get("preferences", {}) if isinstance(profile, dict) else {}
@@ -122,11 +135,16 @@ def run_automations():
         "timezone": timezone_name,
         "sleep_mode_active": bool(sleep_mode_active),
         "quiet_window": str(
-            prefs.get("quiet_window", settings.quiet_hours_default_window) or settings.quiet_hours_default_window
+            prefs.get("quiet_window", settings.quiet_hours_default_window)
+            or settings.quiet_hours_default_window
         ),
         "quiet_mode_active": bool(prefs.get("quiet_mode_active", False)),
-        "quiet_hours_override_until_utc": str(prefs.get("quiet_hours_override_until_utc", "") or ""),
-        "has_pending_work_planning_reminder_today": _has_pending_work_planning_reminder_today(now_local),
+        "quiet_hours_override_until_utc": str(
+            prefs.get("quiet_hours_override_until_utc", "") or ""
+        ),
+        "has_pending_work_planning_reminder_today": _has_pending_work_planning_reminder_today(
+            now_local
+        ),
         "fajr_light_time": str(prefs.get("fajr_light_time", "04:50") or "04:50"),
     }
 
@@ -202,6 +220,7 @@ def run_automations():
                 profile.setdefault("runtime_flags", {})["sleep_mode"] = sleep_mode_active
                 save_profile(profile)
 
+
 def format_planned_reminders() -> str:
     if not planned_reminders:
         return "You have no reminders yet."
@@ -219,6 +238,7 @@ def format_planned_reminders() -> str:
         else:
             lines.append(f"{idx}) reminder")
     return f"You have {len(planned_reminders)} reminders:\n" + "\n".join(lines)
+
 
 def mark_reminder_completed(task_keyword: str) -> bool:
     keyword = str(task_keyword or "").strip().lower()
@@ -239,6 +259,7 @@ def mark_reminder_completed(task_keyword: str) -> bool:
         reminder_nudge_state["nudge_sent"] = False
         reminder_nudge_state["nudge_time"] = None
     return found
+
 
 def check_reminder_nudge() -> str | None:
     if not bool(reminder_nudge_state.get("active", False)):
@@ -277,6 +298,7 @@ def check_reminder_nudge() -> str | None:
     task_for_reply = task_text or "follow your planned reminder"
     return f"Just a gentle reminder: you planned to {task_for_reply} now. You can do it!"
 
+
 def format_repeat_days(repeat_days_csv: str) -> str:
     if not repeat_days_csv:
         return "one-time"
@@ -291,4 +313,3 @@ def format_repeat_days(repeat_days_csv: str) -> str:
     if not days:
         return "one-time"
     return "every " + ",".join(days)
-

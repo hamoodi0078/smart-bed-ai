@@ -28,10 +28,18 @@ class WakeWordManager:
         self.wake_aliases = []
         self.set_wake_aliases(wake_aliases or [])
         self.voice_timeout_seconds = max(2, int(voice_timeout_seconds))
-        self.voice_phrase_limit_seconds = self._normalize_phrase_limit_seconds(voice_phrase_limit_seconds)
+        self.voice_phrase_limit_seconds = self._normalize_phrase_limit_seconds(
+            voice_phrase_limit_seconds
+        )
         self.barge_in_timeout_seconds = max(1, int(barge_in_timeout_seconds))
-        self.barge_in_phrase_limit_seconds = self._normalize_phrase_limit_seconds(barge_in_phrase_limit_seconds)
-        self._preferred_mic_index = mic_device_index if isinstance(mic_device_index, int) and mic_device_index >= 0 else None
+        self.barge_in_phrase_limit_seconds = self._normalize_phrase_limit_seconds(
+            barge_in_phrase_limit_seconds
+        )
+        self._preferred_mic_index = (
+            mic_device_index
+            if isinstance(mic_device_index, int) and mic_device_index >= 0
+            else None
+        )
 
         self._recognizer = sr.Recognizer() if sr is not None else None
         self._active_mic_index = self._preferred_mic_index
@@ -55,7 +63,9 @@ class WakeWordManager:
 
         for idx, name in enumerate(names):
             lower_name = str(name or "").lower()
-            if any(token in lower_name for token in ("mic", "microphone", "array", "capture", "input")):
+            if any(
+                token in lower_name for token in ("mic", "microphone", "array", "capture", "input")
+            ):
                 candidate_indices.append(idx)
         for idx in range(len(names)):
             candidate_indices.append(idx)
@@ -250,7 +260,9 @@ class WakeWordManager:
 
         timeout_seconds = timeout_seconds or self.voice_timeout_seconds
         phrase_limit_seconds = (
-            self.voice_phrase_limit_seconds if phrase_limit_seconds is None else self._normalize_phrase_limit_seconds(phrase_limit_seconds)
+            self.voice_phrase_limit_seconds
+            if phrase_limit_seconds is None
+            else self._normalize_phrase_limit_seconds(phrase_limit_seconds)
         )
 
         try:

@@ -94,7 +94,9 @@ class TahajjudManager:
     # Should-wake evaluation
     # ------------------------------------------------------------------
 
-    def should_wake_for_tahajjud(self, profile: dict, now: datetime | None = None) -> dict[str, Any]:
+    def should_wake_for_tahajjud(
+        self, profile: dict, now: datetime | None = None
+    ) -> dict[str, Any]:
         """Determine if user should be woken for Tahajjud right now."""
         now = now or datetime.now()
         self.ensure_shape(profile)
@@ -207,8 +209,9 @@ class TahajjudManager:
             "recorded": True,
             "consecutive_skips": skips,
             "auto_disabled": auto_disabled,
-            "message": "No worries. Rest well, in sha Allah." if not auto_disabled
-                       else f"Tahajjud paused after {skips} skips. Re-enable when ready.",
+            "message": "No worries. Rest well, in sha Allah."
+            if not auto_disabled
+            else f"Tahajjud paused after {skips} skips. Re-enable when ready.",
         }
 
     def mark_wake_triggered(self, profile: dict, now: datetime | None = None) -> None:
@@ -269,11 +272,13 @@ class TahajjudManager:
             },
         ]
         if style != "silent":
-            actions.append({
-                "type": "voice",
-                "message": "Time for Tahajjud. May Allah accept your prayer.",
-                "volume": 0.2,
-            })
+            actions.append(
+                {
+                    "type": "voice",
+                    "message": "Time for Tahajjud. May Allah accept your prayer.",
+                    "volume": 0.2,
+                }
+            )
         return actions
 
     @staticmethod

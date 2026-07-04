@@ -13,7 +13,9 @@ class SpotifyControls:
     def __init__(self, client: SpotifyClient):
         self.client = client
 
-    def _request(self, method: str, endpoint: str, *, params: dict | None = None, body: dict | None = None):
+    def _request(
+        self, method: str, endpoint: str, *, params: dict | None = None, body: dict | None = None
+    ):
         token = self.client.get_valid_token()
         if not token:
             return None, "Spotify is not connected."
@@ -40,7 +42,11 @@ class SpotifyControls:
             return {"success": False, "action": "paused", "message": error}
         if response is not None and response.status_code in (200, 202, 204):
             return {"success": True, "action": "paused"}
-        return {"success": False, "action": "paused", "status_code": response.status_code if response else None}
+        return {
+            "success": False,
+            "action": "paused",
+            "status_code": response.status_code if response else None,
+        }
 
     def play(self) -> dict:
         response, error = self._request("PUT", "/play")
@@ -48,7 +54,11 @@ class SpotifyControls:
             return {"success": False, "action": "playing", "message": error}
         if response is not None and response.status_code in (200, 202, 204):
             return {"success": True, "action": "playing"}
-        return {"success": False, "action": "playing", "status_code": response.status_code if response else None}
+        return {
+            "success": False,
+            "action": "playing",
+            "status_code": response.status_code if response else None,
+        }
 
     def set_volume(self, volume: int) -> dict:
         safe_volume = max(0, min(100, int(volume)))
@@ -57,7 +67,11 @@ class SpotifyControls:
             return {"success": False, "volume": safe_volume, "message": error}
         if response is not None and response.status_code in (200, 202, 204):
             return {"success": True, "volume": safe_volume}
-        return {"success": False, "volume": safe_volume, "status_code": response.status_code if response else None}
+        return {
+            "success": False,
+            "volume": safe_volume,
+            "status_code": response.status_code if response else None,
+        }
 
     def get_current_track(self) -> dict:
         response, error = self._request("GET", "/currently-playing")
@@ -78,7 +92,9 @@ class SpotifyControls:
         return {
             "track_name": str(item.get("name", "")) if isinstance(item, dict) else "",
             "artist": artist,
-            "is_playing": bool(payload.get("is_playing", False)) if isinstance(payload, dict) else False,
+            "is_playing": bool(payload.get("is_playing", False))
+            if isinstance(payload, dict)
+            else False,
         }
 
     def fade_volume_down(

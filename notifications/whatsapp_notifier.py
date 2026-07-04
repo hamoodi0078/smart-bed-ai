@@ -28,10 +28,7 @@ class WhatsAppNotifier:
             return {"sent": False, "error": str(exc)}
 
     def send_prayer_reminder(self, phone: str, prayer_name: str, minutes: int) -> dict:
-        message = (
-            f"🕌 {prayer_name} prayer is in {minutes} minutes. \n\n"
-            "اللَّهُمَّ أَعِنِّي عَلَى ذِكْرِكَ"
-        )
+        message = f"🕌 {prayer_name} prayer is in {minutes} minutes. \n\nاللَّهُمَّ أَعِنِّي عَلَى ذِكْرِكَ"
         return self._send(phone, message)
 
     def send_wind_down_reminder(self, phone: str, user_name: str) -> dict:

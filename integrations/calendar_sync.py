@@ -48,7 +48,9 @@ class CalendarSync:
     # Event ingestion (called from mobile app or API)
     # ------------------------------------------------------------------
 
-    def sync_events(self, profile: dict, events: list[dict[str, Any]], now: datetime | None = None) -> dict[str, Any]:
+    def sync_events(
+        self, profile: dict, events: list[dict[str, Any]], now: datetime | None = None
+    ) -> dict[str, Any]:
         """Receive calendar events from mobile app."""
         now = now or _utcnow()
         self.ensure_shape(profile)
@@ -149,7 +151,9 @@ class CalendarSync:
             ),
         }
 
-    def get_today_remaining(self, profile: dict, now: datetime | None = None) -> list[dict[str, Any]]:
+    def get_today_remaining(
+        self, profile: dict, now: datetime | None = None
+    ) -> list[dict[str, Any]]:
         """Get remaining events for today."""
         now = now or _utcnow()
         self.ensure_shape(profile)
@@ -192,18 +196,22 @@ class CalendarSync:
         bedtime = schedule.get("suggested_bedtime")
 
         if alarm and profile.get("calendar", {}).get("auto_alarm_enabled", True):
-            actions.append({
-                "type": "set_alarm",
-                "time": alarm,
-                "reason": f"Based on tomorrow's first event: {schedule.get('first_event', {}).get('title', '')}",
-            })
+            actions.append(
+                {
+                    "type": "set_alarm",
+                    "time": alarm,
+                    "reason": f"Based on tomorrow's first event: {schedule.get('first_event', {}).get('title', '')}",
+                }
+            )
 
-        actions.append({
-            "type": "notification",
-            "category": "calendar_evening",
-            "message": schedule.get("message", ""),
-            "priority": "medium",
-        })
+        actions.append(
+            {
+                "type": "notification",
+                "category": "calendar_evening",
+                "message": schedule.get("message", ""),
+                "priority": "medium",
+            }
+        )
 
         return {
             "type": "calendar_evening_brief",
@@ -249,7 +257,9 @@ class CalendarSync:
         schedule = self.get_tomorrow_schedule(profile, now)
         return not schedule.get("has_events", False)
 
-    def has_early_event_tomorrow(self, profile: dict, before_hour: int = 8, now: datetime | None = None) -> bool:
+    def has_early_event_tomorrow(
+        self, profile: dict, before_hour: int = 8, now: datetime | None = None
+    ) -> bool:
         """Check if tomorrow has an event before a given hour."""
         schedule = self.get_tomorrow_schedule(profile, now)
         if not schedule.get("has_events", False):
@@ -288,6 +298,7 @@ class CalendarSync:
 
         try:
             from integrations.google_calendar_client import build_client_from_settings
+
             client = build_client_from_settings()
             if not client.available:
                 return {"synced": False, "reason": "google-api-python-client not installed"}

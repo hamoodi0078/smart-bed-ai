@@ -23,6 +23,7 @@ from constants.limits import RateLimits
 
 # ── Redis-backed sliding window ───────────────────────────────────────────────
 
+
 class _RedisCounter:
     """Sliding-window counter backed by Redis sorted sets.
 
@@ -56,6 +57,7 @@ class _RedisCounter:
 
 
 # ── In-memory fallback ────────────────────────────────────────────────────────
+
 
 class _InMemoryCounter:
     """Thread-safe in-memory sliding window. Single-process only."""
@@ -99,6 +101,7 @@ async def _get_counter() -> _RedisCounter | _InMemoryCounter:
     if redis_url:
         try:
             import redis.asyncio as aioredis
+
             client = aioredis.from_url(redis_url, encoding="utf-8", decode_responses=True)
             await client.ping()
             _counter = _RedisCounter(client)
@@ -147,9 +150,14 @@ def _client_ip(request: Request) -> str:
 
 # ── Per-route limits ──────────────────────────────────────────────────────────
 
+
 def _route_limit(path: str, method: str) -> int:
     path_lower = path.lower()
-    if "/otp/" in path_lower or path_lower.endswith("/otp/request") or path_lower.endswith("/otp/verify"):
+    if (
+        "/otp/" in path_lower
+        or path_lower.endswith("/otp/request")
+        or path_lower.endswith("/otp/verify")
+    ):
         return RateLimits.OTP_PER_MINUTE
     if path_lower.endswith("/login") or path_lower.endswith("/register"):
         return RateLimits.AUTH_LOGIN_PER_MINUTE
@@ -169,12 +177,17 @@ _EXEMPT_PATHS = {"/healthz", "/metrics", "/docs", "/openapi.json", "/redoc"}
 
 # ── Middleware ────────────────────────────────────────────────────────────────
 
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Sliding-window rate limiter keyed on client IP + route category."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         import sys
-        if "pytest" in sys.modules or os.getenv("DANAH_ENV", "development").lower() in ("test", "testing"):
+
+        if "pytest" in sys.modules or os.getenv("DANAH_ENV", "development").lower() in (
+            "test",
+            "testing",
+        ):
             return await call_next(request)
 
         path = str(request.url.path or "/")
@@ -194,7 +207,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not allowed:
             logger.warning(
                 "Rate limit exceeded: client={} path={} limit={}/min",
-                client_ip, path, limit,
+                client_ip,
+                path,
+                limit,
             )
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,

@@ -13,7 +13,9 @@ def _parse_new_command(text: str) -> str:
         return "voice_pacing_status"
     if lower in ("start recovery protocol",):
         return "start_recovery_protocol"
-    if lower.startswith("set quiet window ") and re.match(r"^\d{2}:\d{2}-\d{2}:\d{2}$", text.split("set quiet window", 1)[1].strip()):
+    if lower.startswith("set quiet window ") and re.match(
+        r"^\d{2}:\d{2}-\d{2}:\d{2}$", text.split("set quiet window", 1)[1].strip()
+    ):
         return "set_quiet_window"
     if lower in ("show quiet window", "quiet window status"):
         return "show_quiet_window"
@@ -26,13 +28,17 @@ def run_sanity_checks():
 
     profile = {
         "preferences": {"quiet_window": "23:00-07:00"},
-        "goals": [{"id": "a1b2c3", "title": "sleep by 11 pm", "scope": "tonight", "status": "active"}],
+        "goals": [
+            {"id": "a1b2c3", "title": "sleep by 11 pm", "scope": "tonight", "status": "active"}
+        ],
     }
     runtime.ensure_shape(profile)
     strategy.ensure_shape(profile)
 
     # Continuity callback generation
-    runtime.record_continuity_hint(profile, "therapist", "I am struggling with sleep anxiety lately")
+    runtime.record_continuity_hint(
+        profile, "therapist", "I am struggling with sleep anxiety lately"
+    )
     callback = runtime.continuity_callback_line(profile, "therapist")
     assert "Quick callback" in callback
 

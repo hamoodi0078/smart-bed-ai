@@ -49,7 +49,9 @@ class TestUndoManager(unittest.TestCase):
     def test_get_undoable_action_expired_returns_none(self):
         manager = UndoManager(window_seconds=10)
         base = utcnow()
-        with patch("commands.undo_manager.utcnow", side_effect=[base, base + timedelta(seconds=11)]):
+        with patch(
+            "commands.undo_manager.utcnow", side_effect=[base, base + timedelta(seconds=11)]
+        ):
             manager.record_action("u1", "device_command", {"a": 1}, {"a": 2})
             action = manager.get_undoable_action("u1")
 
@@ -104,8 +106,12 @@ class TestUndoEndpoints(IsolatedWebAuthTestCase):
 
     def test_undo_endpoint_expired_returns_404(self):
         base = utcnow()
-        with patch("commands.undo_manager.utcnow", side_effect=[base, base + timedelta(seconds=11)]):
-            self.undo_manager.record_action(self.user_id, "device_command", {"before": 1}, {"after": 2})
+        with patch(
+            "commands.undo_manager.utcnow", side_effect=[base, base + timedelta(seconds=11)]
+        ):
+            self.undo_manager.record_action(
+                self.user_id, "device_command", {"before": 1}, {"after": 2}
+            )
             response = self.client.post("/v1/actions/undo", json={"user_id": self.user_id})
 
         self.assertEqual(response.status_code, 404)
@@ -114,7 +120,9 @@ class TestUndoEndpoints(IsolatedWebAuthTestCase):
         error = body.get("error", {})
         self.assertEqual(str(error.get("code", "")), "NOTHING_TO_UNDO")
         self.assertRegex(str(error.get("trace_id", "")), r"^req_[a-f0-9]{8}$")
-        self.assertEqual(str(response.headers.get("X-Trace-Id", "")), str(error.get("trace_id", "")))
+        self.assertEqual(
+            str(response.headers.get("X-Trace-Id", "")), str(error.get("trace_id", ""))
+        )
 
     def test_undo_status_shows_can_undo_true(self):
         self.undo_manager.record_action(self.user_id, "device_command", {"before": 1}, {"after": 2})

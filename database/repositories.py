@@ -193,7 +193,9 @@ class EventRepository:
             session.refresh(row)
             return row
 
-    def get_events_by_user(self, user_id: str, limit: int = 50, since: datetime | None = None) -> list[Event]:
+    def get_events_by_user(
+        self, user_id: str, limit: int = 50, since: datetime | None = None
+    ) -> list[Event]:
         with self.db.get_session() as session:
             user_key = _clean_user_id(user_id)
             if not user_key:
@@ -213,7 +215,9 @@ class EventRepository:
             target_date = _coerce_date(for_date)
             statement = (
                 select(Event)
-                .where(Event.user_id == user_key, func.date(Event.timestamp) == target_date.isoformat())
+                .where(
+                    Event.user_id == user_key, func.date(Event.timestamp) == target_date.isoformat()
+                )
                 .order_by(Event.timestamp.desc())
                 .limit(500)
             )
@@ -281,11 +285,17 @@ class SleepSessionRepository:
         self.db = db or DatabaseConnection()
         self.db.create_tables()
 
-    def create_or_update_session(self, user_id: str, date: date_type | str, **kwargs: Any) -> SleepSession:
+    def create_or_update_session(
+        self, user_id: str, date: date_type | str, **kwargs: Any
+    ) -> SleepSession:
         with self.db.get_session() as session:
             user_key = _clean_user_id(user_id)
             target_date = _coerce_date(date)
-            statement = select(SleepSession).where(SleepSession.user_id == user_key, SleepSession.date == target_date).limit(1)
+            statement = (
+                select(SleepSession)
+                .where(SleepSession.user_id == user_key, SleepSession.date == target_date)
+                .limit(1)
+            )
             row = session.execute(statement).scalar_one_or_none()
             if row is None:
                 row = SleepSession(user_id=user_key, date=target_date)
@@ -314,7 +324,11 @@ class SleepSessionRepository:
             if not user_key:
                 return None
             target_date = _coerce_date(date)
-            statement = select(SleepSession).where(SleepSession.user_id == user_key, SleepSession.date == target_date).limit(1)
+            statement = (
+                select(SleepSession)
+                .where(SleepSession.user_id == user_key, SleepSession.date == target_date)
+                .limit(1)
+            )
             return session.execute(statement).scalar_one_or_none()
 
     def get_recent_sessions(self, user_id: str, limit: int = 7) -> list[SleepSession]:
@@ -331,7 +345,9 @@ class SleepSessionRepository:
             )
             return list(session.execute(statement).scalars().all())
 
-    def get_sessions_for_month(self, user_id: str, year: int, month: int, limit: int = 40) -> list[SleepSession]:
+    def get_sessions_for_month(
+        self, user_id: str, year: int, month: int, limit: int = 40
+    ) -> list[SleepSession]:
         with self.db.get_session() as session:
             user_key = _clean_user_id(user_id)
             if not user_key:
@@ -343,12 +359,20 @@ class SleepSessionRepository:
                 month_start = date_type(safe_year, safe_month, 1)
             except ValueError:
                 return []
-            month_end = date_type(safe_year + 1, 1, 1) if safe_month == 12 else date_type(safe_year, safe_month + 1, 1)
+            month_end = (
+                date_type(safe_year + 1, 1, 1)
+                if safe_month == 12
+                else date_type(safe_year, safe_month + 1, 1)
+            )
             safe_limit = max(1, min(int(limit or 40), 200))
 
             statement = (
                 select(SleepSession)
-                .where(SleepSession.user_id == user_key, SleepSession.date >= month_start, SleepSession.date < month_end)
+                .where(
+                    SleepSession.user_id == user_key,
+                    SleepSession.date >= month_start,
+                    SleepSession.date < month_end,
+                )
                 .order_by(SleepSession.date.desc())
                 .limit(safe_limit)
             )
@@ -377,7 +401,9 @@ class MobileCommandRepository:
             "completed_at": _to_iso_optional(row.command_completed_at_utc),
         }
 
-    def upsert_command(self, user_id: str, command: dict[str, Any] | None, now_utc: datetime | None = None) -> dict[str, Any]:
+    def upsert_command(
+        self, user_id: str, command: dict[str, Any] | None, now_utc: datetime | None = None
+    ) -> dict[str, Any]:
         user_key = _clean_user_id(user_id)
         payload = command if isinstance(command, dict) else {}
         command_id = str(payload.get("id", "") or payload.get("command_id", "")).strip()
@@ -395,7 +421,11 @@ class MobileCommandRepository:
         completed_at = _parse_optional_iso_datetime(str(payload.get("completed_at", "") or ""))
 
         with self.db.get_session() as session:
-            statement = select(MobileCommandRecord).where(MobileCommandRecord.command_id == command_id).limit(1)
+            statement = (
+                select(MobileCommandRecord)
+                .where(MobileCommandRecord.command_id == command_id)
+                .limit(1)
+            )
             row = session.execute(statement).scalar_one_or_none()
             if row is None:
                 row = MobileCommandRecord(
@@ -483,7 +513,9 @@ class MobileCommandRepository:
         }
 
     @staticmethod
-    def _command_feedback_summary_from_rows(rows: list[MobileCommandFeedback] | None) -> dict[str, Any]:
+    def _command_feedback_summary_from_rows(
+        rows: list[MobileCommandFeedback] | None,
+    ) -> dict[str, Any]:
         feedback_rows = rows if isinstance(rows, list) else []
         helpful_count = 0
         not_helpful_count = 0
@@ -510,7 +542,9 @@ class MobileCommandRepository:
             if ts_value >= latest_ts:
                 latest_ts = ts_value
                 last_vote = vote
-                last_vote_at_utc = _to_iso_optional(ts_candidate if isinstance(ts_candidate, datetime) else None)
+                last_vote_at_utc = _to_iso_optional(
+                    ts_candidate if isinstance(ts_candidate, datetime) else None
+                )
                 last_command_id = str(getattr(row, "command_id", "") or "").strip()
                 last_command_action = str(getattr(row, "action", "") or "").strip().lower()
 
@@ -571,8 +605,14 @@ class MobileCommandRepository:
         user_key = _clean_user_id(user_id)
         command_key = str(command_id or "").strip()
         normalized_vote = str(vote or "").strip().lower()
-        if (not user_key) or (not command_key) or (normalized_vote not in {"helpful", "not_helpful"}):
-            return self.command_feedback_summary_window(user_id, now_utc=now_utc, window_days=window_days), False
+        if (
+            (not user_key)
+            or (not command_key)
+            or (normalized_vote not in {"helpful", "not_helpful"})
+        ):
+            return self.command_feedback_summary_window(
+                user_id, now_utc=now_utc, window_days=window_days
+            ), False
 
         normalized_action = str(command_action or "").strip().lower()
         normalized_note = str(note or "").strip()
@@ -585,16 +625,25 @@ class MobileCommandRepository:
         with self.db.get_session() as session:
             command_statement = (
                 select(MobileCommandRecord)
-                .where(MobileCommandRecord.user_id == user_key, MobileCommandRecord.command_id == command_key)
+                .where(
+                    MobileCommandRecord.user_id == user_key,
+                    MobileCommandRecord.command_id == command_key,
+                )
                 .limit(1)
             )
             command_row = session.execute(command_statement).scalar_one_or_none()
             if command_row is not None:
-                normalized_action = str(getattr(command_row, "action", "") or "").strip().lower() or normalized_action
+                normalized_action = (
+                    str(getattr(command_row, "action", "") or "").strip().lower()
+                    or normalized_action
+                )
 
             statement = (
                 select(MobileCommandFeedback)
-                .where(MobileCommandFeedback.user_id == user_key, MobileCommandFeedback.command_id == command_key)
+                .where(
+                    MobileCommandFeedback.user_id == user_key,
+                    MobileCommandFeedback.command_id == command_key,
+                )
                 .limit(1)
             )
             row = session.execute(statement).scalar_one_or_none()
@@ -674,8 +723,12 @@ class MobileCommandRepository:
                 event_summary = str(raw.get("event", "") or "").strip()
                 message = str(raw.get("message", "") or "").strip()
                 trace_id = str(raw.get("trace_id", "") or "").strip() or None
-                created_at = _parse_optional_iso_datetime(str(raw.get("created_at", "") or "")) or now
-                updated_at = _parse_optional_iso_datetime(str(raw.get("updated_at", "") or "")) or now
+                created_at = (
+                    _parse_optional_iso_datetime(str(raw.get("created_at", "") or "")) or now
+                )
+                updated_at = (
+                    _parse_optional_iso_datetime(str(raw.get("updated_at", "") or "")) or now
+                )
                 completed_at = _parse_optional_iso_datetime(str(raw.get("completed_at", "") or ""))
                 if completed_at is None and status == "completed":
                     completed_at = updated_at
@@ -759,7 +812,7 @@ class MobileAuthRepository:
             row = MobileAuthSession(
                 user_id=user_key,
                 client_name=label,
-                access_token=jti,           # DB stores only the JTI, not the full JWT
+                access_token=jti,  # DB stores only the JTI, not the full JWT
                 refresh_token=token_urlsafe(48),
                 issued_at_utc=now,
                 access_expires_at_utc=access_exp,
@@ -784,7 +837,9 @@ class MobileAuthRepository:
         payload["access_token"] = signed_jwt
         return payload
 
-    def validate_access_token(self, access_token: str, *, now_utc: datetime | None = None) -> dict[str, Any]:
+    def validate_access_token(
+        self, access_token: str, *, now_utc: datetime | None = None
+    ) -> dict[str, Any]:
         token = str(access_token or "").strip()
         if not token:
             return {}
@@ -802,10 +857,14 @@ class MobileAuthRepository:
                 return {}
 
         with self.db.get_session() as session:
-            statement = select(MobileAuthSession).where(
-                MobileAuthSession.access_token == db_key,
-                MobileAuthSession.revoked.is_(False),
-            ).limit(1)
+            statement = (
+                select(MobileAuthSession)
+                .where(
+                    MobileAuthSession.access_token == db_key,
+                    MobileAuthSession.revoked.is_(False),
+                )
+                .limit(1)
+            )
             row = session.execute(statement).scalar_one_or_none()
             if row is None:
                 return {}
@@ -826,10 +885,14 @@ class MobileAuthRepository:
             return {}
         now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
         with self.db.get_session() as session:
-            statement = select(MobileAuthSession).where(
-                MobileAuthSession.refresh_token == token,
-                MobileAuthSession.revoked.is_(False),
-            ).limit(1)
+            statement = (
+                select(MobileAuthSession)
+                .where(
+                    MobileAuthSession.refresh_token == token,
+                    MobileAuthSession.revoked.is_(False),
+                )
+                .limit(1)
+            )
             row = session.execute(statement).scalar_one_or_none()
             if row is None:
                 return {}
@@ -947,10 +1010,18 @@ class BetaProgressRepository:
             }
         return {
             "signup_completed_at_utc": _to_iso_optional(row.signup_completed_at_utc),
-            "first_scene_preview_completed_at_utc": _to_iso_optional(row.first_scene_preview_completed_at_utc),
-            "first_automation_completed_at_utc": _to_iso_optional(row.first_automation_completed_at_utc),
-            "first_winddown_completed_at_utc": _to_iso_optional(row.first_winddown_completed_at_utc),
-            "timeline_review_completed_at_utc": _to_iso_optional(row.timeline_review_completed_at_utc),
+            "first_scene_preview_completed_at_utc": _to_iso_optional(
+                row.first_scene_preview_completed_at_utc
+            ),
+            "first_automation_completed_at_utc": _to_iso_optional(
+                row.first_automation_completed_at_utc
+            ),
+            "first_winddown_completed_at_utc": _to_iso_optional(
+                row.first_winddown_completed_at_utc
+            ),
+            "timeline_review_completed_at_utc": _to_iso_optional(
+                row.timeline_review_completed_at_utc
+            ),
             "created_at_utc": _to_iso_optional(row.created_at),
             "updated_at_utc": _to_iso_optional(row.updated_at),
         }
@@ -1030,7 +1101,11 @@ class BetaProgressRepository:
         if not user_key:
             return self._first_three_nights_state_from_row(None)
         with self.db.get_session() as session:
-            statement = select(FirstThreeNightsProgress).where(FirstThreeNightsProgress.user_id == user_key).limit(1)
+            statement = (
+                select(FirstThreeNightsProgress)
+                .where(FirstThreeNightsProgress.user_id == user_key)
+                .limit(1)
+            )
             row = session.execute(statement).scalar_one_or_none()
             return self._first_three_nights_state_from_row(row)
 
@@ -1053,7 +1128,11 @@ class BetaProgressRepository:
         now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
         changed = False
         with self.db.get_session() as session:
-            statement = select(FirstThreeNightsProgress).where(FirstThreeNightsProgress.user_id == user_key).limit(1)
+            statement = (
+                select(FirstThreeNightsProgress)
+                .where(FirstThreeNightsProgress.user_id == user_key)
+                .limit(1)
+            )
             row = session.execute(statement).scalar_one_or_none()
             if row is None:
                 row = FirstThreeNightsProgress(user_id=user_key, created_at=now, updated_at=now)
@@ -1092,7 +1171,11 @@ class BetaProgressRepository:
         if not user_key:
             return self._feedback_payload_from_row(None)
         with self.db.get_session() as session:
-            statement = select(NightlySummaryFeedbackProgress).where(NightlySummaryFeedbackProgress.user_id == user_key).limit(1)
+            statement = (
+                select(NightlySummaryFeedbackProgress)
+                .where(NightlySummaryFeedbackProgress.user_id == user_key)
+                .limit(1)
+            )
             row = session.execute(statement).scalar_one_or_none()
             return self._feedback_payload_from_row(row)
 
@@ -1113,7 +1196,11 @@ class BetaProgressRepository:
         summary_marker = str(summary_generated_at_utc or "").strip()
         changed = False
         with self.db.get_session() as session:
-            statement = select(NightlySummaryFeedbackProgress).where(NightlySummaryFeedbackProgress.user_id == user_key).limit(1)
+            statement = (
+                select(NightlySummaryFeedbackProgress)
+                .where(NightlySummaryFeedbackProgress.user_id == user_key)
+                .limit(1)
+            )
             row = session.execute(statement).scalar_one_or_none()
             if row is None:
                 row = NightlySummaryFeedbackProgress(
@@ -1168,9 +1255,13 @@ class BetaProgressRepository:
 
         source = metrics if isinstance(metrics, dict) else {}
         now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
-        generated_at = _parse_optional_iso_datetime(str(source.get("generated_at_utc", "") or "")) or now
+        generated_at = (
+            _parse_optional_iso_datetime(str(source.get("generated_at_utc", "") or "")) or now
+        )
         with self.db.get_session() as session:
-            statement = select(BetaMetricsSnapshot).where(BetaMetricsSnapshot.user_id == user_key).limit(1)
+            statement = (
+                select(BetaMetricsSnapshot).where(BetaMetricsSnapshot.user_id == user_key).limit(1)
+            )
             row = session.execute(statement).scalar_one_or_none()
             if row is None:
                 row = BetaMetricsSnapshot(user_id=user_key, created_at=now, updated_at=now)
@@ -1178,16 +1269,26 @@ class BetaProgressRepository:
                 session.flush()
 
             row.window_days = max(1, self._int_metric(source.get("window_days", 7), default=7))
-            row.activation_progress_pct = max(0, min(100, self._int_metric(source.get("activation_progress_pct", 0))))
-            row.first_3_nights_completed = max(0, self._int_metric(source.get("first_3_nights_completed", 0)))
-            row.first_3_nights_total = max(1, self._int_metric(source.get("first_3_nights_total", 5), default=5))
+            row.activation_progress_pct = max(
+                0, min(100, self._int_metric(source.get("activation_progress_pct", 0)))
+            )
+            row.first_3_nights_completed = max(
+                0, self._int_metric(source.get("first_3_nights_completed", 0))
+            )
+            row.first_3_nights_total = max(
+                1, self._int_metric(source.get("first_3_nights_total", 5), default=5)
+            )
             row.command_total_7d = max(0, self._int_metric(source.get("command_total_7d", 0)))
             row.command_completion_rate_pct = max(
                 0,
                 min(100, self._int_metric(source.get("command_completion_rate_pct", 0))),
             )
-            row.wind_down_sessions_7d = max(0, self._int_metric(source.get("wind_down_sessions_7d", 0)))
-            row.nightly_feedback_total = max(0, self._int_metric(source.get("nightly_feedback_total", 0)))
+            row.wind_down_sessions_7d = max(
+                0, self._int_metric(source.get("wind_down_sessions_7d", 0))
+            )
+            row.nightly_feedback_total = max(
+                0, self._int_metric(source.get("nightly_feedback_total", 0))
+            )
             row.nightly_feedback_helpful_pct = max(
                 0,
                 min(100, self._int_metric(source.get("nightly_feedback_helpful_pct", 0))),
@@ -1207,7 +1308,9 @@ class BetaProgressRepository:
         if not user_key:
             return {}
         with self.db.get_session() as session:
-            statement = select(BetaMetricsSnapshot).where(BetaMetricsSnapshot.user_id == user_key).limit(1)
+            statement = (
+                select(BetaMetricsSnapshot).where(BetaMetricsSnapshot.user_id == user_key).limit(1)
+            )
             row = session.execute(statement).scalar_one_or_none()
             return self._metrics_payload_from_row(row)
 
@@ -1229,7 +1332,14 @@ class BetaProgressRepository:
         normalized_cohort = self._normalize_cohort_key(cohort_key)
         normalized_country = str(country_code or "").strip().upper() or "KW"
         normalized_status = str(status or "").strip().lower() or "active"
-        if normalized_status not in {"candidate", "invited", "active", "paused", "graduated", "inactive"}:
+        if normalized_status not in {
+            "candidate",
+            "invited",
+            "active",
+            "paused",
+            "graduated",
+            "inactive",
+        }:
             normalized_status = "active"
         normalized_source = str(source or "").strip().lower() or "admin_manual"
         normalized_notes = str(notes or "").strip()
@@ -1301,7 +1411,9 @@ class BetaProgressRepository:
         normalized_status = str(status or "").strip().lower()
         safe_limit = max(1, min(int(limit or 100), 1000))
         with self.db.get_session() as session:
-            statement = select(BetaCohortMember).where(BetaCohortMember.cohort_key == normalized_cohort)
+            statement = select(BetaCohortMember).where(
+                BetaCohortMember.cohort_key == normalized_cohort
+            )
             if normalized_status:
                 statement = statement.where(BetaCohortMember.status == normalized_status)
             statement = statement.order_by(BetaCohortMember.updated_at.desc()).limit(safe_limit)
@@ -1316,17 +1428,31 @@ class UpdateRepository:
 
     # ── App Versions ──────────────────────────────────────────────────────────
 
-    def create_app_version(self, *, platform: str, version_string: str, build_number: int,
-                           changelog: list, is_required: bool, rollout_percent: int,
-                           min_supported_version: str | None = None,
-                           store_url_ios: str | None = None,
-                           store_url_android: str | None = None,
-                           published_by: str | None = None) -> dict[str, Any]:
+    def create_app_version(
+        self,
+        *,
+        platform: str,
+        version_string: str,
+        build_number: int,
+        changelog: list,
+        is_required: bool,
+        rollout_percent: int,
+        min_supported_version: str | None = None,
+        store_url_ios: str | None = None,
+        store_url_android: str | None = None,
+        published_by: str | None = None,
+    ) -> dict[str, Any]:
         safe_platform = str(platform or "all").strip().lower()
         with self.db.get_session() as session:
-            prev = list(session.execute(
-                select(AppVersion).where(AppVersion.platform == safe_platform, AppVersion.is_active.is_(True))
-            ).scalars().all())
+            prev = list(
+                session.execute(
+                    select(AppVersion).where(
+                        AppVersion.platform == safe_platform, AppVersion.is_active.is_(True)
+                    )
+                )
+                .scalars()
+                .all()
+            )
             for v in prev:
                 v.is_active = False
             new_v = AppVersion(
@@ -1348,14 +1474,22 @@ class UpdateRepository:
 
     def list_app_versions(self, limit: int = 50) -> list[dict[str, Any]]:
         with self.db.get_session() as session:
-            rows = list(session.execute(
-                select(AppVersion).order_by(AppVersion.created_at.desc()).limit(max(1, min(limit, 200)))
-            ).scalars().all())
+            rows = list(
+                session.execute(
+                    select(AppVersion)
+                    .order_by(AppVersion.created_at.desc())
+                    .limit(max(1, min(limit, 200)))
+                )
+                .scalars()
+                .all()
+            )
             return [self._app_version_dict(r) for r in rows]
 
     def update_app_version(self, version_id: str, **fields: Any) -> dict[str, Any] | None:
         with self.db.get_session() as session:
-            row = session.execute(select(AppVersion).where(AppVersion.id == version_id)).scalar_one_or_none()
+            row = session.execute(
+                select(AppVersion).where(AppVersion.id == version_id)
+            ).scalar_one_or_none()
             if row is None:
                 return None
             for key, val in fields.items():
@@ -1366,12 +1500,18 @@ class UpdateRepository:
     def get_active_app_version(self, platform: str) -> dict[str, Any] | None:
         safe_platform = str(platform or "all").strip().lower()
         with self.db.get_session() as session:
-            row = session.execute(
-                select(AppVersion).where(
-                    AppVersion.is_active.is_(True),
-                    AppVersion.platform.in_([safe_platform, "all"]),
-                ).order_by(AppVersion.created_at.desc())
-            ).scalars().first()
+            row = (
+                session.execute(
+                    select(AppVersion)
+                    .where(
+                        AppVersion.is_active.is_(True),
+                        AppVersion.platform.in_([safe_platform, "all"]),
+                    )
+                    .order_by(AppVersion.created_at.desc())
+                )
+                .scalars()
+                .first()
+            )
             return self._app_version_dict(row) if row else None
 
     def _app_version_dict(self, row: AppVersion) -> dict[str, Any]:
@@ -1393,13 +1533,23 @@ class UpdateRepository:
 
     # ── Firmware Versions ─────────────────────────────────────────────────────
 
-    def create_firmware_version(self, *, version_string: str, changelog: list, download_url: str,
-                                is_required: bool, rollout_percent: int, target_device_ids: list,
-                                published_by: str | None = None) -> dict[str, Any]:
+    def create_firmware_version(
+        self,
+        *,
+        version_string: str,
+        changelog: list,
+        download_url: str,
+        is_required: bool,
+        rollout_percent: int,
+        target_device_ids: list,
+        published_by: str | None = None,
+    ) -> dict[str, Any]:
         with self.db.get_session() as session:
-            prev = list(session.execute(
-                select(FirmwareVersion).where(FirmwareVersion.is_active.is_(True))
-            ).scalars().all())
+            prev = list(
+                session.execute(select(FirmwareVersion).where(FirmwareVersion.is_active.is_(True)))
+                .scalars()
+                .all()
+            )
             for v in prev:
                 v.is_active = False
             new_v = FirmwareVersion(
@@ -1418,14 +1568,22 @@ class UpdateRepository:
 
     def list_firmware_versions(self, limit: int = 50) -> list[dict[str, Any]]:
         with self.db.get_session() as session:
-            rows = list(session.execute(
-                select(FirmwareVersion).order_by(FirmwareVersion.created_at.desc()).limit(max(1, min(limit, 200)))
-            ).scalars().all())
+            rows = list(
+                session.execute(
+                    select(FirmwareVersion)
+                    .order_by(FirmwareVersion.created_at.desc())
+                    .limit(max(1, min(limit, 200)))
+                )
+                .scalars()
+                .all()
+            )
             return [self._firmware_dict(r) for r in rows]
 
     def update_firmware_version(self, version_id: str, **fields: Any) -> dict[str, Any] | None:
         with self.db.get_session() as session:
-            row = session.execute(select(FirmwareVersion).where(FirmwareVersion.id == version_id)).scalar_one_or_none()
+            row = session.execute(
+                select(FirmwareVersion).where(FirmwareVersion.id == version_id)
+            ).scalar_one_or_none()
             if row is None:
                 return None
             for key, val in fields.items():
@@ -1435,10 +1593,15 @@ class UpdateRepository:
 
     def get_active_firmware_version(self, device_id: str = "") -> dict[str, Any] | None:
         with self.db.get_session() as session:
-            row = session.execute(
-                select(FirmwareVersion).where(FirmwareVersion.is_active.is_(True))
-                .order_by(FirmwareVersion.created_at.desc())
-            ).scalars().first()
+            row = (
+                session.execute(
+                    select(FirmwareVersion)
+                    .where(FirmwareVersion.is_active.is_(True))
+                    .order_by(FirmwareVersion.created_at.desc())
+                )
+                .scalars()
+                .first()
+            )
             if row is None:
                 return None
             targets = row.target_device_ids if isinstance(row.target_device_ids, list) else []
@@ -1455,7 +1618,9 @@ class UpdateRepository:
             "is_required": bool(row.is_required),
             "rollout_percent": int(row.rollout_percent or 0),
             "is_active": bool(row.is_active),
-            "target_device_ids": row.target_device_ids if isinstance(row.target_device_ids, list) else [],
+            "target_device_ids": row.target_device_ids
+            if isinstance(row.target_device_ids, list)
+            else [],
             "published_by": str(row.published_by or "") or None,
             "created_at": to_iso(ensure_utc(row.created_at)) if row.created_at else "",
         }
@@ -1466,13 +1631,24 @@ class FeatureFlagRepository:
         self.db = db or DatabaseConnection()
         self.db.create_tables()
 
-    def upsert_flag(self, *, flag_key: str, display_name: str = "", description: str = "",
-                    enabled_globally: bool = False, enabled_for_plans: list | None = None,
-                    rollout_percent: int = 0, updated_by: str | None = None) -> dict[str, Any]:
+    def upsert_flag(
+        self,
+        *,
+        flag_key: str,
+        display_name: str = "",
+        description: str = "",
+        enabled_globally: bool = False,
+        enabled_for_plans: list | None = None,
+        rollout_percent: int = 0,
+        updated_by: str | None = None,
+    ) -> dict[str, Any]:
         import hashlib as _hashlib
+
         key = str(flag_key or "").strip().lower()
         with self.db.get_session() as session:
-            row = session.execute(select(FeatureFlag).where(FeatureFlag.flag_key == key)).scalar_one_or_none()
+            row = session.execute(
+                select(FeatureFlag).where(FeatureFlag.flag_key == key)
+            ).scalar_one_or_none()
             if row is None:
                 row = FeatureFlag(flag_key=key)
                 session.add(row)
@@ -1490,17 +1666,28 @@ class FeatureFlagRepository:
 
     def list_flags(self) -> list[dict[str, Any]]:
         with self.db.get_session() as session:
-            rows = list(session.execute(select(FeatureFlag).order_by(FeatureFlag.flag_key)).scalars().all())
+            rows = list(
+                session.execute(select(FeatureFlag).order_by(FeatureFlag.flag_key)).scalars().all()
+            )
             return [self._flag_dict(r) for r in rows]
 
     def get_flag(self, flag_key: str) -> dict[str, Any] | None:
         key = str(flag_key or "").strip().lower()
         with self.db.get_session() as session:
-            row = session.execute(select(FeatureFlag).where(FeatureFlag.flag_key == key)).scalar_one_or_none()
+            row = session.execute(
+                select(FeatureFlag).where(FeatureFlag.flag_key == key)
+            ).scalar_one_or_none()
             return self._flag_dict(row) if row else None
 
-    def set_user_override(self, *, user_id: str, flag_key: str, override_value: bool,
-                          reason: str = "", set_by: str | None = None) -> dict[str, Any]:
+    def set_user_override(
+        self,
+        *,
+        user_id: str,
+        flag_key: str,
+        override_value: bool,
+        reason: str = "",
+        set_by: str | None = None,
+    ) -> dict[str, Any]:
         uid = str(user_id or "").strip()
         key = str(flag_key or "").strip().lower()
         with self.db.get_session() as session:
@@ -1534,13 +1721,18 @@ class FeatureFlagRepository:
     def list_user_overrides(self, user_id: str) -> list[dict[str, Any]]:
         uid = str(user_id or "").strip()
         with self.db.get_session() as session:
-            rows = list(session.execute(
-                select(UserFeatureOverride).where(UserFeatureOverride.user_id == uid)
-            ).scalars().all())
+            rows = list(
+                session.execute(
+                    select(UserFeatureOverride).where(UserFeatureOverride.user_id == uid)
+                )
+                .scalars()
+                .all()
+            )
             return [self._override_dict(r) for r in rows]
 
     def resolve_feature(self, flag_key: str, user_id: str, subscription_status: str) -> bool:
         import hashlib as _hashlib
+
         key = str(flag_key or "").strip().lower()
         uid = str(user_id or "").strip()
         plan = str(subscription_status or "free").strip().lower()
@@ -1552,7 +1744,9 @@ class FeatureFlagRepository:
             ).scalar_one_or_none()
             if override is not None:
                 return bool(override.override_value)
-            flag = session.execute(select(FeatureFlag).where(FeatureFlag.flag_key == key)).scalar_one_or_none()
+            flag = session.execute(
+                select(FeatureFlag).where(FeatureFlag.flag_key == key)
+            ).scalar_one_or_none()
             if flag is None:
                 return False
             plans = flag.enabled_for_plans if isinstance(flag.enabled_for_plans, list) else []
@@ -1571,7 +1765,9 @@ class FeatureFlagRepository:
             "display_name": str(row.display_name or ""),
             "description": str(row.description or ""),
             "enabled_globally": bool(row.enabled_globally),
-            "enabled_for_plans": row.enabled_for_plans if isinstance(row.enabled_for_plans, list) else [],
+            "enabled_for_plans": row.enabled_for_plans
+            if isinstance(row.enabled_for_plans, list)
+            else [],
             "rollout_percent": int(row.rollout_percent or 0),
             "updated_by": str(row.updated_by or "") or None,
             "created_at": to_iso(ensure_utc(row.created_at)) if row.created_at else "",
@@ -1592,6 +1788,7 @@ class FeatureFlagRepository:
 # ---------------------------------------------------------------------------
 # Async repositories — backed by AsyncDatabaseConnection (asyncpg + SQLAlchemy asyncio)
 # ---------------------------------------------------------------------------
+
 
 class AsyncUserRepository:
     """Async counterpart of UserRepository.
@@ -1615,9 +1812,7 @@ class AsyncUserRepository:
         if not normalized:
             return None
         async with self._db.get_session() as session:
-            result = await session.execute(
-                select(User).where(User.email == normalized).limit(1)
-            )
+            result = await session.execute(select(User).where(User.email == normalized).limit(1))
             return result.scalar_one_or_none()
 
     async def create(
@@ -1700,9 +1895,7 @@ class AsyncSleepSessionRepository:
     def __init__(self, db: AsyncDatabaseConnection) -> None:
         self._db = db
 
-    async def get_session_by_date(
-        self, user_id: str, date: date_type | str
-    ) -> SleepSession | None:
+    async def get_session_by_date(self, user_id: str, date: date_type | str) -> SleepSession | None:
         user_key = _clean_user_id(user_id)
         if not user_key:
             return None
@@ -1718,9 +1911,7 @@ class AsyncSleepSessionRepository:
             )
             return result.scalar_one_or_none()
 
-    async def get_recent_sessions(
-        self, user_id: str, limit: int = 7
-    ) -> list[SleepSession]:
+    async def get_recent_sessions(self, user_id: str, limit: int = 7) -> list[SleepSession]:
         user_key = _clean_user_id(user_id)
         if not user_key:
             return []
@@ -1769,9 +1960,13 @@ class AsyncSleepSessionRepository:
         user_key = _clean_user_id(user_id)
         target_date = _coerce_date(date)
         allowed = {
-            "bedtime", "wake_time", "total_sleep_minutes",
-            "restlessness_score", "scenes_used",
-            "automations_fired", "winddowns_completed",
+            "bedtime",
+            "wake_time",
+            "total_sleep_minutes",
+            "restlessness_score",
+            "scenes_used",
+            "automations_fired",
+            "winddowns_completed",
         }
         async with self._db.get_session() as session:
             result = await session.execute(
@@ -1814,6 +2009,7 @@ class AsyncEventRepository:
     ) -> Event:
         async with self._db.get_session() as session:
             import json as _json
+
             row = Event(
                 user_id=_clean_user_id(user_id),
                 event_type=str(event_type or "").strip(),
@@ -1839,6 +2035,7 @@ class AsyncEventRepository:
         """
         import json as _json
         from uuid import uuid4
+
         new_id = str(uuid4())
         now = utcnow()
         meta_json = _json.dumps(metadata) if isinstance(metadata, dict) else None
@@ -1878,9 +2075,7 @@ class AsyncEventRepository:
     async def cleanup_old_events(self, days: int = 90) -> int:
         cutoff = utcnow() - timedelta(days=max(1, int(days or 90)))
         async with self._db.get_session() as session:
-            result = await session.execute(
-                delete(Event).where(Event.timestamp < cutoff)
-            )
+            result = await session.execute(delete(Event).where(Event.timestamp < cutoff))
             rowcount = getattr(result, "rowcount", 0)
             return int(rowcount or 0)
 
@@ -1951,7 +2146,14 @@ class AlarmRepository:
             ).scalar_one_or_none()
             if alarm is None:
                 return None
-            allowed = {"time", "label", "enabled", "days_of_week", "wake_style", "smart_window_minutes"}
+            allowed = {
+                "time",
+                "label",
+                "enabled",
+                "days_of_week",
+                "wake_style",
+                "smart_window_minutes",
+            }
             for key, val in fields.items():
                 if key in allowed:
                     setattr(alarm, key, val)
@@ -2027,8 +2229,16 @@ class ProfileRepository:
         if not uid:
             raise ValueError("user_id is required")
         allowed = {
-            "display_name", "timezone", "push_enabled", "email_enabled",
-            "location_mode", "country_code", "city", "latitude", "longitude", "theme_mode",
+            "display_name",
+            "timezone",
+            "push_enabled",
+            "email_enabled",
+            "location_mode",
+            "country_code",
+            "city",
+            "latitude",
+            "longitude",
+            "theme_mode",
         }
         with self.db.get_session() as session:
             row = session.execute(
@@ -2074,7 +2284,11 @@ class ProfileRepository:
                 row = UserProfilePrefs(user_id=uid)
                 session.add(row)
             current = row.settings_json if isinstance(row.settings_json, dict) else {}
-            updated = {**_DEFAULT_SETTINGS, **current, **{k: v for k, v in fields.items() if k in allowed}}
+            updated = {
+                **_DEFAULT_SETTINGS,
+                **current,
+                **{k: v for k, v in fields.items() if k in allowed},
+            }
             row.settings_json = updated
             row.updated_at = utcnow()
             session.flush()
@@ -2143,6 +2357,7 @@ class OtpRepository:
 
     def __init__(self, db: DatabaseConnection | None = None) -> None:
         from config.settings import settings
+
         self._db = db or DatabaseConnection(database_url=settings.database_url)
 
     def create(
@@ -2158,16 +2373,18 @@ class OtpRepository:
         delivery_message_id: str = "",
     ) -> None:
         with self._db.get_session() as session:
-            session.add(OtpRequest(
-                request_id=request_id,
-                phone_number=phone_number,
-                otp_digest=otp_digest,
-                expires_at=expires_at,
-                client_name=client_name,
-                delivery_provider=delivery_provider,
-                delivery_status=delivery_status,
-                delivery_message_id=delivery_message_id,
-            ))
+            session.add(
+                OtpRequest(
+                    request_id=request_id,
+                    phone_number=phone_number,
+                    otp_digest=otp_digest,
+                    expires_at=expires_at,
+                    client_name=client_name,
+                    delivery_provider=delivery_provider,
+                    delivery_status=delivery_status,
+                    delivery_message_id=delivery_message_id,
+                )
+            )
 
     def get(self, request_id: str) -> dict[str, Any] | None:
         with self._db.get_session() as session:
@@ -2206,9 +2423,7 @@ class OtpRepository:
     def cleanup_expired(self) -> int:
         """Delete all expired OTP rows; return count deleted."""
         with self._db.get_session() as session:
-            result = session.execute(
-                delete(OtpRequest).where(OtpRequest.expires_at < utcnow())
-            )
+            result = session.execute(delete(OtpRequest).where(OtpRequest.expires_at < utcnow()))
             rowcount = getattr(result, "rowcount", 0)
             return rowcount or 0
 
@@ -2218,6 +2433,7 @@ class SpotifyTokenRepository:
 
     def __init__(self, db: DatabaseConnection | None = None) -> None:
         from config.settings import settings
+
         self._db = db or DatabaseConnection(database_url=settings.database_url)
 
     def get(self, user_key: str) -> dict[str, Any] | None:

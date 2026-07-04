@@ -63,7 +63,9 @@ class TestNicknameIntent(unittest.TestCase):
     def test_compound_intents_parse_color_then_brightness(self):
         profile = {"runtime_flags": {"last_action": {}}}
 
-        steps = _detect_compound_control_intents("make it red and set lights to 30% brightness", profile)
+        steps = _detect_compound_control_intents(
+            "make it red and set lights to 30% brightness", profile
+        )
 
         intents = [s.get("intent") for s in steps]
         self.assertIn("set_color", intents)

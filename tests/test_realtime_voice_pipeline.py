@@ -52,7 +52,9 @@ class TestRealtimeVoicePipeline(unittest.TestCase):
         pipeline = RealtimeVoicePipeline(tts, player)
 
         text = ["Hello there. ", "How are you?", " I can help"]
-        full = pipeline.speak_from_text_stream(text, emotion_state="distressed", profile_override="whisper")
+        full = pipeline.speak_from_text_stream(
+            text, emotion_state="distressed", profile_override="whisper"
+        )
 
         self.assertIn("Hello there.", tts.calls[0]["text"])
         self.assertTrue(any("How are you?" in c["text"] for c in tts.calls))

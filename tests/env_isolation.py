@@ -9,6 +9,7 @@ reset these singletons in setUp AND tearDown, otherwise:
   * on Windows the open sqlite file handle makes TemporaryDirectory.cleanup()
     fail with PermissionError (WinError 32).
 """
+
 from __future__ import annotations
 
 import os
@@ -78,6 +79,7 @@ class IsolatedWebAuthTestCase(unittest.TestCase):
 
     def setUp(self):
         import web_server
+
         self._web_server = web_server
         self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         tmp = Path(self._tmp.name)

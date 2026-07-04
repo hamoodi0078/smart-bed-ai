@@ -100,7 +100,9 @@ class TestMobileSleepSessionsDb(unittest.TestCase):
         mock_safe_profile.return_value = profile
         mock_require_user.return_value = {"user_id": "u1", "email": "u1@example.com"}
 
-        create_response = self.client.post("/v1/mobile/device-commands", json={"action": "optimize_room"})
+        create_response = self.client.post(
+            "/v1/mobile/device-commands", json={"action": "optimize_room"}
+        )
         self.assertEqual(create_response.status_code, 200)
 
         rows = profile.get("web_device_commands", {}).get("u1", [])

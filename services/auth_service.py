@@ -8,6 +8,7 @@ All methods are DB-only.  The legacy JSON-store fallback that still lives
 in web_server._login_mobile_user_db_first should remain active until all
 existing users have a shadow row in the `users` table, then be deleted.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -23,10 +24,11 @@ from database import MobileAuthRepository, UserRepository
 
 # ── Brute-force constants ─────────────────────────────────────────────────────
 _LOCKOUT_MAX_FAILURES = 5
-_LOCKOUT_WINDOW_SECONDS = 900   # 15-minute rolling window
+_LOCKOUT_WINDOW_SECONDS = 900  # 15-minute rolling window
 
 
 # ── Brute-force guard ─────────────────────────────────────────────────────────
+
 
 class BruteForceGuard:
     """Redis-backed per-account login failure tracker.
@@ -50,6 +52,7 @@ class BruteForceGuard:
                 return None
             try:
                 import redis as _r
+
                 client = _r.from_url(self._url, decode_responses=True, socket_timeout=1.0)
                 client.ping()
                 self._client = client
@@ -96,6 +99,7 @@ class BruteForceGuard:
 
 
 # ── Auth service ──────────────────────────────────────────────────────────────
+
 
 class AuthService:
     """Stateless authentication service — safe to instantiate once at startup."""
@@ -293,6 +297,7 @@ class AuthService:
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
 
 def _row_to_dict(user_row: Any) -> dict[str, Any]:
     """Convert a User ORM row to the standard user payload dict."""

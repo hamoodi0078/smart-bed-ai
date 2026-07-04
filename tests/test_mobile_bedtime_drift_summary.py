@@ -191,7 +191,9 @@ class TestMobileBedtimeDriftSummary(unittest.TestCase):
         mock_require_user.return_value = {"user_id": "u1", "email": "u1@example.com"}
 
         client = TestClient(web_server.app)
-        response = client.post("/v1/mobile/device-commands", json={"action": "quiet_hours_override"})
+        response = client.post(
+            "/v1/mobile/device-commands", json={"action": "quiet_hours_override"}
+        )
         self.assertEqual(response.status_code, 200)
         body = response.json()
         override_until = web_server.from_iso(str(body.get("override_until_utc", "")))

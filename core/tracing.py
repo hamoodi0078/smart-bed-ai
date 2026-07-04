@@ -48,16 +48,19 @@ def setup_tracing(app: "FastAPI | None" = None) -> None:
 
         if _EXPORTER == "console":
             from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+
             provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
             logger.info("OpenTelemetry tracing: console exporter")
         else:
             try:
                 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
                 exporter = OTLPSpanExporter(endpoint=_OTLP_ENDPOINT, insecure=True)
                 provider.add_span_processor(BatchSpanProcessor(exporter))
                 logger.info("OpenTelemetry tracing: OTLP exporter → {}", _OTLP_ENDPOINT)
             except ImportError:
                 from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+
                 provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
                 logger.warning(
                     "opentelemetry-exporter-otlp-proto-grpc not installed; "
@@ -79,6 +82,7 @@ def setup_tracing(app: "FastAPI | None" = None) -> None:
 def _instrument_fastapi(app: "FastAPI") -> None:
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
         FastAPIInstrumentor.instrument_app(
             app,
             excluded_urls="/healthz,/metrics,/docs,/openapi.json,/redoc",
@@ -92,6 +96,7 @@ def get_tracer(name: str = _SERVICE_NAME):
     """Return a tracer for manual span creation."""
     try:
         from opentelemetry import trace
+
         return trace.get_tracer(name)
     except Exception:
         return _NoOpTracer()
@@ -114,9 +119,20 @@ class _NoOpTracer:
 
 
 class _NoOpSpan:
-    def set_attribute(self, *_): pass
-    def set_status(self, *_): pass
-    def record_exception(self, *_): pass
-    def end(self): pass
-    def __enter__(self): return self
-    def __exit__(self, *_): pass
+    def set_attribute(self, *_):
+        pass
+
+    def set_status(self, *_):
+        pass
+
+    def record_exception(self, *_):
+        pass
+
+    def end(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        pass

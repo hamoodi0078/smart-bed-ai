@@ -17,6 +17,7 @@ import pytest
 # Helpers to build a minimal mock of the anthropic library
 # ---------------------------------------------------------------------------
 
+
 def _make_anthropic_mock():
     """Return a minimal anthropic module mock with Anthropic client class."""
     mod = types.ModuleType("anthropic")
@@ -80,6 +81,7 @@ def _make_anthropic_mock():
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _patch_http_client(monkeypatch):
@@ -147,6 +149,7 @@ def engine_mod_unavailable(monkeypatch):
 # Module-level flag
 # ---------------------------------------------------------------------------
 
+
 class TestAvailabilityFlag:
     def test_flag_is_bool_when_available(self, engine_mod):
         assert isinstance(engine_mod._ANTHROPIC_AVAILABLE, bool)
@@ -158,6 +161,7 @@ class TestAvailabilityFlag:
 # ---------------------------------------------------------------------------
 # Construction
 # ---------------------------------------------------------------------------
+
 
 class TestConstruction:
     def test_default_model(self, engine_mod):
@@ -189,6 +193,7 @@ class TestConstruction:
 # Client lifecycle
 # ---------------------------------------------------------------------------
 
+
 class TestGetClient:
     def test_returns_none_when_unavailable(self, engine_mod):
         engine_mod._ANTHROPIC_AVAILABLE = False
@@ -215,6 +220,7 @@ class TestGetClient:
 # System blocks / prompt caching
 # ---------------------------------------------------------------------------
 
+
 class TestBuildSystemBlocks:
     def _engine(self, engine_mod):
         return engine_mod.AnthropicConversationEngine(api_key="k")
@@ -233,7 +239,13 @@ class TestBuildSystemBlocks:
         e = self._engine(engine_mod)
         blocks = e._build_system_blocks("therapist", "", "neutral", "normal")
         stable_text = blocks[0]["text"]
-        assert "therapeutic" in stable_text.lower() or "therapist" in stable_text.lower() or "therapeutic" in stable_text.lower() or "therapeutic" in stable_text.lower() or "calm" in stable_text.lower()
+        assert (
+            "therapeutic" in stable_text.lower()
+            or "therapist" in stable_text.lower()
+            or "therapeutic" in stable_text.lower()
+            or "therapeutic" in stable_text.lower()
+            or "calm" in stable_text.lower()
+        )
 
     def test_volatile_block_present(self, engine_mod):
         e = self._engine(engine_mod)
@@ -252,7 +264,9 @@ class TestBuildSystemBlocks:
 
     def test_user_context_appended_to_volatile_block(self, engine_mod):
         e = self._engine(engine_mod)
-        blocks = e._build_system_blocks("therapist", "User likes short replies", "neutral", "normal")
+        blocks = e._build_system_blocks(
+            "therapist", "User likes short replies", "neutral", "normal"
+        )
         assert "User likes short replies" in blocks[1]["text"]
 
     def test_mood_layer_for_distressed(self, engine_mod):
@@ -269,6 +283,7 @@ class TestBuildSystemBlocks:
 # ---------------------------------------------------------------------------
 # Message list construction
 # ---------------------------------------------------------------------------
+
 
 class TestBuildMessages:
     def test_user_message_appended(self, engine_mod):
@@ -298,6 +313,7 @@ class TestBuildMessages:
 # generate_response — fallbacks
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateResponseFallback:
     def test_fallback_when_unavailable(self, engine_mod_unavailable):
         e = engine_mod_unavailable.AnthropicConversationEngine(api_key="k")
@@ -318,6 +334,7 @@ class TestGenerateResponseFallback:
 # ---------------------------------------------------------------------------
 # generate_response — success path (mocked client)
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateResponseSuccess:
     def test_returns_text_from_api(self, engine_mod):
@@ -356,6 +373,7 @@ class TestGenerateResponseSuccess:
 # generate_response_stream — fallbacks
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateResponseStreamFallback:
     def test_fallback_when_unavailable(self, engine_mod_unavailable):
         e = engine_mod_unavailable.AnthropicConversationEngine(api_key="k")
@@ -371,6 +389,7 @@ class TestGenerateResponseStreamFallback:
 # ---------------------------------------------------------------------------
 # generate_response_stream — success path
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateResponseStreamSuccess:
     def test_yields_chunks(self, engine_mod):
@@ -396,6 +415,7 @@ class TestGenerateResponseStreamSuccess:
 # History management
 # ---------------------------------------------------------------------------
 
+
 class TestAppendHistory:
     def test_appends_two_entries(self, engine_mod):
         e = engine_mod.AnthropicConversationEngine(api_key="k")
@@ -418,6 +438,7 @@ class TestAppendHistory:
 # ---------------------------------------------------------------------------
 # Static fallback message
 # ---------------------------------------------------------------------------
+
 
 class TestStaticFallback:
     def test_includes_user_text(self, engine_mod):

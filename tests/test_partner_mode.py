@@ -87,14 +87,24 @@ class TestPartnerModeAndRecoveryCard(unittest.TestCase):
     def test_should_not_send_weekly_recovery_score_card_outside_evening_or_with_low_data(self):
         low_data_profile = {
             "sleep": {
-                "bedtime_history": ["2026-02-14T23:40:00", "2026-02-15T23:50:00", "2026-02-16T23:35:00"],
-                "wake_history": ["2026-02-15T06:20:00", "2026-02-16T06:35:00", "2026-02-17T06:15:00"],
+                "bedtime_history": [
+                    "2026-02-14T23:40:00",
+                    "2026-02-15T23:50:00",
+                    "2026-02-16T23:35:00",
+                ],
+                "wake_history": [
+                    "2026-02-15T06:20:00",
+                    "2026-02-16T06:35:00",
+                    "2026-02-17T06:15:00",
+                ],
             }
         }
         morning = datetime(2026, 2, 21, 10, 0, 0)
         evening = datetime(2026, 2, 21, 20, 0, 0)
 
-        self.assertFalse(self.engine.should_send_weekly_recovery_score_card(low_data_profile, now=evening))
+        self.assertFalse(
+            self.engine.should_send_weekly_recovery_score_card(low_data_profile, now=evening)
+        )
 
         enough_data_profile = {
             "sleep": {
@@ -112,7 +122,9 @@ class TestPartnerModeAndRecoveryCard(unittest.TestCase):
                 ],
             }
         }
-        self.assertFalse(self.engine.should_send_weekly_recovery_score_card(enough_data_profile, now=morning))
+        self.assertFalse(
+            self.engine.should_send_weekly_recovery_score_card(enough_data_profile, now=morning)
+        )
 
 
 if __name__ == "__main__":

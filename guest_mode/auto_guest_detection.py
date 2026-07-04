@@ -123,11 +123,13 @@ class AutoGuestDetection:
 
         gd = profile["guest_detection"]
         gd["total_guest_sessions"] = int(gd.get("total_guest_sessions", 0)) + 1
-        gd["detections_log"].append({
-            "date": now.date().isoformat(),
-            "detected_at": self._detection_start.isoformat(),
-            "confirmed_at": now.isoformat(),
-        })
+        gd["detections_log"].append(
+            {
+                "date": now.date().isoformat(),
+                "detected_at": self._detection_start.isoformat(),
+                "confirmed_at": now.isoformat(),
+            }
+        )
         gd["detections_log"] = gd["detections_log"][-50:]
 
         logger.info("Guest confirmed after %.0f minutes", elapsed)
@@ -138,10 +140,12 @@ class AutoGuestDetection:
                 {"type": "disable_personal_automations"},
                 {"type": "pause_voice_memory"},
                 {"type": "pause_sleep_tracking"},
-                {"type": "notification", "to": "owner",
-                 "message": "Guest detected on your bed. Guest mode activated."},
-                {"type": "voice", "message": "Welcome, make yourself comfortable.",
-                 "volume": 0.4},
+                {
+                    "type": "notification",
+                    "to": "owner",
+                    "message": "Guest detected on your bed. Guest mode activated.",
+                },
+                {"type": "voice", "message": "Welcome, make yourself comfortable.", "volume": 0.4},
             ],
         }
 

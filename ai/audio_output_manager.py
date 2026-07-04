@@ -46,7 +46,11 @@ class AudioOutputManager:
         devices = self._list_known_devices()
         self._last_scan = devices
         if not devices:
-            return False, "No Bluetooth speakers found yet. Put speaker in pairing mode, then retry.", []
+            return (
+                False,
+                "No Bluetooth speakers found yet. Put speaker in pairing mode, then retry.",
+                [],
+            )
         names = ", ".join(f"{d['name']} ({d['mac']})" for d in devices[:8])
         return True, f"Found Bluetooth devices: {names}", devices
 

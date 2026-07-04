@@ -21,6 +21,7 @@ logger = logging.getLogger("scenes.circadian_engine")
 try:
     from astral import LocationInfo  # type: ignore
     from astral.sun import sun as astral_sun
+
     _ASTRAL_AVAILABLE = True
 except ImportError:
     _ASTRAL_AVAILABLE = False
@@ -87,29 +88,95 @@ class CircadianEngine:
         {"name": "sunrise", "start_hour": 6, "end_hour": 8, "kelvin": 4500, "brightness": 0.50},
         {"name": "morning", "start_hour": 8, "end_hour": 12, "kelvin": 6500, "brightness": 0.70},
         {"name": "afternoon", "start_hour": 12, "end_hour": 17, "kelvin": 5000, "brightness": 0.60},
-        {"name": "evening_transition", "start_hour": 17, "end_hour": 19, "kelvin": 3500, "brightness": 0.45},
+        {
+            "name": "evening_transition",
+            "start_hour": 17,
+            "end_hour": 19,
+            "kelvin": 3500,
+            "brightness": 0.45,
+        },
         {"name": "evening", "start_hour": 19, "end_hour": 21, "kelvin": 3000, "brightness": 0.35},
         {"name": "wind_down", "start_hour": 21, "end_hour": 23, "kelvin": 2700, "brightness": 0.20},
-        {"name": "sleep_prep", "start_hour": 23, "end_hour": 24, "kelvin": 2200, "brightness": 0.10},
+        {
+            "name": "sleep_prep",
+            "start_hour": 23,
+            "end_hour": 24,
+            "kelvin": 2200,
+            "brightness": 0.10,
+        },
         {"name": "night", "start_hour": 0, "end_hour": 4, "kelvin": 1800, "brightness": 0.02},
     ]
 
     def _build_dynamic_phases(self, sun: dict[str, int]) -> list[dict[str, Any]]:
         """Rebuild the phase schedule using real sunrise/sunset hours."""
-        sr = sun["sunrise"]   # e.g. 5 in summer
-        ss = sun["sunset"]    # e.g. 19 in summer
-        dawn = sun["dawn"]    # sr - 1
-        dusk = sun["dusk"]    # ss + 1
+        sr = sun["sunrise"]  # e.g. 5 in summer
+        ss = sun["sunset"]  # e.g. 19 in summer
+        dawn = sun["dawn"]  # sr - 1
+        dusk = sun["dusk"]  # ss + 1
         return [
-            {"name": "pre_dawn",           "start_hour": dawn - 1, "end_hour": dawn,     "kelvin": 2200, "brightness": 0.05},
-            {"name": "sunrise",            "start_hour": dawn,     "end_hour": sr + 1,   "kelvin": 4500, "brightness": 0.50},
-            {"name": "morning",            "start_hour": sr + 1,   "end_hour": 12,        "kelvin": 6500, "brightness": 0.70},
-            {"name": "afternoon",          "start_hour": 12,       "end_hour": ss - 2,    "kelvin": 5000, "brightness": 0.60},
-            {"name": "evening_transition", "start_hour": ss - 2,   "end_hour": ss,        "kelvin": 3500, "brightness": 0.45},
-            {"name": "evening",            "start_hour": ss,       "end_hour": dusk + 1,  "kelvin": 3000, "brightness": 0.35},
-            {"name": "wind_down",          "start_hour": dusk + 1, "end_hour": dusk + 3,  "kelvin": 2700, "brightness": 0.20},
-            {"name": "sleep_prep",         "start_hour": dusk + 3, "end_hour": 24,        "kelvin": 2200, "brightness": 0.10},
-            {"name": "night",              "start_hour": 0,        "end_hour": dawn - 1,  "kelvin": 1800, "brightness": 0.02},
+            {
+                "name": "pre_dawn",
+                "start_hour": dawn - 1,
+                "end_hour": dawn,
+                "kelvin": 2200,
+                "brightness": 0.05,
+            },
+            {
+                "name": "sunrise",
+                "start_hour": dawn,
+                "end_hour": sr + 1,
+                "kelvin": 4500,
+                "brightness": 0.50,
+            },
+            {
+                "name": "morning",
+                "start_hour": sr + 1,
+                "end_hour": 12,
+                "kelvin": 6500,
+                "brightness": 0.70,
+            },
+            {
+                "name": "afternoon",
+                "start_hour": 12,
+                "end_hour": ss - 2,
+                "kelvin": 5000,
+                "brightness": 0.60,
+            },
+            {
+                "name": "evening_transition",
+                "start_hour": ss - 2,
+                "end_hour": ss,
+                "kelvin": 3500,
+                "brightness": 0.45,
+            },
+            {
+                "name": "evening",
+                "start_hour": ss,
+                "end_hour": dusk + 1,
+                "kelvin": 3000,
+                "brightness": 0.35,
+            },
+            {
+                "name": "wind_down",
+                "start_hour": dusk + 1,
+                "end_hour": dusk + 3,
+                "kelvin": 2700,
+                "brightness": 0.20,
+            },
+            {
+                "name": "sleep_prep",
+                "start_hour": dusk + 3,
+                "end_hour": 24,
+                "kelvin": 2200,
+                "brightness": 0.10,
+            },
+            {
+                "name": "night",
+                "start_hour": 0,
+                "end_hour": dawn - 1,
+                "kelvin": 1800,
+                "brightness": 0.02,
+            },
         ]
 
     def get_current_phase(self, now: datetime | None = None) -> dict[str, Any]:
@@ -157,8 +224,13 @@ class CircadianEngine:
         progress = min(1.0, (current_minutes - current_start) / phase_duration)
 
         next_phase = self._get_next_phase_from(phases, current_phase["name"])
-        kelvin = int(current_phase["kelvin"] + (next_phase["kelvin"] - current_phase["kelvin"]) * progress)
-        brightness = current_phase["brightness"] + (next_phase["brightness"] - current_phase["brightness"]) * progress
+        kelvin = int(
+            current_phase["kelvin"] + (next_phase["kelvin"] - current_phase["kelvin"]) * progress
+        )
+        brightness = (
+            current_phase["brightness"]
+            + (next_phase["brightness"] - current_phase["brightness"]) * progress
+        )
 
         color_info = self._kelvin_to_color(kelvin)
 
@@ -211,7 +283,9 @@ class CircadianEngine:
                     del self._sun_cache[oldest]
                 logger.debug(
                     "Astral sun times for %s: sunrise=%02d:00 sunset=%02d:00",
-                    key, result["sunrise"], result["sunset"],
+                    key,
+                    result["sunrise"],
+                    result["sunset"],
                 )
                 return result
             except Exception as exc:
@@ -232,7 +306,9 @@ class CircadianEngine:
         self._sun_cache.clear()
         logger.info(
             "CircadianEngine location updated: lat=%.4f lon=%.4f tz=%s",
-            self._latitude, self._longitude, self._timezone_name,
+            self._latitude,
+            self._longitude,
+            self._timezone_name,
         )
 
     def update_sunrise_sunset(self, sunrise_hour: int, sunset_hour: int) -> None:
@@ -302,7 +378,9 @@ class CircadianEngine:
             "bedtime_hour": bedtime_hour,
             "cutoff_hour": round(cutoff_hour, 1),
             "current_hour": round(current_hour, 1),
-            "recommended_kelvin": 2200 if should_reduce else self.get_current_phase(now).get("kelvin", 5000),
+            "recommended_kelvin": 2200
+            if should_reduce
+            else self.get_current_phase(now).get("kelvin", 5000),
         }
 
     # ------------------------------------------------------------------
@@ -328,13 +406,15 @@ class CircadianEngine:
         schedule = []
         for phase in self.PHASES:
             color = self._kelvin_to_color(phase["kelvin"])
-            schedule.append({
-                "phase": phase["name"],
-                "start_hour": phase["start_hour"],
-                "end_hour": phase["end_hour"],
-                "kelvin": phase["kelvin"],
-                "brightness": phase["brightness"],
-                "color_hex": color["hex"],
-                "color_name": color["name"],
-            })
+            schedule.append(
+                {
+                    "phase": phase["name"],
+                    "start_hour": phase["start_hour"],
+                    "end_hour": phase["end_hour"],
+                    "kelvin": phase["kelvin"],
+                    "brightness": phase["brightness"],
+                    "color_hex": color["hex"],
+                    "color_name": color["name"],
+                }
+            )
         return schedule

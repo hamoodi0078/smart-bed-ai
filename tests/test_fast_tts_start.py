@@ -7,7 +7,9 @@ class _FakeTTS:
     def __init__(self):
         self.calls = []
 
-    def synthesize_to_mp3(self, text, filename="latest_response.mp3", voice_override="", pace_override=1.0):
+    def synthesize_to_mp3(
+        self, text, filename="latest_response.mp3", voice_override="", pace_override=1.0
+    ):
         self.calls.append(
             {
                 "text": text,
@@ -59,7 +61,9 @@ class TestFastTTSStart(unittest.TestCase):
             "This final sentence ensures the response is beyond the fast-start character threshold."
         )
 
-        first_audio = play_tts_with_fast_start(tts, player, text, voice_override="nova", pace_override=1.1)
+        first_audio = play_tts_with_fast_start(
+            tts, player, text, voice_override="nova", pace_override=1.1
+        )
 
         self.assertEqual(first_audio, "output_audio/latest_response_head.mp3")
         self.assertEqual(len(tts.calls), 2)

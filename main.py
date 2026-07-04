@@ -3,9 +3,11 @@
 All module functionality is accessed via explicit imports in each file.
 No global namespace pollution.
 """
+
 from __future__ import annotations
 
 from dotenv import load_dotenv
+
 load_dotenv(override=True)
 import re
 from datetime import datetime, timedelta, timezone
@@ -16,8 +18,10 @@ from typing import Any
 # App entry point
 # ---------------------------------------------------------------------------
 
+
 def _run() -> None:
     from app_entry import main
+
     main()
 
 
@@ -29,9 +33,11 @@ if __name__ == "__main__":
 # Profile persistence (lazy import so tests can patch it)
 # ---------------------------------------------------------------------------
 
+
 def save_profile(profile: dict) -> None:
     try:
         from Storage.user_profile import save_profile as _save
+
         _save(profile)
     except Exception:
         pass
@@ -42,9 +48,17 @@ def save_profile(profile: dict) -> None:
 # ---------------------------------------------------------------------------
 
 _DETAIL_TRIGGERS = [
-    "tell me about", "tell me more", "walk me through", "explain in detail",
-    "explain to me", "give me a full", "deep dive", "break it down",
-    "elaborate on", "describe in detail", "step by step",
+    "tell me about",
+    "tell me more",
+    "walk me through",
+    "explain in detail",
+    "explain to me",
+    "give me a full",
+    "deep dive",
+    "break it down",
+    "elaborate on",
+    "describe in detail",
+    "step by step",
 ]
 
 
@@ -110,6 +124,7 @@ def clamp_non_detail_response(
 # Fast TTS start helpers
 # ---------------------------------------------------------------------------
 
+
 def _split_for_fast_tts_start(
     text: str,
     head_limit_chars: int = 100,
@@ -124,7 +139,7 @@ def _split_for_fast_tts_start(
         return text, ""
 
     # Find the last sentence-ending punctuation before the limit
-    search_region = text[:head_limit_chars + 40]
+    search_region = text[: head_limit_chars + 40]
     matches = list(re.finditer(r"[.!?](?:\s|$)", search_region))
     if matches:
         cut = matches[-1].end()
@@ -185,14 +200,34 @@ def play_tts_with_fast_start(
 # ---------------------------------------------------------------------------
 
 _SCENE_CLARIFICATION_KEYWORDS = {
-    "brightness", "bright", "dim", "dimmer", "lighter", "darker",
-    "lighting", "lights", "scene", "normal brightness", "keep it",
+    "brightness",
+    "bright",
+    "dim",
+    "dimmer",
+    "lighter",
+    "darker",
+    "lighting",
+    "lights",
+    "scene",
+    "normal brightness",
+    "keep it",
 }
 
 _SESSION_END_PHRASES = {
-    "bye", "bye-bye", "goodbye", "good bye", "see you", "see ya",
-    "ok bye", "ok bye-bye", "okay bye", "that's all", "thats all",
-    "stop listening", "go to sleep", "exit",
+    "bye",
+    "bye-bye",
+    "goodbye",
+    "good bye",
+    "see you",
+    "see ya",
+    "ok bye",
+    "ok bye-bye",
+    "okay bye",
+    "that's all",
+    "thats all",
+    "stop listening",
+    "go to sleep",
+    "exit",
 }
 
 _ECHO_MAX_OVERLAP_RATIO = 0.6
@@ -228,7 +263,7 @@ def _is_wake_only_utterance(wake_manager: Any, text: str) -> bool:
         if t == phrase:
             return True
         if t.startswith(phrase + " "):
-            remainder = t[len(phrase):].strip()
+            remainder = t[len(phrase) :].strip()
             words = remainder.split()
             if all(w in noise_words for w in words):
                 return True
@@ -314,7 +349,7 @@ def get_query_text(
 
     # Audio file path from stdin
     raw = input("audio_path> ").strip()
-    path = raw[len("audio:"):] if raw.startswith("audio:") else raw
+    path = raw[len("audio:") :] if raw.startswith("audio:") else raw
     text, conf = stt.transcribe_file_with_confidence(path)
     return (text, conf) if conf >= _CONFIDENCE_THRESHOLD else ("", 0.0)
 
@@ -324,8 +359,20 @@ def get_query_text(
 # ---------------------------------------------------------------------------
 
 _COLORS = {
-    "red", "blue", "green", "yellow", "orange", "purple", "white",
-    "pink", "warm", "cool", "cyan", "teal", "violet", "gold",
+    "red",
+    "blue",
+    "green",
+    "yellow",
+    "orange",
+    "purple",
+    "white",
+    "pink",
+    "warm",
+    "cool",
+    "cyan",
+    "teal",
+    "violet",
+    "gold",
 }
 
 
@@ -334,7 +381,9 @@ def detect_natural_bed_intent(text: str) -> tuple[str | None, dict]:
     t = text.lower().strip()
 
     # Bed guide triggers
-    if any(p in t for p in ["how to use this bed", "how do i use", "guide me through", "bed guide"]):
+    if any(
+        p in t for p in ["how to use this bed", "how do i use", "guide me through", "bed guide"]
+    ):
         return "bed_guide_start", {}
     if any(p in t for p in ["next guide step", "next step guide", "guide next"]):
         return "bed_guide_next", {}
@@ -413,7 +462,13 @@ def resolve_bed_guide_shortcut_intent(text: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 _BRIGHTNESS_DOWN_PHRASES = {"a bit dimmer", "dimmer", "less bright", "darker", "lower brightness"}
-_BRIGHTNESS_UP_PHRASES = {"a bit brighter", "brighter", "more bright", "lighter", "higher brightness"}
+_BRIGHTNESS_UP_PHRASES = {
+    "a bit brighter",
+    "brighter",
+    "more bright",
+    "lighter",
+    "higher brightness",
+}
 _PAUSE_PHRASES = {"pause it", "pause", "stop it", "stop music", "mute", "silence"}
 _LIGHT_INTENTS = {"set_color", "set_scene", "brightness_set", "brightness_up", "brightness_down"}
 _MUSIC_INTENTS = {"play_music", "start_music"}
@@ -465,6 +520,7 @@ def _detect_compound_control_intents(text: str, profile: dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Wake word aliases + greeting
 # ---------------------------------------------------------------------------
+
 
 def _deduplicate_consecutive_chars(word: str) -> str:
     """Collapse consecutive duplicate characters: 'ishfaaq' → 'ishfaq'."""
@@ -526,6 +582,7 @@ def build_wake_greeting(profile: dict) -> str:
 # Sleep help
 # ---------------------------------------------------------------------------
 
+
 def build_sleep_help() -> str:
     """Return a help text describing sleep-related voice commands."""
     return (
@@ -544,9 +601,15 @@ def build_sleep_help() -> str:
 # ---------------------------------------------------------------------------
 
 _OPT_OUT_PHRASES = {
-    "don't ask about this again", "stop asking", "i don't want to talk about it",
-    "please do not ask", "do not ask", "stop following up", "drop it",
-    "forget about it", "i don't want to discuss",
+    "don't ask about this again",
+    "stop asking",
+    "i don't want to talk about it",
+    "please do not ask",
+    "do not ask",
+    "stop following up",
+    "drop it",
+    "forget about it",
+    "i don't want to discuss",
 }
 
 _ISLAMIC_TONE_WORDS = {"islamic", "quran", "dua", "allah", "prayer"}
@@ -611,8 +674,7 @@ def get_due_therapist_followup(
     # Find the first unresolved followup due today
     followups: list[dict] = daily_life.get("emotional_followups") or []
     pending = [
-        f for f in followups
-        if not f.get("resolved") and f.get("followup_due_date") == today
+        f for f in followups if not f.get("resolved") and f.get("followup_due_date") == today
     ]
     if not pending:
         return ""
@@ -627,19 +689,16 @@ def get_due_therapist_followup(
 
     if tone == "islamic":
         return (
-            f"I hope you are well today. Yesterday you mentioned feeling: \"{concern}\". "
+            f'I hope you are well today. Yesterday you mentioned feeling: "{concern}". '
             "I wanted to check in — how are you feeling now? "
             "May Allah ease whatever you are going through."
         )
     if tone == "teen":
         return (
-            f"Hey! Yesterday you mentioned: \"{concern}\". "
+            f'Hey! Yesterday you mentioned: "{concern}". '
             "Just checking in — are you feeling better today?"
         )
-    return (
-        f"I noticed yesterday you mentioned: \"{concern}\". "
-        "How are you feeling about that today?"
-    )
+    return f'I noticed yesterday you mentioned: "{concern}". How are you feeling about that today?'
 
 
 def resolve_therapist_followup_if_answered(
@@ -676,6 +735,7 @@ def resolve_therapist_followup_if_answered(
 # ---------------------------------------------------------------------------
 # Local command handler
 # ---------------------------------------------------------------------------
+
 
 def handle_local_commands(
     user_text: str,
@@ -743,6 +803,7 @@ def handle_local_commands(
 # Action executor
 # ---------------------------------------------------------------------------
 
+
 def _execute_resolved_action(
     resolved: dict,
     profile: dict,
@@ -789,7 +850,11 @@ def _execute_resolved_action(
 
     if intent == "set_scene":
         scene_key = slots.get("scene_key", "balanced_default")
-        scene = orchestrator.choose_scene("neutral", False, 1, "guide") if hasattr(orchestrator, "choose_scene") else {}
+        scene = (
+            orchestrator.choose_scene("neutral", False, 1, "guide")
+            if hasattr(orchestrator, "choose_scene")
+            else {}
+        )
         scene["key"] = scene_key
         line = orchestrator.apply_scene(led, profile, scene) if scene else ""
         flags["last_action"] = {"intent": intent, "slots": slots}

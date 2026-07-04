@@ -105,13 +105,17 @@ class PressureIntelligence:
 
     def record(self, left: float, right: float, timestamp: datetime | None = None) -> None:
         """Record a dual-zone pressure reading."""
-        snap = PressureSnapshot(left=float(left), right=float(right), timestamp=timestamp or _utcnow())
+        snap = PressureSnapshot(
+            left=float(left), right=float(right), timestamp=timestamp or _utcnow()
+        )
         with self._lock:
             self._history.append(snap)
             self._update_baselines()
             self._evaluate_state_change(snap)
 
-    def record_single(self, value: float, side: str = "left", timestamp: datetime | None = None) -> None:
+    def record_single(
+        self, value: float, side: str = "left", timestamp: datetime | None = None
+    ) -> None:
         """Record a single-sensor reading (maps to one side, other side = 0)."""
         if side == "right":
             self.record(left=0.0, right=float(value), timestamp=timestamp)
@@ -144,7 +148,7 @@ class PressureIntelligence:
 
     def get_recent_events(self, limit: int = 20) -> list[dict[str, Any]]:
         with self._lock:
-            events = list(self._events)[-max(1, limit):]
+            events = list(self._events)[-max(1, limit) :]
         return [
             {
                 "event_type": e.event_type,
@@ -175,7 +179,9 @@ class PressureIntelligence:
     # Restlessness analysis
     # ------------------------------------------------------------------
 
-    def get_restlessness_score(self, window_minutes: int = 60, side: str = "both") -> dict[str, Any]:
+    def get_restlessness_score(
+        self, window_minutes: int = 60, side: str = "both"
+    ) -> dict[str, Any]:
         """Calculate restlessness events per hour for a given window."""
         with self._lock:
             now = _utcnow()
@@ -285,7 +291,7 @@ class PressureIntelligence:
     # ------------------------------------------------------------------
 
     def _update_baselines(self) -> None:
-        recent = list(self._history)[-self._baseline_window:]
+        recent = list(self._history)[-self._baseline_window :]
         if len(recent) < 5:
             return
         left_vals = [s.left for s in recent if s.left > 0]
@@ -333,26 +339,45 @@ class PressureIntelligence:
         self, old: OccupancyState, new: OccupancyState, ts: datetime, duration: float
     ) -> OccupancyEvent | None:
         if old == OccupancyState.EMPTY and new != OccupancyState.EMPTY:
-            side = "left" if new == OccupancyState.LEFT_ONLY else ("right" if new == OccupancyState.RIGHT_ONLY else "both")
+            side = (
+                "left"
+                if new == OccupancyState.LEFT_ONLY
+                else ("right" if new == OccupancyState.RIGHT_ONLY else "both")
+            )
             return OccupancyEvent(event_type="bed_entry", side=side, timestamp=ts)
 
         if old != OccupancyState.EMPTY and new == OccupancyState.EMPTY:
-            side = "left" if old == OccupancyState.LEFT_ONLY else ("right" if old == OccupancyState.RIGHT_ONLY else "both")
-            return OccupancyEvent(event_type="bed_exit", side=side, timestamp=ts, duration_seconds=duration)
+            side = (
+                "left"
+                if old == OccupancyState.LEFT_ONLY
+                else ("right" if old == OccupancyState.RIGHT_ONLY else "both")
+            )
+            return OccupancyEvent(
+                event_type="bed_exit", side=side, timestamp=ts, duration_seconds=duration
+            )
 
-        if old in (OccupancyState.LEFT_ONLY, OccupancyState.RIGHT_ONLY) and new == OccupancyState.BOTH:
+        if (
+            old in (OccupancyState.LEFT_ONLY, OccupancyState.RIGHT_ONLY)
+            and new == OccupancyState.BOTH
+        ):
             arriving = "right" if old == OccupancyState.LEFT_ONLY else "left"
             return OccupancyEvent(event_type="partner_arrived", side=arriving, timestamp=ts)
 
-        if old == OccupancyState.BOTH and new in (OccupancyState.LEFT_ONLY, OccupancyState.RIGHT_ONLY):
+        if old == OccupancyState.BOTH and new in (
+            OccupancyState.LEFT_ONLY,
+            OccupancyState.RIGHT_ONLY,
+        ):
             leaving = "right" if new == OccupancyState.LEFT_ONLY else "left"
-            return OccupancyEvent(event_type="partner_left", side=leaving, timestamp=ts, duration_seconds=duration)
+            return OccupancyEvent(
+                event_type="partner_left", side=leaving, timestamp=ts, duration_seconds=duration
+            )
 
         return None
 
     def _fire_callbacks(self, event: OccupancyEvent) -> None:
         callbacks = (
-            self._on_entry_callbacks if event.event_type in ("bed_entry", "partner_arrived")
+            self._on_entry_callbacks
+            if event.event_type in ("bed_entry", "partner_arrived")
             else self._on_exit_callbacks
         )
         for cb in callbacks:

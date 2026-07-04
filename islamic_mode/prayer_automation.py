@@ -93,10 +93,13 @@ class PrayerAutomation:
         islamic.setdefault("adhan_playback_enabled", False)
         islamic.setdefault("prayer_mat_mode_enabled", True)
         islamic.setdefault("last_prayer_actions", {})
-        islamic.setdefault("prayer_stats", {
-            "total_reminders_sent": 0,
-            "acknowledged_count": 0,
-        })
+        islamic.setdefault(
+            "prayer_stats",
+            {
+                "total_reminders_sent": 0,
+                "acknowledged_count": 0,
+            },
+        )
 
     # ------------------------------------------------------------------
     # Core evaluation (called periodically by automation loop)
@@ -164,40 +167,48 @@ class PrayerAutomation:
         actions: list[dict[str, Any]] = []
 
         if islamic.get("pre_prayer_notification_enabled", True):
-            actions.append({
-                "type": "notification",
-                "category": "prayer_reminder",
-                "prayer": prayer_name,
-                "message": f"{prayer_name} prayer in {minutes_until} minutes.",
-                "priority": "high",
-            })
+            actions.append(
+                {
+                    "type": "notification",
+                    "category": "prayer_reminder",
+                    "prayer": prayer_name,
+                    "message": f"{prayer_name} prayer in {minutes_until} minutes.",
+                    "priority": "high",
+                }
+            )
 
         if islamic.get("auto_pause_music", True):
-            actions.append({
-                "type": "music_control",
-                "action": "pause",
-                "reason": f"Pre-{prayer_name} preparation",
-            })
+            actions.append(
+                {
+                    "type": "music_control",
+                    "action": "pause",
+                    "reason": f"Pre-{prayer_name} preparation",
+                }
+            )
 
-        actions.append({
-            "type": "led_scene",
-            "action": "dim_for_prayer",
-            "brightness": 0.20,
-            "color": "#FFF8DC",
-            "animation": "breathing",
-            "reason": f"Preparing for {prayer_name}",
-        })
+        actions.append(
+            {
+                "type": "led_scene",
+                "action": "dim_for_prayer",
+                "brightness": 0.20,
+                "color": "#FFF8DC",
+                "animation": "breathing",
+                "reason": f"Preparing for {prayer_name}",
+            }
+        )
 
         if islamic.get("qibla_indicator_enabled", True):
             lat = float(profile.get("preferences", {}).get("latitude", 0) or 0)
             lon = float(profile.get("preferences", {}).get("longitude", 0) or 0)
             if lat != 0 or lon != 0:
                 bearing = calculate_qibla_bearing(lat, lon)
-                actions.append({
-                    "type": "qibla_indicator",
-                    "bearing_degrees": round(bearing, 1),
-                    "prayer": prayer_name,
-                })
+                actions.append(
+                    {
+                        "type": "qibla_indicator",
+                        "bearing_degrees": round(bearing, 1),
+                        "prayer": prayer_name,
+                    }
+                )
 
         return actions
 
@@ -207,28 +218,34 @@ class PrayerAutomation:
         color_info = PRAYER_LED_COLORS.get(prayer_name, PRAYER_LED_COLORS["Dhuhr"])
 
         if islamic.get("prayer_led_enabled", True):
-            actions.append({
-                "type": "led_scene",
-                "action": "prayer_color",
-                "color": color_info["hex"],
-                "brightness": color_info["brightness"],
-                "animation": "gentle_pulse",
-                "prayer": prayer_name,
-            })
+            actions.append(
+                {
+                    "type": "led_scene",
+                    "action": "prayer_color",
+                    "color": color_info["hex"],
+                    "brightness": color_info["brightness"],
+                    "animation": "gentle_pulse",
+                    "prayer": prayer_name,
+                }
+            )
 
         if islamic.get("adhan_playback_enabled", False):
-            actions.append({
-                "type": "audio",
-                "action": "play_adhan",
-                "prayer": prayer_name,
-                "volume": 0.5,
-            })
+            actions.append(
+                {
+                    "type": "audio",
+                    "action": "play_adhan",
+                    "prayer": prayer_name,
+                    "volume": 0.5,
+                }
+            )
 
-        actions.append({
-            "type": "voice",
-            "message": self._prayer_voice_message(prayer_name),
-            "prayer": prayer_name,
-        })
+        actions.append(
+            {
+                "type": "voice",
+                "message": self._prayer_voice_message(prayer_name),
+                "prayer": prayer_name,
+            }
+        )
 
         return actions
 
@@ -289,7 +306,9 @@ class PrayerAutomation:
         elapsed = (now - self._prayer_mat_started_at).total_seconds() / 60.0
         if elapsed >= self._prayer_mat_duration:
             self.deactivate_prayer_mat_mode()
-            logger.info("Prayer mat mode auto-deactivated after %d minutes", self._prayer_mat_duration)
+            logger.info(
+                "Prayer mat mode auto-deactivated after %d minutes", self._prayer_mat_duration
+            )
 
     # ------------------------------------------------------------------
     # Prayer acknowledgment
@@ -317,7 +336,9 @@ class PrayerAutomation:
     # Friday special
     # ------------------------------------------------------------------
 
-    def get_friday_actions(self, profile: dict, now: datetime | None = None) -> list[dict[str, Any]]:
+    def get_friday_actions(
+        self, profile: dict, now: datetime | None = None
+    ) -> list[dict[str, Any]]:
         """Return special Friday (Jummah) automation actions."""
         now = now or datetime.now()
         if now.weekday() != 4:  # 4 = Friday
@@ -330,19 +351,23 @@ class PrayerAutomation:
 
         actions = []
         if 7 <= now.hour <= 12:
-            actions.append({
-                "type": "notification",
-                "category": "jummah_reminder",
-                "message": "Jummah Mubarak! Remember to read Surah Al-Kahf today.",
-                "priority": "medium",
-            })
-            actions.append({
-                "type": "led_scene",
-                "action": "jummah_special",
-                "color": "#FFD700",
-                "brightness": 0.25,
-                "animation": "gentle_shimmer",
-            })
+            actions.append(
+                {
+                    "type": "notification",
+                    "category": "jummah_reminder",
+                    "message": "Jummah Mubarak! Remember to read Surah Al-Kahf today.",
+                    "priority": "medium",
+                }
+            )
+            actions.append(
+                {
+                    "type": "led_scene",
+                    "action": "jummah_special",
+                    "color": "#FFD700",
+                    "brightness": 0.25,
+                    "animation": "gentle_shimmer",
+                }
+            )
             self._last_actions[today_key] = now.isoformat()
 
         return actions
@@ -374,7 +399,4 @@ class PrayerAutomation:
 
     def _cleanup_old_actions(self, now: datetime) -> None:
         today = now.date().isoformat()
-        self._last_actions = {
-            k: v for k, v in self._last_actions.items()
-            if k.startswith(today)
-        }
+        self._last_actions = {k: v for k, v in self._last_actions.items() if k.startswith(today)}

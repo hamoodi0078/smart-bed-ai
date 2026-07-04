@@ -92,7 +92,9 @@ class PersonalityRuntimeOrchestrator:
         )
         profile["personality_runtime"]["phrase_history"] = items[-220:]
 
-    def record_cognitive_load_signal(self, profile: dict, user_text: str, speech_seconds: float | None = None):
+    def record_cognitive_load_signal(
+        self, profile: dict, user_text: str, speech_seconds: float | None = None
+    ):
         self.ensure_shape(profile)
         text = str(user_text or "").strip()
         if not text:
@@ -120,7 +122,9 @@ class PersonalityRuntimeOrchestrator:
 
     def cognitive_load_mode(self, profile: dict, lookback: int = 6) -> str:
         self.ensure_shape(profile)
-        samples = profile["personality_runtime"].get("cognitive_load_samples", [])[-max(2, int(lookback)) :]
+        samples = profile["personality_runtime"].get("cognitive_load_samples", [])[
+            -max(2, int(lookback)) :
+        ]
         if not samples:
             return "normal"
         fatigue_hits = sum(1 for x in samples if bool(x.get("fatigue_signal", False)))
@@ -130,7 +134,9 @@ class PersonalityRuntimeOrchestrator:
             return "reduced"
         return "normal"
 
-    def apply_cognitive_brevity(self, profile: dict, response_text: str, emotion_state: str) -> tuple[str, str]:
+    def apply_cognitive_brevity(
+        self, profile: dict, response_text: str, emotion_state: str
+    ) -> tuple[str, str]:
         self.ensure_shape(profile)
         text = str(response_text or "").strip()
         if not text:
@@ -185,7 +191,9 @@ class PersonalityRuntimeOrchestrator:
         dominant = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[0][0]
         return f"Emotion trend: dominant={dominant}, samples={len(items)}."
 
-    def choose_dynamic_intervention(self, personality: str, emotion_state: str, level: str = "beginner") -> str:
+    def choose_dynamic_intervention(
+        self, personality: str, emotion_state: str, level: str = "beginner"
+    ) -> str:
         personality = (personality or "therapist").lower().strip()
         level = (level or "beginner").lower().strip()
 
@@ -276,7 +284,9 @@ class PersonalityRuntimeOrchestrator:
         except Exception:
             return False
 
-    def should_send_priority_reminder(self, profile: dict, active_goals: List[dict], emotion_state: str) -> bool:
+    def should_send_priority_reminder(
+        self, profile: dict, active_goals: List[dict], emotion_state: str
+    ) -> bool:
         self.ensure_shape(profile)
         if not active_goals:
             return False
@@ -297,11 +307,15 @@ class PersonalityRuntimeOrchestrator:
         if last == today:
             return False
 
-        has_tonight = any((g.get("scope", "") == "tonight" and g.get("status") == "active") for g in active_goals)
+        has_tonight = any(
+            (g.get("scope", "") == "tonight" and g.get("status") == "active") for g in active_goals
+        )
         return has_tonight or len(active_goals) >= 2
 
     def build_priority_reminder(self, active_goals: List[dict]) -> str:
-        critical = [g for g in active_goals if g.get("scope") == "tonight" and g.get("status") == "active"]
+        critical = [
+            g for g in active_goals if g.get("scope") == "tonight" and g.get("status") == "active"
+        ]
         pick = critical[0] if critical else (active_goals[0] if active_goals else None)
         if not pick:
             return ""
@@ -309,12 +323,16 @@ class PersonalityRuntimeOrchestrator:
 
     def mark_priority_reminder_sent(self, profile: dict):
         self.ensure_shape(profile)
-        profile["personality_runtime"]["priority_reminder_last_date"] = datetime.now().date().isoformat()
+        profile["personality_runtime"]["priority_reminder_last_date"] = (
+            datetime.now().date().isoformat()
+        )
 
     def record_wake_phrase(self, profile: dict, wake_text: str):
         self.ensure_shape(profile)
         items = profile["personality_runtime"].get("wake_phrases", [])
-        items.append({"ts": datetime.now().isoformat(timespec="seconds"), "text": (wake_text or "")[:80]})
+        items.append(
+            {"ts": datetime.now().isoformat(timespec="seconds"), "text": (wake_text or "")[:80]}
+        )
         profile["personality_runtime"]["wake_phrases"] = items[-40:]
 
     def record_interrupt(self, profile: dict):
@@ -348,12 +366,16 @@ class PersonalityRuntimeOrchestrator:
         pr = profile["personality_runtime"]
         interrupts = int(pr.get("interrupt_count_today", 0))
         recent_phrases = [str(x.get("text", "")).lower() for x in pr.get("wake_phrases", [])[-5:]]
-        stressed_phrase = any(("still awake" in t or "tired" in t or "again" in t) for t in recent_phrases)
+        stressed_phrase = any(
+            ("still awake" in t or "tired" in t or "again" in t) for t in recent_phrases
+        )
         if interrupts >= 3 or stressed_phrase:
             return "fragile"
         return "stable"
 
-    def determine_voice_pacing(self, emotion_state: str, wake_quality: str) -> Tuple[str, float, str]:
+    def determine_voice_pacing(
+        self, emotion_state: str, wake_quality: str
+    ) -> Tuple[str, float, str]:
         emotion = (emotion_state or "neutral").lower().strip()
         quality = (wake_quality or "stable").lower().strip()
         if quality == "fragile" or emotion in ("distressed", "low_energy"):
@@ -364,7 +386,9 @@ class PersonalityRuntimeOrchestrator:
 
     def set_last_voice_pacing(self, profile: dict, pacing: str):
         self.ensure_shape(profile)
-        profile["personality_runtime"]["last_voice_pacing"] = (pacing or "balanced").strip() or "balanced"
+        profile["personality_runtime"]["last_voice_pacing"] = (
+            pacing or "balanced"
+        ).strip() or "balanced"
 
     def voice_pacing_status(self, profile: dict) -> str:
         self.ensure_shape(profile)
@@ -383,9 +407,15 @@ class PersonalityRuntimeOrchestrator:
         if not text:
             return text, ""
 
-        empathy = 1.0 if any(x in text.lower() for x in ("i hear", "that sounds", "understand", "you can")) else 0.4
+        empathy = (
+            1.0
+            if any(x in text.lower() for x in ("i hear", "that sounds", "understand", "you can"))
+            else 0.4
+        )
         clarity = 1.0 if len(text) <= 360 else 0.6
-        actionability = 1.0 if any(x in text.lower() for x in ("try", "next", "step", "do", "plan")) else 0.5
+        actionability = (
+            1.0 if any(x in text.lower() for x in ("try", "next", "step", "do", "plan")) else 0.5
+        )
         score = (empathy + clarity + actionability) / 3.0
 
         pr = profile["personality_runtime"]

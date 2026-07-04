@@ -6,6 +6,7 @@
     ``config/settings.py``.  This file is kept only for backward
     compatibility — all values now delegate to ``settings``.
 """
+
 from __future__ import annotations
 
 import os
@@ -15,6 +16,7 @@ from pathlib import Path
 # Lazy import to avoid circular dependency at module level.
 def _settings():
     from config.settings import settings
+
     return settings
 
 

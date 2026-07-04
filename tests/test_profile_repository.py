@@ -13,6 +13,7 @@ def _make_db() -> DatabaseConnection:
 
 def _seed_user(db: DatabaseConnection, email: str = "repo@example.com") -> str:
     import hashlib
+
     uid = "u-" + hashlib.md5(email.encode()).hexdigest()[:8]
     with db.get_session() as session:
         if session.get(User, uid) is None:

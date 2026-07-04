@@ -271,17 +271,21 @@ class AchievementEngine:
         for aid, definition in self._definitions.items():
             current = int(progress.get(aid, 0))
             threshold = definition["threshold"]
-            result.append({
-                "id": aid,
-                "name": definition["name"],
-                "description": definition["description"],
-                "category": definition["category"],
-                "current": current,
-                "threshold": threshold,
-                "progress_pct": min(100, round(current / threshold * 100, 1)) if threshold > 0 else 0,
-                "unlocked": aid in unlocked_ids,
-                "reward": definition["reward"],
-            })
+            result.append(
+                {
+                    "id": aid,
+                    "name": definition["name"],
+                    "description": definition["description"],
+                    "category": definition["category"],
+                    "current": current,
+                    "threshold": threshold,
+                    "progress_pct": min(100, round(current / threshold * 100, 1))
+                    if threshold > 0
+                    else 0,
+                    "unlocked": aid in unlocked_ids,
+                    "reward": definition["reward"],
+                }
+            )
         return result
 
     def get_stats(self, profile: dict) -> dict[str, Any]:
@@ -314,8 +318,15 @@ class AchievementEngine:
         }
         ach["unlocked"].append(entry)
 
-        points = {"sleep": 50, "quality": 75, "prayer": 100, "features": 30,
-                  "automation": 60, "streak": 80, "wellness": 40}.get(definition["category"], 50)
+        points = {
+            "sleep": 50,
+            "quality": 75,
+            "prayer": 100,
+            "features": 30,
+            "automation": 60,
+            "streak": 80,
+            "wellness": 40,
+        }.get(definition["category"], 50)
         ach["total_points"] = int(ach.get("total_points", 0)) + points
         ach["level"] = 1 + int(ach.get("total_points", 0)) // 200
 

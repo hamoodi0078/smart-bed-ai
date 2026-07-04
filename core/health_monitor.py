@@ -31,6 +31,7 @@ def _utcnow() -> datetime:
 def _get_memory_usage_mb() -> float:
     try:
         import psutil
+
         process = psutil.Process(os.getpid())
         return process.memory_info().rss / (1024 * 1024)
     except Exception:
@@ -40,6 +41,7 @@ def _get_memory_usage_mb() -> float:
 def _get_cpu_percent() -> float:
     try:
         import psutil
+
         return psutil.cpu_percent(interval=1)
     except Exception:
         return -1.0
@@ -152,11 +154,19 @@ class HealthMonitor:
         if usage < 0:
             return HealthCheck("memory", "ok", value=usage, message="Cannot read memory usage")
         if usage >= self._thresholds["memory_critical_mb"]:
-            return HealthCheck("memory", "critical", value=round(usage, 1),
-                               message=f"Memory usage {usage:.0f}MB exceeds critical threshold")
+            return HealthCheck(
+                "memory",
+                "critical",
+                value=round(usage, 1),
+                message=f"Memory usage {usage:.0f}MB exceeds critical threshold",
+            )
         if usage >= self._thresholds["memory_warning_mb"]:
-            return HealthCheck("memory", "warning", value=round(usage, 1),
-                               message=f"Memory usage {usage:.0f}MB exceeds warning threshold")
+            return HealthCheck(
+                "memory",
+                "warning",
+                value=round(usage, 1),
+                message=f"Memory usage {usage:.0f}MB exceeds warning threshold",
+            )
         return HealthCheck("memory", "ok", value=round(usage, 1))
 
     def check_disk(self) -> HealthCheck:
@@ -164,23 +174,41 @@ class HealthMonitor:
         if free < 0:
             return HealthCheck("disk", "ok", value=free, message="Cannot read disk usage")
         if free <= self._thresholds["disk_critical_mb"]:
-            return HealthCheck("disk", "critical", value=round(free, 1),
-                               message=f"Disk free {free:.0f}MB below critical threshold")
+            return HealthCheck(
+                "disk",
+                "critical",
+                value=round(free, 1),
+                message=f"Disk free {free:.0f}MB below critical threshold",
+            )
         if free <= self._thresholds["disk_warning_mb"]:
-            return HealthCheck("disk", "warning", value=round(free, 1),
-                               message=f"Disk free {free:.0f}MB below warning threshold")
+            return HealthCheck(
+                "disk",
+                "warning",
+                value=round(free, 1),
+                message=f"Disk free {free:.0f}MB below warning threshold",
+            )
         return HealthCheck("disk", "ok", value=round(free, 1))
 
     def check_cpu_temperature(self) -> HealthCheck:
         temp = _get_cpu_temperature()
         if temp < 0:
-            return HealthCheck("cpu_temperature", "ok", value=temp, message="Temperature sensor not available")
+            return HealthCheck(
+                "cpu_temperature", "ok", value=temp, message="Temperature sensor not available"
+            )
         if temp >= self._thresholds["cpu_temp_critical"]:
-            return HealthCheck("cpu_temperature", "critical", value=round(temp, 1),
-                               message=f"CPU temperature {temp:.1f}°C exceeds critical threshold")
+            return HealthCheck(
+                "cpu_temperature",
+                "critical",
+                value=round(temp, 1),
+                message=f"CPU temperature {temp:.1f}°C exceeds critical threshold",
+            )
         if temp >= self._thresholds["cpu_temp_warning"]:
-            return HealthCheck("cpu_temperature", "warning", value=round(temp, 1),
-                               message=f"CPU temperature {temp:.1f}°C exceeds warning threshold")
+            return HealthCheck(
+                "cpu_temperature",
+                "warning",
+                value=round(temp, 1),
+                message=f"CPU temperature {temp:.1f}°C exceeds warning threshold",
+            )
         return HealthCheck("cpu_temperature", "ok", value=round(temp, 1))
 
     def check_api_latency(self) -> HealthCheck:
@@ -190,18 +218,30 @@ class HealthMonitor:
             return HealthCheck("api_latency", "ok", value=0, message="No latency data recorded")
         avg = sum(recent) / len(recent)
         if avg >= self._thresholds["api_latency_critical_ms"]:
-            return HealthCheck("api_latency", "critical", value=round(avg, 1),
-                               message=f"Average API latency {avg:.0f}ms exceeds critical threshold")
+            return HealthCheck(
+                "api_latency",
+                "critical",
+                value=round(avg, 1),
+                message=f"Average API latency {avg:.0f}ms exceeds critical threshold",
+            )
         if avg >= self._thresholds["api_latency_warning_ms"]:
-            return HealthCheck("api_latency", "warning", value=round(avg, 1),
-                               message=f"Average API latency {avg:.0f}ms exceeds warning threshold")
+            return HealthCheck(
+                "api_latency",
+                "warning",
+                value=round(avg, 1),
+                message=f"Average API latency {avg:.0f}ms exceeds warning threshold",
+            )
         return HealthCheck("api_latency", "ok", value=round(avg, 1))
 
     def check_pressure_sensor(self, sensor_available: bool = False) -> HealthCheck:
         if sensor_available:
             return HealthCheck("pressure_sensor", "ok", value=True)
-        return HealthCheck("pressure_sensor", "warning", value=False,
-                           message="Pressure sensor not connected or not responding")
+        return HealthCheck(
+            "pressure_sensor",
+            "warning",
+            value=False,
+            message="Pressure sensor not connected or not responding",
+        )
 
     def check_runtime_data_integrity(self) -> HealthCheck:
         critical_files = ["user_profile.json", "automations_state.json"]
@@ -222,11 +262,19 @@ class HealthMonitor:
                 missing.append(fname)
 
         if corrupt:
-            return HealthCheck("data_integrity", "critical", value={"corrupt": corrupt},
-                               message=f"Corrupt data files: {', '.join(corrupt)}")
+            return HealthCheck(
+                "data_integrity",
+                "critical",
+                value={"corrupt": corrupt},
+                message=f"Corrupt data files: {', '.join(corrupt)}",
+            )
         if missing:
-            return HealthCheck("data_integrity", "warning", value={"missing": missing},
-                               message=f"Missing data files: {', '.join(missing)}")
+            return HealthCheck(
+                "data_integrity",
+                "warning",
+                value={"missing": missing},
+                message=f"Missing data files: {', '.join(missing)}",
+            )
         return HealthCheck("data_integrity", "ok")
 
     # ------------------------------------------------------------------
@@ -320,7 +368,11 @@ class HealthMonitor:
         self._consecutive_failures[name] = count
 
         if count > self._max_recovery_retries:
-            logger.warning("Recovery skipped for %s: max retries (%d) exceeded", name, self._max_recovery_retries)
+            logger.warning(
+                "Recovery skipped for %s: max retries (%d) exceeded",
+                name,
+                self._max_recovery_retries,
+            )
             return
 
         action = self._recovery_actions.get(name)

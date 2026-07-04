@@ -26,7 +26,9 @@ class TestNotificationSummaries(unittest.TestCase):
         else:
             os.environ["DATABASE_URL"] = self._old_database_url
 
-    def _insert_event(self, event_type: str, timestamp: datetime, user_id: str | None = None) -> None:
+    def _insert_event(
+        self, event_type: str, timestamp: datetime, user_id: str | None = None
+    ) -> None:
         with self.db.get_session() as session:
             session.add(
                 Event(

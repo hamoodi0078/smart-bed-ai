@@ -24,6 +24,7 @@ logger = logging.getLogger("integrations.smart_home")
 
 try:
     from phue import Bridge as HueBridge  # type: ignore
+
     _HUE_AVAILABLE = True
 except ImportError:
     HueBridge = None
@@ -31,6 +32,7 @@ except ImportError:
 
 try:
     from kasa import SmartBulb, SmartStrip, Discover  # type: ignore
+
     _KASA_AVAILABLE = True
 except ImportError:
     SmartBulb = SmartStrip = Discover = None
@@ -38,6 +40,7 @@ except ImportError:
 
 try:
     import miio  # type: ignore
+
     _MIIO_AVAILABLE = True
 except ImportError:
     miio = None
@@ -45,6 +48,7 @@ except ImportError:
 
 try:
     import pyatv  # type: ignore
+
     _PYATV_AVAILABLE = True
 except ImportError:
     pyatv = None
@@ -52,6 +56,7 @@ except ImportError:
 
 try:
     import pychromecast  # type: ignore
+
     _CHROMECAST_AVAILABLE = True
 except ImportError:
     pychromecast = None
@@ -59,11 +64,13 @@ except ImportError:
 
 try:
     from tuya_iot import TuyaOpenAPI as _TuyaOpenAPI, AuthType as _TuyaAuthType  # type: ignore
+
     _TUYA_AVAILABLE = True
     _TUYA_SDK = "iot"
 except ImportError:
     try:
         from tuya_connector import TuyaOpenAPI as _TuyaOpenAPI  # type: ignore
+
         _TUYA_AVAILABLE = True
         _TUYA_SDK = "connector"
         _TuyaAuthType = None
@@ -77,6 +84,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class SmartHomeResult:
@@ -118,12 +126,14 @@ class SmartHomeConfig:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _run_async(coro) -> Any:
     """Run a coroutine from synchronous code."""
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(asyncio.run, coro)
                 return future.result(timeout=15)
@@ -166,6 +176,7 @@ def _rgb_to_hue_xy(r: int, g: int, b: int) -> tuple[float, float]:
 # ---------------------------------------------------------------------------
 # Philips Hue
 # ---------------------------------------------------------------------------
+
 
 class _HueDriver:
     def __init__(self, ip: str, username: str):
@@ -230,9 +241,15 @@ class _HueDriver:
         try:
             lights = self._bridge.lights
             for light in lights:
-                self._bridge.set_light(light.light_id, {
-                    "on": True, "bri": 30, "ct": 500, "transitiontime": 30,
-                })
+                self._bridge.set_light(
+                    light.light_id,
+                    {
+                        "on": True,
+                        "bri": 30,
+                        "ct": 500,
+                        "transitiontime": 30,
+                    },
+                )
             return SmartHomeResult(True, "hue", "bedtime", detail="Warm dim bedtime lighting")
         except Exception as exc:
             return SmartHomeResult(False, "hue", "bedtime", error=str(exc))
@@ -244,10 +261,18 @@ class _HueDriver:
         try:
             lights = self._bridge.lights
             for light in lights:
-                self._bridge.set_light(light.light_id, {
-                    "on": True, "bri": 254, "ct": 153, "transitiontime": 18000,
-                })
-            return SmartHomeResult(True, "hue", "sunrise", detail="Sunrise alarm started (30 min ramp)")
+                self._bridge.set_light(
+                    light.light_id,
+                    {
+                        "on": True,
+                        "bri": 254,
+                        "ct": 153,
+                        "transitiontime": 18000,
+                    },
+                )
+            return SmartHomeResult(
+                True, "hue", "sunrise", detail="Sunrise alarm started (30 min ramp)"
+            )
         except Exception as exc:
             return SmartHomeResult(False, "hue", "sunrise", error=str(exc))
 
@@ -258,6 +283,7 @@ class _HueDriver:
 # ---------------------------------------------------------------------------
 # TP-Link Kasa
 # ---------------------------------------------------------------------------
+
 
 class _KasaDriver:
     def __init__(self, device_ips: str):
@@ -316,7 +342,9 @@ class _KasaDriver:
                 except Exception as exc:
                     logger.warning("Kasa device error: %s", exc)
             action = "on" if on else "off"
-            return SmartHomeResult(True, "kasa", "set_all", detail=f"{len(devices)} device(s) {action}")
+            return SmartHomeResult(
+                True, "kasa", "set_all", detail=f"{len(devices)} device(s) {action}"
+            )
 
         try:
             return _run_async(_run())
@@ -355,6 +383,7 @@ class _KasaDriver:
 # ---------------------------------------------------------------------------
 # Xiaomi Mi (miio)
 # ---------------------------------------------------------------------------
+
 
 class _MiioDriver:
     def __init__(self, ip: str, token: str, device_type: str = "light"):
@@ -413,6 +442,7 @@ class _MiioDriver:
 # ---------------------------------------------------------------------------
 # Apple TV
 # ---------------------------------------------------------------------------
+
 
 class _AppleTVDriver:
     def __init__(self, identifier: str):
@@ -476,6 +506,7 @@ class _AppleTVDriver:
 # ---------------------------------------------------------------------------
 # Chromecast
 # ---------------------------------------------------------------------------
+
 
 class _ChromecastDriver:
     def __init__(self, device_name: str):
@@ -573,14 +604,21 @@ class _TuyaDriver:
         self._lock = threading.Lock()
 
     def _connect(self) -> bool:
-        if not _TUYA_AVAILABLE or not self._client_id or not self._client_secret or not self._device_ids:
+        if (
+            not _TUYA_AVAILABLE
+            or not self._client_id
+            or not self._client_secret
+            or not self._device_ids
+        ):
             return False
         with self._lock:
             if self._api is not None:
                 return True
             try:
                 if _TUYA_SDK == "iot" and _TuyaAuthType is not None:
-                    api = _TuyaOpenAPI(self._endpoint, self._client_id, self._client_secret, _TuyaAuthType.APIKEY)
+                    api = _TuyaOpenAPI(
+                        self._endpoint, self._client_id, self._client_secret, _TuyaAuthType.APIKEY
+                    )
                 else:
                     api = _TuyaOpenAPI(self._endpoint, self._client_id, self._client_secret)
                 resp = api.connect()
@@ -588,7 +626,11 @@ class _TuyaDriver:
                     logger.warning("Tuya connect failed: %s", resp)
                     return False
                 self._api = api
-                logger.info("Tuya Cloud API connected (%s, %d device(s))", self._endpoint, len(self._device_ids))
+                logger.info(
+                    "Tuya Cloud API connected (%s, %d device(s))",
+                    self._endpoint,
+                    len(self._device_ids),
+                )
                 return True
             except Exception as exc:
                 logger.warning("Tuya connect error: %s", exc)
@@ -620,7 +662,9 @@ class _TuyaDriver:
                 ok_count += 1
         success = ok_count > 0
         return SmartHomeResult(
-            success, "tuya", "command",
+            success,
+            "tuya",
+            "command",
             detail=f"{ok_count}/{len(self._device_ids)} device(s) OK",
             error="" if success else "All devices failed",
         )
@@ -674,6 +718,7 @@ class _TuyaDriver:
 # Unified SmartHomeController
 # ---------------------------------------------------------------------------
 
+
 class SmartHomeController:
     """Single entry point for all smart home device actions.
 
@@ -686,7 +731,9 @@ class SmartHomeController:
         self.hue = _HueDriver(cfg.hue_bridge_ip, cfg.hue_username)
         self.kasa = _KasaDriver(cfg.kasa_device_ips)
         self.miio = _MiioDriver(cfg.miio_device_ip, cfg.miio_device_token, cfg.miio_device_type)
-        self.tuya = _TuyaDriver(cfg.tuya_client_id, cfg.tuya_client_secret, cfg.tuya_device_ids, cfg.tuya_region)
+        self.tuya = _TuyaDriver(
+            cfg.tuya_client_id, cfg.tuya_client_secret, cfg.tuya_device_ids, cfg.tuya_region
+        )
         self.appletv = _AppleTVDriver(cfg.atv_identifier)
         self.chromecast = _ChromecastDriver(cfg.chromecast_name)
 
@@ -733,7 +780,9 @@ class SmartHomeController:
         _log_results("sunrise_alarm", results)
         return results
 
-    def set_lights(self, color: str = "", brightness: float = 0.8, on: bool = True) -> list[SmartHomeResult]:
+    def set_lights(
+        self, color: str = "", brightness: float = 0.8, on: bool = True
+    ) -> list[SmartHomeResult]:
         """Set all lights to a color and brightness."""
         results = [
             self.hue.set_all_lights(on, brightness, color),

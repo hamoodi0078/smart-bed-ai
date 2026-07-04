@@ -113,6 +113,7 @@ class TestStorageIo(unittest.TestCase):
 
         # An absolute path outside the base
         import tempfile
+
         with tempfile.TemporaryDirectory() as other_dir:
             other_base = Path(other_dir).resolve()
             # If the candidate is an absolute path outside the base, it must fail

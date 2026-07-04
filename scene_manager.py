@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from core.text_utils import normalize_for_intent, has_any
 
+
 def _scene_payload_from_key(scene_key: str, slots: dict) -> dict:
     key = str(scene_key or "").strip().lower()
     if key == "calm_recovery":
@@ -29,6 +30,7 @@ def _scene_payload_from_key(scene_key: str, slots: dict) -> dict:
         "brightness": float(slots.get("brightness", 0.35)),
         "line": "Environment scene updated.",
     }
+
 
 def _resolve_scene_clarification_followup(user_text: str) -> dict | None:
     normalized = normalize_for_intent(user_text)
@@ -80,6 +82,7 @@ def _resolve_scene_clarification_followup(user_text: str) -> dict | None:
         }
     return None
 
+
 def _is_scene_clarification_candidate(user_text: str) -> bool:
     normalized = normalize_for_intent(user_text)
     if not normalized:
@@ -105,4 +108,3 @@ def _is_scene_clarification_candidate(user_text: str) -> bool:
             "عادي",
         ),
     )
-

@@ -29,6 +29,7 @@ import pytest
 # Mock factories
 # ---------------------------------------------------------------------------
 
+
 def _make_litellm_mock():
     mod = types.ModuleType("litellm")
     mod.completion = MagicMock()
@@ -48,8 +49,11 @@ def _make_instructor_mock():
 
 def _make_anthropic_mock():
     mod = types.ModuleType("anthropic")
+
     class _FakeClient:
-        def __init__(self, **kw): pass
+        def __init__(self, **kw):
+            pass
+
     mod.Anthropic = _FakeClient
     return mod
 
@@ -57,6 +61,7 @@ def _make_anthropic_mock():
 # ---------------------------------------------------------------------------
 # Module loader
 # ---------------------------------------------------------------------------
+
 
 def _load(
     monkeypatch,
@@ -105,6 +110,7 @@ def _load(
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def mod_full(monkeypatch):
     """litellm + anthropic + instructor — litellm path preferred."""
@@ -145,6 +151,7 @@ def _extractor_anthropic(mod, return_value):
 # Availability flags
 # ---------------------------------------------------------------------------
 
+
 class TestFlags:
     def test_litellm_flag_true(self, mod_full):
         assert mod_full._LITELLM_AVAILABLE is True
@@ -160,16 +167,20 @@ class TestFlags:
 # Pydantic models — construction & validation
 # ---------------------------------------------------------------------------
 
+
 class TestSleepJournalAnalysis:
     def test_valid_construction(self, mod_full):
         obj = mod_full.SleepJournalAnalysis(
-            sleep_quality="deep", sleep_quality_score=9,
-            mood="calm", summary="Great night.",
+            sleep_quality="deep",
+            sleep_quality_score=9,
+            mood="calm",
+            summary="Great night.",
         )
         assert obj.sleep_quality_score == 9
 
     def test_score_too_high_rejected(self, mod_full):
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             mod_full.SleepJournalAnalysis(
                 sleep_quality="deep", sleep_quality_score=11, mood="ok", summary="x"
@@ -194,6 +205,7 @@ class TestBedCommand:
 
     def test_confidence_over_one_rejected(self, mod_full):
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             mod_full.BedCommand(intent="unknown", parameters={}, confidence=1.5)
 
@@ -214,16 +226,20 @@ class TestSleepInsight:
 
     def test_invalid_priority_rejected(self, mod_full):
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             mod_full.SleepInsight(
-                headline="x", recommendations=["y"],
-                priority="urgent", follow_up_question="z",
+                headline="x",
+                recommendations=["y"],
+                priority="urgent",
+                follow_up_question="z",
             )
 
 
 # ---------------------------------------------------------------------------
 # InstructorExtractor construction
 # ---------------------------------------------------------------------------
+
 
 class TestConstruction:
     def test_default_model_litellm_format(self, mod_full):
@@ -247,6 +263,7 @@ class TestConstruction:
 # available property
 # ---------------------------------------------------------------------------
 
+
 class TestAvailableProperty:
     def test_available_with_litellm_no_key(self, mod_full):
         assert mod_full.InstructorExtractor().available is True
@@ -268,6 +285,7 @@ class TestAvailableProperty:
 # active_backend property
 # ---------------------------------------------------------------------------
 
+
 class TestActiveBackend:
     def test_litellm_when_available(self, mod_full):
         assert mod_full.InstructorExtractor().active_backend == "litellm"
@@ -286,6 +304,7 @@ class TestActiveBackend:
 # _call_structured dispatch
 # ---------------------------------------------------------------------------
 
+
 class TestCallStructured:
     def test_uses_litellm_callable(self, mod_full):
         e = mod_full.InstructorExtractor()
@@ -299,8 +318,12 @@ class TestCallStructured:
     def test_uses_anthropic_when_no_litellm(self, mod_anthropic_only):
         e = mod_anthropic_only.InstructorExtractor(api_key="real-key")
         fake = MagicMock()
-        mod_anthropic_only._instructor.from_anthropic.return_value.messages.create.return_value = fake
-        result = e._call_structured(mod_anthropic_only.BedCommand, [{"role": "user", "content": "hi"}], 256)
+        mod_anthropic_only._instructor.from_anthropic.return_value.messages.create.return_value = (
+            fake
+        )
+        result = e._call_structured(
+            mod_anthropic_only.BedCommand, [{"role": "user", "content": "hi"}], 256
+        )
         assert result is fake
 
     def test_returns_none_when_no_instructor(self, mod_no_instructor):
@@ -308,18 +331,21 @@ class TestCallStructured:
         assert e._call_structured(MagicMock(), [], 256) is None
 
     def test_model_stripped_for_anthropic(self, mod_anthropic_only):
-        e = mod_anthropic_only.InstructorExtractor(
-            api_key="k", model="anthropic/claude-opus-4-7"
+        e = mod_anthropic_only.InstructorExtractor(api_key="k", model="anthropic/claude-opus-4-7")
+        mod_anthropic_only._instructor.from_anthropic.return_value.messages.create.return_value = (
+            MagicMock()
         )
-        mod_anthropic_only._instructor.from_anthropic.return_value.messages.create.return_value = MagicMock()
         e._call_structured(mod_anthropic_only.SleepInsight, [{"role": "user", "content": "x"}], 512)
-        call_kwargs = mod_anthropic_only._instructor.from_anthropic.return_value.messages.create.call_args[1]
+        call_kwargs = (
+            mod_anthropic_only._instructor.from_anthropic.return_value.messages.create.call_args[1]
+        )
         assert call_kwargs["model"] == "claude-opus-4-7"
 
 
 # ---------------------------------------------------------------------------
 # _get_anthropic_client caching
 # ---------------------------------------------------------------------------
+
 
 class TestAnthropicClientCaching:
     def test_client_cached_on_second_call(self, mod_anthropic_only):
@@ -334,11 +360,16 @@ class TestAnthropicClientCaching:
 # analyze_journal_entry — litellm path
 # ---------------------------------------------------------------------------
 
+
 class TestAnalyzeJournalLiteLLM:
     def _fake_analysis(self, mod):
         return mod.SleepJournalAnalysis(
-            sleep_quality="deep", sleep_quality_score=9,
-            mood="calm", summary="Great.", sleep_issues=[], positive_factors=[]
+            sleep_quality="deep",
+            sleep_quality_score=9,
+            mood="calm",
+            summary="Great.",
+            sleep_issues=[],
+            positive_factors=[],
         )
 
     def test_returns_model(self, mod_full):
@@ -374,19 +405,22 @@ class TestAnalyzeJournalLiteLLM:
 # analyze_journal_entry — anthropic fallback path
 # ---------------------------------------------------------------------------
 
+
 class TestAnalyzeJournalAnthropic:
     def test_returns_model(self, mod_anthropic_only):
         fake = mod_anthropic_only.SleepJournalAnalysis(
-            sleep_quality="moderate", sleep_quality_score=6,
-            mood="tired", summary="Average.", sleep_issues=["woke twice"]
+            sleep_quality="moderate",
+            sleep_quality_score=6,
+            mood="tired",
+            summary="Average.",
+            sleep_issues=["woke twice"],
         )
         e = _extractor_anthropic(mod_anthropic_only, fake)
         assert e.analyze_journal_entry("Woke up twice.") is fake
 
     def test_messages_create_called(self, mod_anthropic_only):
         fake = mod_anthropic_only.SleepJournalAnalysis(
-            sleep_quality="light", sleep_quality_score=4,
-            mood="groggy", summary="Bad night."
+            sleep_quality="light", sleep_quality_score=4, mood="groggy", summary="Bad night."
         )
         e = _extractor_anthropic(mod_anthropic_only, fake)
         e.analyze_journal_entry("Rough night.")
@@ -401,9 +435,12 @@ class TestAnalyzeJournalAnthropic:
 # parse_bed_command
 # ---------------------------------------------------------------------------
 
+
 class TestParseBedCommand:
     def test_returns_command_litellm(self, mod_full):
-        fake = mod_full.BedCommand(intent="control_lights", parameters={"action": "dim"}, confidence=0.9)
+        fake = mod_full.BedCommand(
+            intent="control_lights", parameters={"action": "dim"}, confidence=0.9
+        )
         e = _extractor_litellm(mod_full, fake)
         assert e.parse_bed_command("dim the lights") is fake
 
@@ -424,7 +461,9 @@ class TestParseBedCommand:
         assert e.parse_bed_command("turn off lights") is None
 
     def test_anthropic_fallback(self, mod_anthropic_only):
-        fake = mod_anthropic_only.BedCommand(intent="set_alarm", parameters={"time": "07:00"}, confidence=0.95)
+        fake = mod_anthropic_only.BedCommand(
+            intent="set_alarm", parameters={"time": "07:00"}, confidence=0.95
+        )
         e = _extractor_anthropic(mod_anthropic_only, fake)
         assert e.parse_bed_command("wake me at 7") is fake
 
@@ -432,6 +471,7 @@ class TestParseBedCommand:
 # ---------------------------------------------------------------------------
 # generate_sleep_insight
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateSleepInsight:
     def _fake_insight(self, mod):
@@ -477,11 +517,22 @@ class TestGenerateSleepInsight:
 # Enum coverage
 # ---------------------------------------------------------------------------
 
+
 class TestEnums:
-    @pytest.mark.parametrize("intent", [
-        "adjust_temperature", "control_lights", "play_sounds", "stop_sounds",
-        "set_alarm", "cancel_alarm", "check_sleep_stats", "general_question", "unknown",
-    ])
+    @pytest.mark.parametrize(
+        "intent",
+        [
+            "adjust_temperature",
+            "control_lights",
+            "play_sounds",
+            "stop_sounds",
+            "set_alarm",
+            "cancel_alarm",
+            "check_sleep_stats",
+            "general_question",
+            "unknown",
+        ],
+    )
     def test_bed_command_intent_values(self, mod_full, intent):
         obj = mod_full.BedCommand(intent=intent, confidence=0.5)
         assert obj.intent.value == intent

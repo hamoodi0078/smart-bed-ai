@@ -31,7 +31,7 @@ class ServiceRegistry:
         """
         if name in self._services:
             logger.warning("Service '%s' already registered, overwriting", name)
-        
+
         self._services[name] = service
         self._initialized.add(name)
         logger.info("Registered service: %s (%s)", name, type(service).__name__)

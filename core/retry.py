@@ -64,8 +64,7 @@ class RetryPolicy:
         return retry(
             stop=stop_after_attempt(max_attempts),
             wait=wait_random_exponential(min=min_wait, max=max_wait),
-            retry=retry_if_exception_type(Exception)
-                  & ~retry_if_exception_type(_NEVER_RETRY),
+            retry=retry_if_exception_type(Exception) & ~retry_if_exception_type(_NEVER_RETRY),
             before_sleep=before_sleep_log(_log, logging.WARNING),
             reraise=reraise,
         )
@@ -80,6 +79,7 @@ class RetryPolicy:
         """Modest backoff for transient database errors (deadlocks, conn drops)."""
         try:
             from asyncpg import PostgresConnectionError, TooManyConnectionsError
+
             _db_exceptions: tuple[Type[Exception], ...] = (
                 PostgresConnectionError,
                 TooManyConnectionsError,
@@ -107,8 +107,7 @@ class RetryPolicy:
         return retry(
             stop=stop_after_attempt(max_attempts),
             wait=wait_exponential(multiplier=2, min=min_wait, max=max_wait),
-            retry=retry_if_exception_type(Exception)
-                  & ~retry_if_exception_type(_NEVER_RETRY),
+            retry=retry_if_exception_type(Exception) & ~retry_if_exception_type(_NEVER_RETRY),
             before_sleep=before_sleep_log(_log, logging.WARNING),
             reraise=reraise,
         )
@@ -124,8 +123,7 @@ class RetryPolicy:
         return retry(
             stop=stop_after_attempt(max_attempts),
             wait=wait_random_exponential(min=min_wait, max=max_wait),
-            retry=retry_if_exception_type(Exception)
-                  & ~retry_if_exception_type(_NEVER_RETRY),
+            retry=retry_if_exception_type(Exception) & ~retry_if_exception_type(_NEVER_RETRY),
             before_sleep=before_sleep_log(_log, logging.WARNING),
             reraise=reraise,
         )

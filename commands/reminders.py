@@ -103,7 +103,9 @@ def handle_reminder_intent_result(
             )
 
         if task_text and time_text:
-            task_for_reply = re.sub(r"\bmy project\b", "your project", task_text, flags=re.IGNORECASE)
+            task_for_reply = re.sub(
+                r"\bmy project\b", "your project", task_text, flags=re.IGNORECASE
+            )
             lowered_time = time_text.lower()
             time_context = ""
             if ("pm" in lowered_time) and ("tonight" not in lowered_time):

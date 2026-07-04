@@ -37,6 +37,5 @@ class DanaCoach:
         else:
             tone = "This was a tough week, but your comeback starts tonight."
         return (
-            f"{tone} Weekly average sleep score: {avg_score:.1f}. "
-            f"Best night score: {best_night}."
+            f"{tone} Weekly average sleep score: {avg_score:.1f}. Best night score: {best_night}."
         )

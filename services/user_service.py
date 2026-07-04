@@ -3,6 +3,7 @@
 Thin wrapper over UserRepository that provides a clean interface for
 admin user-management operations without importing web_server.py.
 """
+
 from __future__ import annotations
 
 import threading
@@ -35,7 +36,8 @@ class UserService:
         search_lower = (search or "").strip().lower()
         if search_lower:
             rows = [
-                r for r in rows
+                r
+                for r in rows
                 if search_lower in (getattr(r, "email", "") or "").lower()
                 or search_lower in (getattr(r, "full_name", "") or "").lower()
             ]
@@ -81,6 +83,7 @@ class UserService:
 
 # ── Serialisers ───────────────────────────────────────────────────────────────
 
+
 def _row_to_summary(row: Any) -> dict[str, Any]:
     return {
         "user_id": str(getattr(row, "id", "") or ""),
@@ -94,12 +97,14 @@ def _row_to_summary(row: Any) -> dict[str, Any]:
 
 def _row_to_detail(row: Any) -> dict[str, Any]:
     summary = _row_to_summary(row)
-    summary.update({
-        "is_active": bool(getattr(row, "is_active", True)),
-        "trial_start_date": str(getattr(row, "trial_start_date", "") or ""),
-        "trial_end_date": str(getattr(row, "trial_end_date", "") or ""),
-        "updated_at": str(getattr(row, "updated_at", "") or ""),
-    })
+    summary.update(
+        {
+            "is_active": bool(getattr(row, "is_active", True)),
+            "trial_start_date": str(getattr(row, "trial_start_date", "") or ""),
+            "trial_end_date": str(getattr(row, "trial_end_date", "") or ""),
+            "updated_at": str(getattr(row, "updated_at", "") or ""),
+        }
+    )
     return summary
 
 

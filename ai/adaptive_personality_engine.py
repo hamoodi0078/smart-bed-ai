@@ -12,7 +12,9 @@ class AdaptivePersonalityEngine:
         ap.setdefault("history", [])
         ap.setdefault("last_selected", "")
 
-    def choose_personality(self, profile: dict, emotion_state: str, now: datetime = None) -> tuple[str, float, str]:
+    def choose_personality(
+        self, profile: dict, emotion_state: str, now: datetime = None
+    ) -> tuple[str, float, str]:
         self.ensure_profile_shape(profile)
         ap = profile["adaptive_personality"]
 
@@ -52,7 +54,9 @@ class AdaptivePersonalityEngine:
         ap["last_selected"] = chosen
         return chosen, confidence, reason
 
-    def record_interaction(self, profile: dict, personality: str, emotion_state: str, user_text: str, score=None):
+    def record_interaction(
+        self, profile: dict, personality: str, emotion_state: str, user_text: str, score=None
+    ):
         self.ensure_profile_shape(profile)
         hist = profile["adaptive_personality"]["history"]
         hist.append(

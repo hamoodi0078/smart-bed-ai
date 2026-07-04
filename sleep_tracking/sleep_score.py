@@ -55,7 +55,9 @@ class SleepScoreCalculator:
             return "Excellent recovery. Keep this same routine and bedtime consistency."
         if value >= 70:
             if hours < 7:
-                return "Good quality overall. Try adding 30-60 minutes of sleep for better recovery."
+                return (
+                    "Good quality overall. Try adding 30-60 minutes of sleep for better recovery."
+                )
             return "Strong sleep result. Keep your bedtime and wake time steady."
         if value >= 50:
             if hours < 6:

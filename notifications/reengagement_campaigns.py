@@ -107,9 +107,18 @@ class ReengagementCampaigns:
             level = 1
 
         if level == 0:
-            return {"status": "skipped", "reason": "not_inactive_enough", "inactive_days": inactive_days}
+            return {
+                "status": "skipped",
+                "reason": "not_inactive_enough",
+                "inactive_days": inactive_days,
+            }
         if level <= last_level:
-            return {"status": "skipped", "reason": "level_already_sent", "level": level, "inactive_days": inactive_days}
+            return {
+                "status": "skipped",
+                "reason": "level_already_sent",
+                "level": level,
+                "inactive_days": inactive_days,
+            }
 
         actions = self._build_campaign(level, inactive_days, profile)
         if not actions:
@@ -117,39 +126,52 @@ class ReengagementCampaigns:
 
         re["last_campaign_at"] = now.isoformat()
         re["last_campaign_level"] = level
-        re["campaigns_sent"].append({
-            "level": level,
-            "inactive_days": inactive_days,
-            "sent_at": now.isoformat(),
-        })
+        re["campaigns_sent"].append(
+            {
+                "level": level,
+                "inactive_days": inactive_days,
+                "sent_at": now.isoformat(),
+            }
+        )
         re["campaigns_sent"] = re["campaigns_sent"][-50:]
 
         logger.info("Re-engagement campaign level %d sent (inactive %d days)", level, inactive_days)
-        return {"status": "sent", "level": level, "inactive_days": inactive_days, "actions": actions}
+        return {
+            "status": "sent",
+            "level": level,
+            "inactive_days": inactive_days,
+            "actions": actions,
+        }
 
     # ------------------------------------------------------------------
     # Campaign builders
     # ------------------------------------------------------------------
 
-    def _build_campaign(self, level: int, inactive_days: int, profile: dict) -> list[dict[str, Any]]:
+    def _build_campaign(
+        self, level: int, inactive_days: int, profile: dict
+    ) -> list[dict[str, Any]]:
         if level == 1:
-            return [{
-                "type": "notification",
-                "category": "reengagement_gentle",
-                "message": "We miss you! Everything OK? Your prayer reminders are waiting.",
-                "priority": "medium",
-                "channels": ["push"],
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "reengagement_gentle",
+                    "message": "We miss you! Everything OK? Your prayer reminders are waiting.",
+                    "priority": "medium",
+                    "channels": ["push"],
+                }
+            ]
 
         if level == 2:
             features_used = len(profile.get("subscription", {}).get("features_used", []))
-            return [{
-                "type": "notification",
-                "category": "reengagement_value",
-                "message": f"It's been {inactive_days} days. You've used {features_used} features — come back and discover more!",
-                "priority": "medium",
-                "channels": ["push", "email"],
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "reengagement_value",
+                    "message": f"It's been {inactive_days} days. You've used {features_used} features — come back and discover more!",
+                    "priority": "medium",
+                    "channels": ["push", "email"],
+                }
+            ]
 
         if level == 3:
             return [
@@ -173,13 +195,15 @@ class ReengagementCampaigns:
             ]
 
         if level == 4:
-            return [{
-                "type": "notification",
-                "category": "reengagement_final",
-                "message": "We're here when you're ready. Your sleep data is safely stored.",
-                "priority": "low",
-                "channels": ["email"],
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "reengagement_final",
+                    "message": "We're here when you're ready. Your sleep data is safely stored.",
+                    "priority": "low",
+                    "channels": ["email"],
+                }
+            ]
 
         return []
 
@@ -202,10 +226,7 @@ class ReengagementCampaigns:
 
         al = profile.get("automation_learning", {})
         responses = al.get("responses", [])
-        recent_declined = sum(
-            1 for r in responses[-20:]
-            if r.get("response") == "declined"
-        )
+        recent_declined = sum(1 for r in responses[-20:] if r.get("response") == "declined")
         if recent_declined >= 10:
             signals.append("high_decline_rate")
             risk_score += 20
@@ -243,41 +264,51 @@ class ReengagementCampaigns:
         options: list[dict[str, Any]] = []
 
         if "expensive" in reason or "price" in reason or "cost" in reason:
-            options.append({
-                "type": "offer",
-                "name": "discount",
-                "message": "How about 30% off your next 3 months?",
-                "action": "apply_discount_30",
-            })
+            options.append(
+                {
+                    "type": "offer",
+                    "name": "discount",
+                    "message": "How about 30% off your next 3 months?",
+                    "action": "apply_discount_30",
+                }
+            )
 
         if "not using" in reason or "don't use" in reason:
-            options.append({
-                "type": "offer",
-                "name": "tutorial",
-                "message": "Let us show you features that could help. Quick 5-min setup?",
-                "action": "start_tutorial",
-            })
+            options.append(
+                {
+                    "type": "offer",
+                    "name": "tutorial",
+                    "message": "Let us show you features that could help. Quick 5-min setup?",
+                    "action": "start_tutorial",
+                }
+            )
 
         if "technical" in reason or "bug" in reason:
-            options.append({
-                "type": "offer",
-                "name": "support",
-                "message": "We're sorry! Let's fix this immediately. Connect with support?",
-                "action": "connect_support",
-            })
+            options.append(
+                {
+                    "type": "offer",
+                    "name": "support",
+                    "message": "We're sorry! Let's fix this immediately. Connect with support?",
+                    "action": "connect_support",
+                }
+            )
 
-        options.append({
-            "type": "offer",
-            "name": "pause",
-            "message": "Instead of canceling, pause for 30 days? Your data stays safe.",
-            "action": "pause_subscription",
-        })
-        options.append({
-            "type": "offer",
-            "name": "downgrade",
-            "message": "Try the free tier first — you can always upgrade again.",
-            "action": "downgrade_to_free",
-        })
+        options.append(
+            {
+                "type": "offer",
+                "name": "pause",
+                "message": "Instead of canceling, pause for 30 days? Your data stays safe.",
+                "action": "pause_subscription",
+            }
+        )
+        options.append(
+            {
+                "type": "offer",
+                "name": "downgrade",
+                "message": "Try the free tier first — you can always upgrade again.",
+                "action": "downgrade_to_free",
+            }
+        )
 
         return {
             "reason": reason,

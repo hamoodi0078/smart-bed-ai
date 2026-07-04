@@ -67,6 +67,7 @@ _JSON_LEAF = st.recursive(
 # 1. automations.registry — quiet-hours logic
 # ===========================================================================
 
+
 class TestQuietHoursInvariants(unittest.TestCase):
     """is_in_quiet_hours() must always return a bool and never raise."""
 
@@ -78,6 +79,7 @@ class TestQuietHoursInvariants(unittest.TestCase):
     )
     def test_always_returns_bool(self, hour, minute, quiet_window, quiet_mode_active):
         from automations.registry import is_in_quiet_hours
+
         now = datetime(2025, 6, 15, hour, minute, 0, tzinfo=timezone.utc)
         result = is_in_quiet_hours(
             now_local=now,
@@ -93,6 +95,7 @@ class TestQuietHoursInvariants(unittest.TestCase):
     )
     def test_garbage_window_string_never_raises(self, hour, minute, quiet_window):
         from automations.registry import is_in_quiet_hours
+
         now = datetime(2025, 6, 15, hour, minute, 0, tzinfo=timezone.utc)
         result = is_in_quiet_hours(now_local=now, quiet_window=quiet_window)
         self.assertIsInstance(result, bool)
@@ -104,6 +107,7 @@ class TestQuietHoursInvariants(unittest.TestCase):
     )
     def test_quiet_mode_active_always_true(self, hour, minute, quiet_window):
         from automations.registry import is_in_quiet_hours
+
         now = datetime(2025, 6, 15, hour, minute, 0, tzinfo=timezone.utc)
         self.assertTrue(
             is_in_quiet_hours(now_local=now, quiet_window=quiet_window, quiet_mode_active=True)
@@ -113,6 +117,7 @@ class TestQuietHoursInvariants(unittest.TestCase):
 # ===========================================================================
 # 2. health.weekly_health_report — output shape invariants
 # ===========================================================================
+
 
 class TestWeeklyReportInvariants(unittest.TestCase):
     """WeeklyHealthReport must produce consistently shaped, bounded output."""
@@ -138,6 +143,7 @@ class TestWeeklyReportInvariants(unittest.TestCase):
     )
     def test_compile_sleep_bounds(self, bed_times, wake_times, target):
         from health.weekly_health_report import WeeklyHealthReport
+
         reporter = WeeklyHealthReport()
         profile = self._make_profile(bed_times, wake_times, target)
         result = reporter._compile_sleep(profile)
@@ -160,10 +166,17 @@ class TestWeeklyReportInvariants(unittest.TestCase):
         goal_rate=st.floats(min_value=0, max_value=100, allow_nan=False),
     )
     def test_recommendations_length_always_1_to_5(
-        self, avg_hours, consistency, debt, short_nights,
-        avg_stress, overthinking, goal_rate,
+        self,
+        avg_hours,
+        consistency,
+        debt,
+        short_nights,
+        avg_stress,
+        overthinking,
+        goal_rate,
     ):
         from health.weekly_health_report import WeeklyHealthReport
+
         reporter = WeeklyHealthReport()
         fake_report = {
             "sleep": {
@@ -191,6 +204,7 @@ class TestWeeklyReportInvariants(unittest.TestCase):
     )
     def test_init_clamps_day_and_hour(self, report_day, report_hour):
         from health.weekly_health_report import WeeklyHealthReport
+
         reporter = WeeklyHealthReport(report_day=report_day, report_hour=report_hour)
         self.assertGreaterEqual(reporter._report_day, 0)
         self.assertLessEqual(reporter._report_day, 6)
@@ -200,6 +214,7 @@ class TestWeeklyReportInvariants(unittest.TestCase):
     @given(report_day=st.integers(min_value=-100, max_value=200))
     def test_init_clamps_out_of_range_day(self, report_day):
         from health.weekly_health_report import WeeklyHealthReport
+
         reporter = WeeklyHealthReport(report_day=report_day)
         self.assertGreaterEqual(reporter._report_day, 0)
         self.assertLessEqual(reporter._report_day, 6)
@@ -209,11 +224,13 @@ class TestWeeklyReportInvariants(unittest.TestCase):
 # 3. core.analytics_engine — engagement score always [0, 100]
 # ===========================================================================
 
+
 class TestAnalyticsEngineInvariants(unittest.TestCase):
     """calculate_engagement_score() must always return a score in [0, 100]."""
 
     def setUp(self):
         from core.analytics_engine import AnalyticsEngine
+
         self._tmp = tempfile.TemporaryDirectory()
         self.engine = AnalyticsEngine(data_dir=Path(self._tmp.name))
 
@@ -222,14 +239,24 @@ class TestAnalyticsEngineInvariants(unittest.TestCase):
 
     @given(
         event_types=st.lists(
-            st.sampled_from([
-                "sleep_session_end", "voice_command", "scene_activated",
-                "automation_accepted", "wind_down_completed",
-                "prayer_reminder_acknowledged", "breathing_exercise_completed",
-                "mood_logged", "app_opened", "bed_entry",
-                "automation_declined", "alarm_triggered",
-            ]),
-            min_size=0, max_size=50,
+            st.sampled_from(
+                [
+                    "sleep_session_end",
+                    "voice_command",
+                    "scene_activated",
+                    "automation_accepted",
+                    "wind_down_completed",
+                    "prayer_reminder_acknowledged",
+                    "breathing_exercise_completed",
+                    "mood_logged",
+                    "app_opened",
+                    "bed_entry",
+                    "automation_declined",
+                    "alarm_triggered",
+                ]
+            ),
+            min_size=0,
+            max_size=50,
         ),
         days=st.integers(min_value=1, max_value=90),
     )
@@ -262,6 +289,7 @@ class TestAnalyticsEngineInvariants(unittest.TestCase):
 # 4. Storage.io — atomic write round-trips arbitrary JSON
 # ===========================================================================
 
+
 class TestStorageIoRoundTrip(unittest.TestCase):
     """atomic_write_json + locked_read_json must survive any JSON-serializable dict."""
 
@@ -272,13 +300,16 @@ class TestStorageIoRoundTrip(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    @given(payload=st.dictionaries(
-        keys=st.text(min_size=1, max_size=20),
-        values=_JSON_LEAF,
-        max_size=10,
-    ))
+    @given(
+        payload=st.dictionaries(
+            keys=st.text(min_size=1, max_size=20),
+            values=_JSON_LEAF,
+            max_size=10,
+        )
+    )
     def test_round_trip(self, payload):
         from Storage.io import atomic_write_json, locked_read_json
+
         assume(json.dumps(payload))  # skip if not JSON-serializable
         atomic_write_json(self.path, payload)
         loaded = locked_read_json(self.path)
@@ -294,6 +325,7 @@ class TestStorageIoRoundTrip(unittest.TestCase):
     )
     def test_last_write_wins(self, payload, n):
         from Storage.io import atomic_write_json, locked_read_json
+
         assume(json.dumps(payload))
         for _ in range(n):
             atomic_write_json(self.path, payload)
@@ -305,18 +337,27 @@ class TestStorageIoRoundTrip(unittest.TestCase):
 # 5. reports.chart_generator — no crash on empty/sparse data
 # ===========================================================================
 
+
 class TestChartGeneratorRobustness(unittest.TestCase):
     """Chart functions must not raise on any valid analytics data shape."""
 
-    @given(st.lists(
-        st.fixed_dictionaries({
-            "date": st.dates().map(lambda d: d.isoformat()),
-            "sleep_score": st.one_of(st.none(), st.floats(min_value=0, max_value=100, allow_nan=False)),
-            "total_hours": st.one_of(st.none(), st.floats(min_value=0, max_value=14, allow_nan=False)),
-            "quality_rating": st.one_of(st.none(), st.text(max_size=10)),
-        }),
-        max_size=30,
-    ))
+    @given(
+        st.lists(
+            st.fixed_dictionaries(
+                {
+                    "date": st.dates().map(lambda d: d.isoformat()),
+                    "sleep_score": st.one_of(
+                        st.none(), st.floats(min_value=0, max_value=100, allow_nan=False)
+                    ),
+                    "total_hours": st.one_of(
+                        st.none(), st.floats(min_value=0, max_value=14, allow_nan=False)
+                    ),
+                    "quality_rating": st.one_of(st.none(), st.text(max_size=10)),
+                }
+            ),
+            max_size=30,
+        )
+    )
     def test_sleep_trend_chart_never_raises(self, trend_data):
         try:
             from reports.chart_generator import sleep_trend_chart
@@ -326,13 +367,17 @@ class TestChartGeneratorRobustness(unittest.TestCase):
         self.assertIsInstance(result, dict)
         self.assertIn("data", result)
 
-    @given(st.lists(
-        st.fixed_dictionaries({
-            "date": st.dates().map(lambda d: d.isoformat()),
-            "events": st.integers(min_value=0, max_value=1000),
-        }),
-        max_size=30,
-    ))
+    @given(
+        st.lists(
+            st.fixed_dictionaries(
+                {
+                    "date": st.dates().map(lambda d: d.isoformat()),
+                    "events": st.integers(min_value=0, max_value=1000),
+                }
+            ),
+            max_size=30,
+        )
+    )
     def test_daily_activity_chart_never_raises(self, daily_data):
         try:
             from reports.chart_generator import daily_activity_chart

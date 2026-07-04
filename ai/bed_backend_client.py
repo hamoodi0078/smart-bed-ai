@@ -44,7 +44,9 @@ class BedBackendClient:
         return self.access_expires_at > self._utc_now() + timedelta(seconds=20)
 
     def _store_token_bundle(self, payload: dict):
-        self.device_access_token = str(payload.get("device_access_token", "") or self.device_access_token)
+        self.device_access_token = str(
+            payload.get("device_access_token", "") or self.device_access_token
+        )
         self.refresh_token = str(payload.get("refresh_token", "") or self.refresh_token)
         self.access_expires_at = self._parse_expires_at(payload.get("expires_at", ""))
         self.entitlement = payload.get("entitlement", self.entitlement) or {}
@@ -59,7 +61,9 @@ class BedBackendClient:
             timeout=self.timeout_seconds,
         )
 
-    def _authorized_request(self, method: str, path: str, json=None) -> tuple[bool, Optional[dict], str]:
+    def _authorized_request(
+        self, method: str, path: str, json=None
+    ) -> tuple[bool, Optional[dict], str]:
         ok, msg = self.ensure_session()
         if not ok:
             return False, None, msg
@@ -161,13 +165,27 @@ class BedBackendClient:
         return True, str(body.get("reply", "")), body
 
     def is_feature_allowed(self, feature_key: str) -> bool:
-        features = self.entitlement.get("features", {}) if isinstance(self.entitlement, dict) else {}
+        features = (
+            self.entitlement.get("features", {}) if isinstance(self.entitlement, dict) else {}
+        )
         return bool(features.get(feature_key, False))
 
     def status_line(self) -> str:
         if not self.is_configured():
             return "Cloud runtime: disabled (missing APP_BACKEND_BASE_URL or BED_DEVICE_ID)."
-        tier = str(self.entitlement.get("tier", "unknown")) if isinstance(self.entitlement, dict) else "unknown"
-        status = str(self.entitlement.get("status", "unknown")) if isinstance(self.entitlement, dict) else "unknown"
-        cloud = bool(self.entitlement.get("cloud_enabled", False)) if isinstance(self.entitlement, dict) else False
+        tier = (
+            str(self.entitlement.get("tier", "unknown"))
+            if isinstance(self.entitlement, dict)
+            else "unknown"
+        )
+        status = (
+            str(self.entitlement.get("status", "unknown"))
+            if isinstance(self.entitlement, dict)
+            else "unknown"
+        )
+        cloud = (
+            bool(self.entitlement.get("cloud_enabled", False))
+            if isinstance(self.entitlement, dict)
+            else False
+        )
         return f"Cloud runtime: tier={tier}, status={status}, cloud_enabled={cloud}."

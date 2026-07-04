@@ -48,7 +48,10 @@ class ExpoPushSender:
             response = http.post(self.EXPO_PUSH_URL, json=payload, timeout=20)
             if response.is_success:
                 return {"sent": True}
-            return {"sent": False, "error": f"Expo API error {response.status_code}: {response.text}"}
+            return {
+                "sent": False,
+                "error": f"Expo API error {response.status_code}: {response.text}",
+            }
         except Exception as exc:
             return {"sent": False, "error": str(exc)}
 
@@ -73,6 +76,7 @@ class ExpoPushSender:
                 from database.connection import DatabaseConnection
                 from database.models import UserPushToken
                 from sqlalchemy import select
+
                 conn = DatabaseConnection(database_url=env_url)
                 with conn.get_session() as session:
                     row = session.execute(
@@ -81,7 +85,9 @@ class ExpoPushSender:
                     if row and row.expo_token:
                         return row.expo_token, "db"
         except Exception as exc:
-            _log.warning("DB push token lookup failed for user_id=%s, falling back to JSON: %s", user_id, exc)
+            _log.warning(
+                "DB push token lookup failed for user_id=%s, falling back to JSON: %s", user_id, exc
+            )
         # Fallback to JSON file
         _log.warning("Using JSON fallback for push token user_id=%s", user_id)
         tokens = self._read_json(self.tokens_path, {})
@@ -123,7 +129,11 @@ class ExpoPushSender:
         log = self._read_json(self.log_path, [])
         if not isinstance(log, list):
             return []
-        return [item for item in log if isinstance(item, dict) and str(item.get("user_id")) == str(user_id)]
+        return [
+            item
+            for item in log
+            if isinstance(item, dict) and str(item.get("user_id")) == str(user_id)
+        ]
 
     def send_to_user(self, user_id: str, notification_type, template_vars: dict = None) -> dict:
         template_vars = template_vars or {}

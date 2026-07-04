@@ -35,6 +35,7 @@ except Exception:  # pragma: no cover - optional runtime dependency
 
 try:
     import noisereduce as _nr
+
     _NOISEREDUCE_AVAILABLE = True
 except ImportError:
     _nr = None  # type: ignore[assignment]
@@ -42,6 +43,7 @@ except ImportError:
 
 try:
     import pyloudnorm as _pyln
+
     _PYLOUDNORM_AVAILABLE = True
 except ImportError:
     _pyln = None  # type: ignore[assignment]
@@ -49,6 +51,7 @@ except ImportError:
 
 try:
     import sounddevice as _sd
+
     _SOUNDDEVICE_AVAILABLE = True
 except ImportError:
     _sd = None  # type: ignore[assignment]
@@ -176,9 +179,7 @@ class STTManager:
         except Exception:
             return wav_bytes
 
-    def _normalize_loudness_wav_bytes(
-        self, wav_bytes: bytes, target_lufs: float = -23.0
-    ) -> bytes:
+    def _normalize_loudness_wav_bytes(self, wav_bytes: bytes, target_lufs: float = -23.0) -> bytes:
         """Normalize integrated loudness of a WAV blob to *target_lufs* LUFS (EBU R128).
 
         Measures loudness with a BS.1770 meter then rescales so the clip lands at
@@ -246,6 +247,7 @@ class STTManager:
         if text_context:
             try:
                 from core.arabic_utils import detect_language
+
                 detected = detect_language(text_context)
                 if detected == "ar":
                     return "ar"
@@ -280,13 +282,17 @@ class STTManager:
                     try:
                         info = pa.get_device_info_by_index(i)
                         if int(info.get("maxInputChannels", 0)) > 0:
-                            devices.append({
-                                "index": i,
-                                "name": str(info.get("name", "")),
-                                "max_input_channels": int(info.get("maxInputChannels", 1)),
-                                "default_sample_rate": int(info.get("defaultSampleRate", 44100)),
-                                "is_default_input": i == default_index,
-                            })
+                            devices.append(
+                                {
+                                    "index": i,
+                                    "name": str(info.get("name", "")),
+                                    "max_input_channels": int(info.get("maxInputChannels", 1)),
+                                    "default_sample_rate": int(
+                                        info.get("defaultSampleRate", 44100)
+                                    ),
+                                    "is_default_input": i == default_index,
+                                }
+                            )
                     except Exception:
                         continue
                 return devices
@@ -307,13 +313,15 @@ class STTManager:
                 devices = []
                 for i, d in enumerate(all_devices):
                     if int(d.get("max_input_channels", 0)) > 0:
-                        devices.append({
-                            "index": i,
-                            "name": str(d.get("name", "")),
-                            "max_input_channels": int(d.get("max_input_channels", 1)),
-                            "default_sample_rate": int(d.get("default_samplerate", 44100)),
-                            "is_default_input": i == default_index,
-                        })
+                        devices.append(
+                            {
+                                "index": i,
+                                "name": str(d.get("name", "")),
+                                "max_input_channels": int(d.get("max_input_channels", 1)),
+                                "default_sample_rate": int(d.get("default_samplerate", 44100)),
+                                "is_default_input": i == default_index,
+                            }
+                        )
                 if devices:
                     return devices
             except Exception:
@@ -322,8 +330,13 @@ class STTManager:
         # Last resort: SpeechRecognition names only
         if sr is not None:
             return [
-                {"index": i, "name": name, "max_input_channels": 1,
-                 "default_sample_rate": 44100, "is_default_input": False}
+                {
+                    "index": i,
+                    "name": name,
+                    "max_input_channels": 1,
+                    "default_sample_rate": 44100,
+                    "is_default_input": False,
+                }
                 for i, name in enumerate(sr.Microphone.list_microphone_names())
             ]
         return []
@@ -535,6 +548,7 @@ class STTManager:
                     interim_callback(transcript, score)
                 except Exception as _cb_exc:
                     from loguru import logger as _log
+
                     _log.warning("interim_callback raised: {}", _cb_exc)
 
         try:
@@ -750,7 +764,9 @@ class STTManager:
                     sample_rate = int(getattr(source, "SAMPLE_RATE", 16000) or 16000)
                     sample_width = int(getattr(source, "SAMPLE_WIDTH", 2) or 2)
                     frame_duration = max(0.01, float(chunk_size) / float(max(1, sample_rate)))
-                    ambient_threshold = float(getattr(recognizer, "energy_threshold", 180.0) or 180.0)
+                    ambient_threshold = float(
+                        getattr(recognizer, "energy_threshold", 180.0) or 180.0
+                    )
                     speech_threshold = max(80.0, ambient_threshold * 1.25)
 
                     hard_start = time.monotonic() + max(1.0, float(timeout_seconds))
@@ -797,7 +813,9 @@ class STTManager:
 
                             yield raw
 
-                            if speaking_started and silence_duration >= max(0.25, float(silence_end_seconds)):
+                            if speaking_started and silence_duration >= max(
+                                0.25, float(silence_end_seconds)
+                            ):
                                 break
 
                     text, confidence = self.transcribe_stream_with_interim(
@@ -907,7 +925,8 @@ class STTManager:
                 "num_speakers": 1 if transcript else 0,
                 "segments": (
                     [{"speaker": "SPEAKER_00", "start": 0.0, "end": None, "duration_s": None}]
-                    if transcript else []
+                    if transcript
+                    else []
                 ),
                 "speaker_summary": {
                     "num_speakers": 1 if transcript else 0,

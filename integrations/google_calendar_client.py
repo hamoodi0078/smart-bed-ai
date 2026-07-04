@@ -25,6 +25,7 @@ logger = logging.getLogger("integrations.google_calendar_client")
 try:
     from googleapiclient.discovery import build as _build
     from googleapiclient.errors import HttpError as _HttpError
+
     _GOOGLE_API_AVAILABLE = True
 except ImportError:
     _build = None  # type: ignore[assignment]
@@ -33,6 +34,7 @@ except ImportError:
 
 try:
     from google.oauth2.credentials import Credentials as _Credentials
+
     _GOOGLE_AUTH_AVAILABLE = True
 except ImportError:
     _Credentials = None  # type: ignore[assignment]
@@ -165,6 +167,7 @@ class GoogleCalendarClient:
 def build_client_from_settings() -> GoogleCalendarClient:
     """Construct a GoogleCalendarClient from the project settings."""
     from config.settings import settings
+
     return GoogleCalendarClient(
         client_id=settings.google_calendar_client_id,
         client_secret=settings.google_calendar_client_secret,

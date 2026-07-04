@@ -1,7 +1,9 @@
 class AcousticEchoGuard:
     """Simple playback-aware suppression policy for barge-in capture."""
 
-    def __init__(self, suppress_during_playback: bool = True, min_confidence_when_playing: float = 0.72):
+    def __init__(
+        self, suppress_during_playback: bool = True, min_confidence_when_playing: float = 0.72
+    ):
         self.suppress_during_playback = bool(suppress_during_playback)
         self.min_confidence_when_playing = float(min_confidence_when_playing)
 

@@ -7,7 +7,13 @@ from main import handle_local_commands
 
 
 class TestSleepRoomOptimization(unittest.TestCase):
-    def _call(self, user_text: str, profile: dict, spotify_result: tuple[bool, str], local_result: tuple[bool, str]):
+    def _call(
+        self,
+        user_text: str,
+        profile: dict,
+        spotify_result: tuple[bool, str],
+        local_result: tuple[bool, str],
+    ):
         led = MagicMock()
         spotify = MagicMock()
         spotify.play_track_query.return_value = spotify_result
@@ -58,7 +64,9 @@ class TestSleepRoomOptimization(unittest.TestCase):
         self.assertIn("Environment scene: sleep optimization.", response)
         self.assertIn("Wind-down autopilot enabled", response)
         self.assertIn("Playing local sleep track.", response)
-        self.assertEqual(updated.get("environment", {}).get("last_scene_key"), "sleep_optimized_room")
+        self.assertEqual(
+            updated.get("environment", {}).get("last_scene_key"), "sleep_optimized_room"
+        )
         self.assertTrue(bool(updated.get("sleep", {}).get("wind_down_enabled")))
 
     @patch("main.save_profile")

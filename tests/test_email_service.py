@@ -113,7 +113,9 @@ class TestEmailService(unittest.TestCase):
         third = self.user_repo.create_user("third@example.com", "hash", "Third")
         service = EmailService(db=self.db)
 
-        with patch.object(service, "send_daily_summary_for_user", side_effect=[True, False]) as mocked_sender:
+        with patch.object(
+            service, "send_daily_summary_for_user", side_effect=[True, False]
+        ) as mocked_sender:
             sent_count = service.send_daily_summaries_for_all_users()
 
         self.assertEqual(sent_count, 1)
@@ -127,7 +129,9 @@ class TestEmailService(unittest.TestCase):
         third = self.user_repo.create_user("b@example.com", "hash", "Third")
         service = EmailService(db=self.db)
 
-        with patch.object(service, "send_monthly_summary_for_user", side_effect=[True, False]) as mocked_sender:
+        with patch.object(
+            service, "send_monthly_summary_for_user", side_effect=[True, False]
+        ) as mocked_sender:
             sent_count = service.send_monthly_summaries_for_all_users(2026, 2)
 
         self.assertEqual(sent_count, 1)

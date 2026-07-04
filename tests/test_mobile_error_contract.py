@@ -17,7 +17,9 @@ class TestMobileErrorContract(unittest.TestCase):
         self.assertEqual(str(error.get("code", "")), "UNAUTHORIZED")
         self.assertTrue(str(error.get("message", "")).strip())
         self.assertRegex(str(error.get("trace_id", "")), r"^req_[a-f0-9]{8}$")
-        self.assertEqual(str(response.headers.get("X-Trace-Id", "")), str(error.get("trace_id", "")))
+        self.assertEqual(
+            str(response.headers.get("X-Trace-Id", "")), str(error.get("trace_id", ""))
+        )
 
 
 if __name__ == "__main__":

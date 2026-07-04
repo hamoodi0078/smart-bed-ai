@@ -45,7 +45,9 @@ class TestMobileAuthApi(unittest.TestCase):
         self._io_lock_patch.start()
         self.store = SubscriptionStore(db_path=self.db_path)
         self.store.hash_password = lambda password: _legacy_sha256(password)
-        self.store.check_password = lambda password, stored_hash: stored_hash == _legacy_sha256(password)
+        self.store.check_password = lambda password, stored_hash: (
+            stored_hash == _legacy_sha256(password)
+        )
         self._patch_store = patch.object(web_server, "store", self.store)
         self._patch_profile = patch.object(web_server, "PROFILE_PATH", self.profile_path)
         self._patch_env.start()
@@ -118,7 +120,11 @@ class TestMobileAuthApi(unittest.TestCase):
     def test_mobile_access_works_after_legacy_session_maps_are_cleared(self):
         register = self.client.post(
             "/v1/mobile/auth/register",
-            json={"email": "dbsession@example.com", "password": "Secret1234", "name": "DB Session User"},
+            json={
+                "email": "dbsession@example.com",
+                "password": "Secret1234",
+                "name": "DB Session User",
+            },
         )
         self.assertEqual(register.status_code, 200)
         body = register.json()
@@ -148,7 +154,11 @@ class TestMobileAuthApi(unittest.TestCase):
     def test_mobile_bearer_can_call_existing_mobile_endpoints(self):
         register = self.client.post(
             "/v1/mobile/auth/register",
-            json={"email": "settings@example.com", "password": "Secret1234", "name": "Settings User"},
+            json={
+                "email": "settings@example.com",
+                "password": "Secret1234",
+                "name": "Settings User",
+            },
         )
         access_token = str(register.json().get("access_token", ""))
         headers = {"Authorization": f"Bearer {access_token}"}
@@ -245,7 +255,11 @@ class TestMobileAuthApi(unittest.TestCase):
 
         login = self.client.post(
             "/v1/mobile/auth/login",
-            json={"email": "legacy-only@example.com", "password": "Secret1234", "client_name": "flutter_migrate"},
+            json={
+                "email": "legacy-only@example.com",
+                "password": "Secret1234",
+                "client_name": "flutter_migrate",
+            },
         )
         self.assertEqual(login.status_code, 200)
         body = login.json()

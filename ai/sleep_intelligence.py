@@ -34,7 +34,10 @@ class SleepIntelligenceEngine:
                 {"name": "Partner 2", "wake_style": "balanced"},
             ],
         )
-        if not isinstance(partner_mode.get("profiles"), list) or len(partner_mode.get("profiles", [])) < 2:
+        if (
+            not isinstance(partner_mode.get("profiles"), list)
+            or len(partner_mode.get("profiles", [])) < 2
+        ):
             partner_mode["profiles"] = [
                 {"name": "Partner 1", "wake_style": "gentle"},
                 {"name": "Partner 2", "wake_style": "balanced"},
@@ -144,7 +147,9 @@ class SleepIntelligenceEngine:
         streak = max(0, int(progress.get("current_streak_days", 0)))
         completion_rate = (completed / created * 100.0) if created else 0.0
 
-        recovery_on = created >= 4 and completion_rate < 35 and streak == 0 and active_goals_count >= 3
+        recovery_on = (
+            created >= 4 and completion_rate < 35 and streak == 0 and active_goals_count >= 3
+        )
         sleep = profile["sleep"]
 
         if recovery_on:
@@ -189,7 +194,9 @@ class SleepIntelligenceEngine:
             return "Challenge ladder level 3: full bedtime routine + one next-day prep action."
         if level == 4:
             return "Challenge ladder level 4: full routine + no-screen buffer before bed."
-        return "Challenge ladder level 5: full routine + no-screen buffer + morning consistency check."
+        return (
+            "Challenge ladder level 5: full routine + no-screen buffer + morning consistency check."
+        )
 
     def build_recovery_protocol(self, profile: dict) -> str:
         self.ensure_shape(profile)
@@ -283,7 +290,9 @@ class SleepIntelligenceEngine:
         target = float(profile.get("preferences", {}).get("sleep_target_hours", 8.0) or 8.0)
         durations = self._recent_sleep_durations(profile, max_nights=7)
         if len(durations) < 2:
-            return "Sleep quality score: collecting data (log bedtime and wake for at least 2 nights)."
+            return (
+                "Sleep quality score: collecting data (log bedtime and wake for at least 2 nights)."
+            )
 
         avg_duration = sum(durations) / len(durations)
         duration_gap = max(0.0, target - avg_duration)
@@ -383,7 +392,10 @@ class SleepIntelligenceEngine:
         now = now or datetime.now()
         if not (17 <= now.hour <= 23):
             return False
-        if profile.get("sleep", {}).get("last_bedtime_drift_alert_date", "") == now.date().isoformat():
+        if (
+            profile.get("sleep", {}).get("last_bedtime_drift_alert_date", "")
+            == now.date().isoformat()
+        ):
             return False
         return self.bedtime_drift_alert(profile).startswith("Predictive alert:")
 
@@ -402,7 +414,9 @@ class SleepIntelligenceEngine:
         if len(durations) < 4:
             return False
 
-        last_date_raw = str(profile.get("sleep", {}).get("last_recovery_score_card_date", "") or "").strip()
+        last_date_raw = str(
+            profile.get("sleep", {}).get("last_recovery_score_card_date", "") or ""
+        ).strip()
         if not last_date_raw:
             return True
 
@@ -435,10 +449,14 @@ class SleepIntelligenceEngine:
         self.ensure_shape(profile)
         profile["sleep"]["partner_mode"]["enabled"] = bool(enabled)
         if enabled:
-            return "Partner Sleep Mode enabled. I will use conflict-safe routines for both sleepers."
+            return (
+                "Partner Sleep Mode enabled. I will use conflict-safe routines for both sleepers."
+            )
         return "Partner Sleep Mode disabled."
 
-    def set_partner_profile(self, profile: dict, slot: int, name: str = "", wake_style: str = "") -> str:
+    def set_partner_profile(
+        self, profile: dict, slot: int, name: str = "", wake_style: str = ""
+    ) -> str:
         self.ensure_shape(profile)
         idx = max(0, min(1, int(slot)))
         profiles = profile["sleep"]["partner_mode"]["profiles"]

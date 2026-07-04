@@ -40,6 +40,7 @@ def _get_redis():
             return None
         try:
             import redis as redis_lib
+
             client = redis_lib.from_url(redis_url, decode_responses=True, socket_timeout=2)
             client.ping()
             _redis_client = client
@@ -89,7 +90,12 @@ def _redis_del_session(token: str) -> None:
     except Exception as exc:
         _log.warning("Redis del_session failed: %s", exc)
 
-from core.security import hash_password as _hash_password, verify_password as _verify_password, needs_rehash as _needs_rehash
+
+from core.security import (
+    hash_password as _hash_password,
+    verify_password as _verify_password,
+    needs_rehash as _needs_rehash,
+)
 
 
 DB_PATH = SUBSCRIPTION_DB_PATH
@@ -266,12 +272,14 @@ class SubscriptionStore:
         """
         try:
             import os
+
             env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
             if not env_url:
                 return
             from database.connection import DatabaseConnection
             from database.models import SubscriptionRecord
             from sqlalchemy import select
+
             conn = DatabaseConnection(database_url=env_url)
             subscriptions = list(self.db.get("subscriptions", []))
             if not subscriptions:
@@ -292,9 +300,13 @@ class SubscriptionStore:
                     existing.tier = str(sub.get("tier", "free") or "free")[:20]
                     existing.status = str(sub.get("status", "active") or "active")[:20]
                     existing.interval = str(sub.get("interval", "monthly") or "monthly")[:20]
-                    existing.payment_provider = str(sub.get("payment_provider", "none") or "none")[:40]
+                    existing.payment_provider = str(sub.get("payment_provider", "none") or "none")[
+                        :40
+                    ]
                     existing.price_kwd = float(sub.get("price_kwd", 0.0) or 0.0)
-                    existing.provider_subscription_id = str(sub.get("provider_subscription_id", "") or "")[:255]
+                    existing.provider_subscription_id = str(
+                        sub.get("provider_subscription_id", "") or ""
+                    )[:255]
                     existing.provider_plan_id = str(sub.get("provider_plan_id", "") or "")[:255]
                     existing.provider_status = str(sub.get("provider_status", "") or "")[:60]
                     existing.next_renewal_at = str(sub.get("next_renewal_at", "") or "")[:40]
@@ -343,8 +355,12 @@ class SubscriptionStore:
         access_token = token_urlsafe(32)
         refresh_token = token_urlsafe(48)
         issued_at = self._now_iso()
-        access_exp = to_iso((self._utc_now() + timedelta(minutes=access_minutes)).replace(microsecond=0))
-        refresh_exp = to_iso((self._utc_now() + timedelta(days=refresh_days)).replace(microsecond=0))
+        access_exp = to_iso(
+            (self._utc_now() + timedelta(minutes=access_minutes)).replace(microsecond=0)
+        )
+        refresh_exp = to_iso(
+            (self._utc_now() + timedelta(days=refresh_days)).replace(microsecond=0)
+        )
         session_payload = {
             "user_id": str(user_id or "").strip(),
             "client_name": str(client_name or "").strip(),
@@ -474,7 +490,9 @@ class SubscriptionStore:
         user = self.get_user(sess.get("user_id", ""))
         if isinstance(user, dict):
             # Check cross-revocation: reject if token was issued before last revoke-all.
-            revoked_all_at = self._parse_datetime_utc(str(user.get("sessions_revoked_all_at", "") or ""))
+            revoked_all_at = self._parse_datetime_utc(
+                str(user.get("sessions_revoked_all_at", "") or "")
+            )
             if revoked_all_at is not None:
                 issued_at = self._parse_datetime_utc(str(sess.get("issued_at", "") or ""))
                 if issued_at is None or issued_at <= revoked_all_at:
@@ -497,11 +515,20 @@ class SubscriptionStore:
             return 0
         revoked = 0
         now_iso = self._now_iso()
-        for bucket in ("user_sessions", "mobile_sessions", "mobile_refresh_sessions",
-                       "admin_sessions", "device_sessions", "device_refresh_sessions"):
+        for bucket in (
+            "user_sessions",
+            "mobile_sessions",
+            "mobile_refresh_sessions",
+            "admin_sessions",
+            "device_sessions",
+            "device_refresh_sessions",
+        ):
             sessions = self.db.get(bucket, {})
-            to_del = [tok for tok, sess in sessions.items()
-                      if isinstance(sess, dict) and sess.get("user_id") == uid]
+            to_del = [
+                tok
+                for tok, sess in sessions.items()
+                if isinstance(sess, dict) and sess.get("user_id") == uid
+            ]
             for tok in to_del:
                 del sessions[tok]
                 _redis_del_session(tok)
@@ -536,7 +563,9 @@ class SubscriptionStore:
         _redis_del_session(token_key)
         return removed
 
-    def provision_device(self, device_id: str, claim_code: str, model: str = "", factory_secret: str = "") -> dict:
+    def provision_device(
+        self, device_id: str, claim_code: str, model: str = "", factory_secret: str = ""
+    ) -> dict:
         existing = self.get_device(device_id)
         if existing:
             return existing
@@ -646,11 +675,17 @@ class SubscriptionStore:
             "revoked_tokens": revoked,
         }
 
-    def issue_device_tokens(self, device_id: str, user_id: str, access_minutes: int = 15, refresh_days: int = 30) -> dict:
+    def issue_device_tokens(
+        self, device_id: str, user_id: str, access_minutes: int = 15, refresh_days: int = 30
+    ) -> dict:
         access_token = token_urlsafe(32)
         refresh_token = token_urlsafe(48)
-        access_exp = to_iso((self._utc_now() + timedelta(minutes=access_minutes)).replace(microsecond=0))
-        refresh_exp = to_iso((self._utc_now() + timedelta(days=refresh_days)).replace(microsecond=0))
+        access_exp = to_iso(
+            (self._utc_now() + timedelta(minutes=access_minutes)).replace(microsecond=0)
+        )
+        refresh_exp = to_iso(
+            (self._utc_now() + timedelta(days=refresh_days)).replace(microsecond=0)
+        )
 
         self.db["device_sessions"][access_token] = {
             "device_id": device_id,
@@ -734,7 +769,9 @@ class SubscriptionStore:
                 return row
         return None
 
-    def get_checkout_session_by_provider_subscription_id(self, provider_subscription_id: str) -> Optional[dict]:
+    def get_checkout_session_by_provider_subscription_id(
+        self, provider_subscription_id: str
+    ) -> Optional[dict]:
         subscription_key = str(provider_subscription_id or "").strip()
         if not subscription_key:
             return None
@@ -761,7 +798,9 @@ class SubscriptionStore:
             raise ValueError("Unsupported interval")
 
         plan = PLAN_DEFINITIONS[tier_norm]
-        price_kwd = plan["monthly_price_kwd"] if interval_norm == "monthly" else plan["yearly_price_kwd"]
+        price_kwd = (
+            plan["monthly_price_kwd"] if interval_norm == "monthly" else plan["yearly_price_kwd"]
+        )
         session_id = f"chk_{token_urlsafe(10)}"
         base = (base_url or "").rstrip("/")
         approve_url = (
@@ -805,7 +844,9 @@ class SubscriptionStore:
         payment_provider: str = "paypal",
         raw_payload: Optional[dict] = None,
     ) -> dict:
-        metadata = self._payment_event_metadata(event_type=event_type, raw_payload=raw_payload or {})
+        metadata = self._payment_event_metadata(
+            event_type=event_type, raw_payload=raw_payload or {}
+        )
         event = {
             "event_id": f"evt_{token_urlsafe(10)}",
             "event_type": event_type,
@@ -881,9 +922,7 @@ class SubscriptionStore:
             "billing.subscription.payment.failed",
         ):
             self.set_subscription_grace(user_id, grace_days=7)
-        elif typ in (
-            "billing.subscription.suspended",
-        ):
+        elif typ in ("billing.subscription.suspended",):
             sub = self.get_subscription(user_id)
             sub["status"] = "paused"
             sub["provider_status"] = str(metadata.get("provider_status", "") or "SUSPENDED")
@@ -933,7 +972,9 @@ class SubscriptionStore:
         sub["status"] = "active"
         sub["grace_end_at"] = ""
         sub["payment_provider"] = payment_provider
-        sub["price_kwd"] = plan["monthly_price_kwd"] if interval_norm == "monthly" else plan["yearly_price_kwd"]
+        sub["price_kwd"] = (
+            plan["monthly_price_kwd"] if interval_norm == "monthly" else plan["yearly_price_kwd"]
+        )
         months = 1 if interval_norm == "monthly" else 12
         sub["next_renewal_at"] = str(next_renewal_at or "").strip() or to_iso(
             (self._utc_now() + timedelta(days=30 * months)).replace(microsecond=0)
@@ -960,7 +1001,9 @@ class SubscriptionStore:
     def set_subscription_grace(self, user_id: str, grace_days: int = 7) -> dict:
         sub = self.get_subscription(user_id)
         sub["status"] = "grace"
-        sub["grace_end_at"] = to_iso((self._utc_now() + timedelta(days=grace_days)).replace(microsecond=0))
+        sub["grace_end_at"] = to_iso(
+            (self._utc_now() + timedelta(days=grace_days)).replace(microsecond=0)
+        )
         sub["updated_at"] = self._now_iso()
         self.save()
         return sub
@@ -1036,7 +1079,9 @@ class SubscriptionStore:
         user_text = str(user_filter or "").strip().lower()
         status_text = str(status_filter or "").strip().lower()
         users_by_id = {
-            str(row.get("user_id", "") or "").strip(): str(row.get("email", "") or "").strip().lower()
+            str(row.get("user_id", "") or "").strip(): str(row.get("email", "") or "")
+            .strip()
+            .lower()
             for row in self.db.get("users", [])
             if isinstance(row, dict)
         }
@@ -1074,7 +1119,9 @@ class SubscriptionStore:
                     "amount_value": str(row.get("amount_value", "") or "").strip(),
                     "currency": str(row.get("currency", "") or "").strip(),
                     "provider_reference": str(row.get("provider_reference", "") or "").strip(),
-                    "provider_subscription_id": str(row.get("provider_subscription_id", "") or "").strip(),
+                    "provider_subscription_id": str(
+                        row.get("provider_subscription_id", "") or ""
+                    ).strip(),
                     "provider_plan_id": str(row.get("provider_plan_id", "") or "").strip(),
                     "created_at": str(row.get("created_at", "") or "").strip(),
                     "user_id": user_id,
@@ -1256,9 +1303,7 @@ class SubscriptionStore:
         amount_value = str(amount.get("value", "") or amount.get("total", "") or "").strip()
         currency = str(amount.get("currency_code", "") or amount.get("currency", "") or "").strip()
         provider_reference = (
-            resource_id
-            or str(related.get("sale_id", "") or "").strip()
-            or provider_subscription_id
+            resource_id or str(related.get("sale_id", "") or "").strip() or provider_subscription_id
         )
         last_payment_at = (
             str(last_payment.get("time", "") or "").strip()
@@ -1339,7 +1384,9 @@ class SubscriptionStore:
         daily["tokens_used"] = int(daily.get("tokens_used", 0)) + max(0, int(tokens))
         daily["requests_used"] = int(daily.get("requests_used", 0)) + max(0, int(requests_count))
         monthly["tokens_used"] = int(monthly.get("tokens_used", 0)) + max(0, int(tokens))
-        monthly["requests_used"] = int(monthly.get("requests_used", 0)) + max(0, int(requests_count))
+        monthly["requests_used"] = int(monthly.get("requests_used", 0)) + max(
+            0, int(requests_count)
+        )
         self.save()
 
     def get_bed_profile(self, user_id: str) -> dict:
@@ -1579,7 +1626,9 @@ class SubscriptionStore:
             "release_notes": rel.get("release_notes", ""),
         }
 
-    def record_device_update_report(self, device_id: str, from_version: str, to_version: str, status: str, details: str = "") -> dict:
+    def record_device_update_report(
+        self, device_id: str, from_version: str, to_version: str, status: str, details: str = ""
+    ) -> dict:
         row = {
             "report_id": f"upd_{token_urlsafe(10)}",
             "device_id": device_id,
@@ -1599,7 +1648,9 @@ class SubscriptionStore:
                 return row
         return None
 
-    def upsert_admin_user(self, user_id: str, email: str, role: str = "viewer", status: str = "active") -> dict:
+    def upsert_admin_user(
+        self, user_id: str, email: str, role: str = "viewer", status: str = "active"
+    ) -> dict:
         role_key = (role or "viewer").strip().lower()
         # Owner remains a valid stored role, but it should only be assigned by
         # a trusted manual/secure provisioning flow, not public auth paths.
@@ -1913,13 +1964,27 @@ class SubscriptionStore:
             return removed
 
         deleted["users"] = _delete_rows("users", lambda row: row.get("user_id") == user_key)
-        deleted["subscriptions"] = _delete_rows("subscriptions", lambda row: row.get("user_id") == user_key)
-        deleted["usage_daily"] = _delete_rows("usage_daily", lambda row: row.get("user_id") == user_key)
-        deleted["usage_monthly"] = _delete_rows("usage_monthly", lambda row: row.get("user_id") == user_key)
-        deleted["bed_profiles"] = _delete_rows("bed_profiles", lambda row: row.get("user_id") == user_key)
-        deleted["checkout_sessions"] = _delete_rows("checkout_sessions", lambda row: row.get("user_id") == user_key)
-        deleted["payment_events"] = _delete_rows("payment_events", lambda row: row.get("user_id") == user_key)
-        deleted["admin_users"] = _delete_rows("admin_users", lambda row: row.get("user_id") == user_key)
+        deleted["subscriptions"] = _delete_rows(
+            "subscriptions", lambda row: row.get("user_id") == user_key
+        )
+        deleted["usage_daily"] = _delete_rows(
+            "usage_daily", lambda row: row.get("user_id") == user_key
+        )
+        deleted["usage_monthly"] = _delete_rows(
+            "usage_monthly", lambda row: row.get("user_id") == user_key
+        )
+        deleted["bed_profiles"] = _delete_rows(
+            "bed_profiles", lambda row: row.get("user_id") == user_key
+        )
+        deleted["checkout_sessions"] = _delete_rows(
+            "checkout_sessions", lambda row: row.get("user_id") == user_key
+        )
+        deleted["payment_events"] = _delete_rows(
+            "payment_events", lambda row: row.get("user_id") == user_key
+        )
+        deleted["admin_users"] = _delete_rows(
+            "admin_users", lambda row: row.get("user_id") == user_key
+        )
 
         for row in self.db.get("devices", []):
             if not isinstance(row, dict):

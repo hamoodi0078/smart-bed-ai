@@ -24,10 +24,12 @@ _LOG = logging.getLogger("automations.islamic")
 
 # ── Hijri date helpers ────────────────────────────────────────────────────────
 
+
 def _hijri_today() -> tuple[int, int, int]:
     """Return (year, month, day) in the Hijri calendar for today."""
     try:
         from islamic_mode.islamic_calendar import IslamicCalendarService
+
         cal = IslamicCalendarService()
         info = cal.get_hijri_date()
         return (
@@ -58,6 +60,7 @@ def _is_jumuah() -> bool:
 
 
 # ── Effect factories ──────────────────────────────────────────────────────────
+
 
 def _eid_effect(eid_name: str) -> list[Effect]:
     """Return a bundle of effects for an Eid morning."""
@@ -121,6 +124,7 @@ def _jumuah_effect(ctx: dict[str, Any]) -> list[Effect]:
 
 # ── Automation definitions ────────────────────────────────────────────────────
 
+
 def _eid_fitr_trigger(ctx: dict[str, Any]) -> bool:
     return _is_eid_al_fitr()
 
@@ -155,6 +159,7 @@ def _jumuah_action(ctx: dict[str, Any]) -> list[Effect]:
 
 
 # ── Jumu'ah window dedup key — only one reminder per Friday ──────────────────
+
 
 def _jumuah_window_key(ctx: dict[str, Any]) -> str:
     """Return today's ISO date so the automation only fires once per Friday."""

@@ -33,7 +33,12 @@ def normalize_mixed_text(text: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip()
 
 
-def _result(intent: str = "", slots: Dict[str, Any] | None = None, confidence: float = 0.0, clarify: str = "") -> dict:
+def _result(
+    intent: str = "",
+    slots: Dict[str, Any] | None = None,
+    confidence: float = 0.0,
+    clarify: str = "",
+) -> dict:
     slots = slots or {}
     return {
         "intent": intent,
@@ -66,19 +71,33 @@ def resolve_action(user_text: str, profile: dict, context: dict | None = None) -
     if any(k in text for k in ("undo that", "revert last action", "undo last action")):
         return _result("undo_last_action", confidence=0.98)
 
-    sleep_scope = any(k in text for k in ("sleep", "wind down", "winddown", "tired", "calm", "relax", "نوم", "تهد", "هاد"))
-    lights_scope = any(k in text for k in ("light", "lights", "scene", "dim", "brightness", "اضاء", "ضوء", "لون"))
-    music_scope = any(k in text for k in ("music", "ambient", "song", "spotify", "audio", "موسيقى", "اغنية", "أغنية"))
+    sleep_scope = any(
+        k in text
+        for k in ("sleep", "wind down", "winddown", "tired", "calm", "relax", "نوم", "تهد", "هاد")
+    )
+    lights_scope = any(
+        k in text for k in ("light", "lights", "scene", "dim", "brightness", "اضاء", "ضوء", "لون")
+    )
+    music_scope = any(
+        k in text
+        for k in ("music", "ambient", "song", "spotify", "audio", "موسيقى", "اغنية", "أغنية")
+    )
 
-    if sleep_scope and ("wind down" in text or "help me sleep" in text or "optimize" in text or "sleep now" in text):
+    if sleep_scope and (
+        "wind down" in text or "help me sleep" in text or "optimize" in text or "sleep now" in text
+    ):
         return _result("start_wind_down", slots={"minutes": 45}, confidence=0.9)
 
     if (sleep_scope and lights_scope and music_scope) or (
-        lights_scope and music_scope and any(k in text for k in ("soft", "softer", "calm", "ambient", "low"))
+        lights_scope
+        and music_scope
+        and any(k in text for k in ("soft", "softer", "calm", "ambient", "low"))
     ):
         return _result("start_wind_down", slots={"minutes": 45}, confidence=0.86)
 
-    if lights_scope and any(k in text for k in ("soft", "softer", "dim", "warm", "calm", "هاد", "خف")):
+    if lights_scope and any(
+        k in text for k in ("soft", "softer", "dim", "warm", "calm", "هاد", "خف")
+    ):
         brightness = 0.18 if ("very" in text or "much" in text or "جدا" in text) else 0.24
         return _result(
             "set_scene",
@@ -94,14 +113,31 @@ def resolve_action(user_text: str, profile: dict, context: dict | None = None) -
         )
 
     if music_scope and any(k in text for k in ("play", "start", "on", "شغل", "تشغيل")):
-        query = "ambient" if any(k in text for k in ("ambient", "calm", "sleep", "هاد", "نوم")) else ""
+        query = (
+            "ambient" if any(k in text for k in ("ambient", "calm", "sleep", "هاد", "نوم")) else ""
+        )
         return _result("play_music", slots={"query": query}, confidence=0.82)
 
     if music_scope and any(k in text for k in ("pause", "stop", "off", "وقف", "ايقاف", "إيقاف")):
         return _result("pause_music", confidence=0.88)
 
-    if any(k in text for k in ("dont talk much", "don't talk much", "keep it simple", "short replies", "quiet replies", "تكلم قليل", "رد قصير")):
-        return _result("set_response_style", slots={"response_style": "quick", "thinking_ack_mode": "off"}, confidence=0.91)
+    if any(
+        k in text
+        for k in (
+            "dont talk much",
+            "don't talk much",
+            "keep it simple",
+            "short replies",
+            "quiet replies",
+            "تكلم قليل",
+            "رد قصير",
+        )
+    ):
+        return _result(
+            "set_response_style",
+            slots={"response_style": "quick", "thinking_ack_mode": "off"},
+            confidence=0.91,
+        )
 
     if any(k in text for k in ("talk more", "detailed", "in detail", "شرح", "تفصيل")):
         return _result("set_response_style", slots={"response_style": "detailed"}, confidence=0.8)

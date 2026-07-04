@@ -44,9 +44,7 @@ class DanaIslamicVoice:
     def get_ramadan_message(self) -> str:
         greeting = self.ramadan_mode.get_ramadan_greeting()
         tarawih = self.ramadan_mode.get_tarawih_reminder()
-        return (
-            f"{greeting} May Allah accept your fasting and prayers. {tarawih}"
-        )
+        return f"{greeting} May Allah accept your fasting and prayers. {tarawih}"
 
     def get_achievement_message(self, achievement: str) -> str:
         return (

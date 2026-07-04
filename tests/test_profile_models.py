@@ -19,6 +19,7 @@ def _make_db() -> DatabaseConnection:
 
 def _make_user(db: DatabaseConnection, email: str = "profile@example.com") -> str:
     import hashlib
+
     uid = "u-" + hashlib.md5(email.encode()).hexdigest()[:8]
     with db.get_session() as session:
         if session.get(User, uid) is None:
@@ -40,15 +41,18 @@ class TestUserRoutineModel(unittest.TestCase):
 
     def test_create_and_fetch(self):
         from uuid import uuid4
+
         row_id = str(uuid4())
         with self.db.get_session() as session:
-            session.add(UserRoutine(
-                id=row_id,
-                user_id=self.uid,
-                bedtime="22:30",
-                wake="06:30",
-                weekends_different=True,
-            ))
+            session.add(
+                UserRoutine(
+                    id=row_id,
+                    user_id=self.uid,
+                    bedtime="22:30",
+                    wake="06:30",
+                    weekends_different=True,
+                )
+            )
             session.flush()
 
         with self.db.get_session() as session:
@@ -61,13 +65,18 @@ class TestUserRoutineModel(unittest.TestCase):
     def test_user_id_is_unique(self):
         from uuid import uuid4
         from sqlalchemy.exc import IntegrityError
+
         with self.db.get_session() as session:
-            session.add(UserRoutine(id=str(uuid4()), user_id=self.uid, bedtime="22:00", wake="06:00"))
+            session.add(
+                UserRoutine(id=str(uuid4()), user_id=self.uid, bedtime="22:00", wake="06:00")
+            )
             session.flush()
 
         with self.assertRaises(Exception):
             with self.db.get_session() as session:
-                session.add(UserRoutine(id=str(uuid4()), user_id=self.uid, bedtime="23:00", wake="07:00"))
+                session.add(
+                    UserRoutine(id=str(uuid4()), user_id=self.uid, bedtime="23:00", wake="07:00")
+                )
                 session.flush()
 
 
@@ -81,24 +90,32 @@ class TestUserProfilePrefsModel(unittest.TestCase):
     def test_columns_exist(self):
         cols = set(UserProfilePrefs.__table__.columns.keys())
         expected = {
-            "id", "user_id", "display_name", "timezone",
-            "push_enabled", "email_enabled", "theme_mode",
+            "id",
+            "user_id",
+            "display_name",
+            "timezone",
+            "push_enabled",
+            "email_enabled",
+            "theme_mode",
         }
         self.assertTrue(expected.issubset(cols))
 
     def test_create_and_fetch(self):
         from uuid import uuid4
+
         row_id = str(uuid4())
         with self.db.get_session() as session:
-            session.add(UserProfilePrefs(
-                id=row_id,
-                user_id=self.uid,
-                display_name="Danah",
-                timezone="Asia/Kuwait",
-                push_enabled=True,
-                email_enabled=False,
-                theme_mode="dark",
-            ))
+            session.add(
+                UserProfilePrefs(
+                    id=row_id,
+                    user_id=self.uid,
+                    display_name="Danah",
+                    timezone="Asia/Kuwait",
+                    push_enabled=True,
+                    email_enabled=False,
+                    theme_mode="dark",
+                )
+            )
             session.flush()
 
         with self.db.get_session() as session:
@@ -110,6 +127,7 @@ class TestUserProfilePrefsModel(unittest.TestCase):
 
     def test_location_fields_nullable(self):
         from uuid import uuid4
+
         row_id = str(uuid4())
         with self.db.get_session() as session:
             session.add(UserProfilePrefs(id=row_id, user_id=self.uid))
@@ -136,16 +154,19 @@ class TestUserSocialIdentityModel(unittest.TestCase):
 
     def test_create_and_fetch(self):
         from uuid import uuid4
+
         row_id = str(uuid4())
         with self.db.get_session() as session:
-            session.add(UserSocialIdentity(
-                id=row_id,
-                user_id=self.uid,
-                provider="google",
-                provider_user_id="google-uid-123",
-                email="social@gmail.com",
-                email_verified=True,
-            ))
+            session.add(
+                UserSocialIdentity(
+                    id=row_id,
+                    user_id=self.uid,
+                    provider="google",
+                    provider_user_id="google-uid-123",
+                    email="social@gmail.com",
+                    email_verified=True,
+                )
+            )
             session.flush()
 
         with self.db.get_session() as session:
@@ -156,23 +177,28 @@ class TestUserSocialIdentityModel(unittest.TestCase):
 
     def test_unique_constraint_provider_uid(self):
         from uuid import uuid4
-        with self.db.get_session() as session:
-            session.add(UserSocialIdentity(
-                id=str(uuid4()),
-                user_id=self.uid,
-                provider="apple",
-                provider_user_id="apple-uid-999",
-            ))
-            session.flush()
 
-        with self.assertRaises(Exception):
-            with self.db.get_session() as session:
-                session.add(UserSocialIdentity(
+        with self.db.get_session() as session:
+            session.add(
+                UserSocialIdentity(
                     id=str(uuid4()),
                     user_id=self.uid,
                     provider="apple",
                     provider_user_id="apple-uid-999",
-                ))
+                )
+            )
+            session.flush()
+
+        with self.assertRaises(Exception):
+            with self.db.get_session() as session:
+                session.add(
+                    UserSocialIdentity(
+                        id=str(uuid4()),
+                        user_id=self.uid,
+                        provider="apple",
+                        provider_user_id="apple-uid-999",
+                    )
+                )
                 session.flush()
 
 
@@ -189,13 +215,16 @@ class TestUserPhoneAuthModel(unittest.TestCase):
 
     def test_create_and_fetch(self):
         from uuid import uuid4
+
         row_id = str(uuid4())
         with self.db.get_session() as session:
-            session.add(UserPhoneAuth(
-                id=row_id,
-                user_id=self.uid,
-                phone_number="+96512345678",
-            ))
+            session.add(
+                UserPhoneAuth(
+                    id=row_id,
+                    user_id=self.uid,
+                    phone_number="+96512345678",
+                )
+            )
             session.flush()
 
         with self.db.get_session() as session:
@@ -205,21 +234,26 @@ class TestUserPhoneAuthModel(unittest.TestCase):
 
     def test_phone_number_is_unique(self):
         from uuid import uuid4
+
         with self.db.get_session() as session:
-            session.add(UserPhoneAuth(
-                id=str(uuid4()),
-                user_id=self.uid,
-                phone_number="+96511111111",
-            ))
+            session.add(
+                UserPhoneAuth(
+                    id=str(uuid4()),
+                    user_id=self.uid,
+                    phone_number="+96511111111",
+                )
+            )
             session.flush()
 
         with self.assertRaises(Exception):
             with self.db.get_session() as session:
-                session.add(UserPhoneAuth(
-                    id=str(uuid4()),
-                    user_id=self.uid,
-                    phone_number="+96511111111",
-                ))
+                session.add(
+                    UserPhoneAuth(
+                        id=str(uuid4()),
+                        user_id=self.uid,
+                        phone_number="+96511111111",
+                    )
+                )
                 session.flush()
 
 

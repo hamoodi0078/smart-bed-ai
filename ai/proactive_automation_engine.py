@@ -41,7 +41,11 @@ class ProactiveAutomationEngine:
         today = now.date().isoformat()
         window = self._window_bucket(now)
         for item in profile["proactive"].get("sent_keys", [])[-80:]:
-            if item.get("key") == key and item.get("date") == today and item.get("window") == window:
+            if (
+                item.get("key") == key
+                and item.get("date") == today
+                and item.get("window") == window
+            ):
                 return True
         return False
 
@@ -82,7 +86,9 @@ class ProactiveAutomationEngine:
         sleep = profile.get("sleep", {})
         invisible_routine = session_state.get("invisible_routine", {})
 
-        if isinstance(invisible_routine, dict) and bool(invisible_routine.get("prep_window_active", False)):
+        if isinstance(invisible_routine, dict) and bool(
+            invisible_routine.get("prep_window_active", False)
+        ):
             key = "invisible_guide_prep"
             if not self._already_sent(profile, key, now):
                 suggestions.append(
@@ -119,7 +125,9 @@ class ProactiveAutomationEngine:
 
         if 17 <= now.hour <= 23:
             key = "bedtime_drift_intervention"
-            if (not self._already_sent(profile, key, now)) and str(session_state.get("bedtime_drift_alert") or "").startswith("Predictive alert:"):
+            if (not self._already_sent(profile, key, now)) and str(
+                session_state.get("bedtime_drift_alert") or ""
+            ).startswith("Predictive alert:"):
                 suggestions.append(
                     {
                         "key": key,
@@ -142,7 +150,9 @@ class ProactiveAutomationEngine:
                         }
                     )
 
-        if 5 <= now.hour <= 11 and bool(profile.get("preferences", {}).get("adaptive_wake_enabled", True)):
+        if 5 <= now.hour <= 11 and bool(
+            profile.get("preferences", {}).get("adaptive_wake_enabled", True)
+        ):
             key = "adaptive_morning_ramp"
             if not self._already_sent(profile, key, now):
                 suggestions.append(
@@ -171,7 +181,11 @@ class ProactiveAutomationEngine:
         self.ensure_shape(profile)
         now = now or datetime.now()
         today = now.date().isoformat()
-        items = [x for x in profile.get("proactive", {}).get("history", []) if str(x.get("executed_at", "")).startswith(today)]
+        items = [
+            x
+            for x in profile.get("proactive", {}).get("history", [])
+            if str(x.get("executed_at", "")).startswith(today)
+        ]
         if not items:
             return "Today I did not auto-manage anything yet."
         lines = [str(x.get("line", "")).strip() for x in items if str(x.get("line", "")).strip()]

@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 try:
     import litellm as _litellm
+
     _LITELLM_AVAILABLE = True
 except ImportError:
     _litellm = None  # type: ignore[assignment]
@@ -33,6 +34,7 @@ except ImportError:
 
 try:
     import anthropic as _anthropic
+
     _ANTHROPIC_AVAILABLE = True
 except ImportError:
     _anthropic = None  # type: ignore[assignment]
@@ -40,6 +42,7 @@ except ImportError:
 
 try:
     import instructor as _instructor
+
     _INSTRUCTOR_AVAILABLE = True
 except ImportError:
     _instructor = None  # type: ignore[assignment]
@@ -48,6 +51,7 @@ except ImportError:
 try:
     from langchain_core.output_parsers import PydanticOutputParser as _PydanticOutputParser
     from langchain_core.prompts import ChatPromptTemplate as _LCChatPromptTemplate
+
     _LANGCHAIN_CORE_AVAILABLE = True
 except ImportError:
     _PydanticOutputParser = None  # type: ignore[assignment,misc]
@@ -58,6 +62,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Pydantic output models
 # ---------------------------------------------------------------------------
+
 
 class SleepQuality(str, Enum):
     deep = "deep"
@@ -70,11 +75,10 @@ class SleepQuality(str, Enum):
 class SleepJournalAnalysis(BaseModel):
     """Structured analysis extracted from a free-text sleep journal entry."""
 
-    sleep_quality: SleepQuality = Field(
-        description="Overall sleep quality classification."
-    )
+    sleep_quality: SleepQuality = Field(description="Overall sleep quality classification.")
     sleep_quality_score: int = Field(
-        ge=1, le=10,
+        ge=1,
+        le=10,
         description="Numeric score from 1 (terrible) to 10 (excellent).",
     )
     mood: str = Field(
@@ -108,9 +112,7 @@ class BedCommandIntent(str, Enum):
 class BedCommand(BaseModel):
     """Structured intent parsed from a raw voice or text command."""
 
-    intent: BedCommandIntent = Field(
-        description="The primary action the user wants to perform."
-    )
+    intent: BedCommandIntent = Field(description="The primary action the user wants to perform.")
     parameters: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -121,7 +123,8 @@ class BedCommand(BaseModel):
         ),
     )
     confidence: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="Model's confidence in the parsed intent (0.0–1.0).",
     )
 
@@ -133,7 +136,8 @@ class SleepInsight(BaseModel):
         description="One concise sentence summarising the key finding.",
     )
     recommendations: list[str] = Field(
-        min_length=1, max_length=3,
+        min_length=1,
+        max_length=3,
         description="Two or three short, actionable recommendations.",
     )
     priority: Literal["low", "medium", "high"] = Field(
@@ -147,6 +151,7 @@ class SleepInsight(BaseModel):
 # ---------------------------------------------------------------------------
 # Extractor
 # ---------------------------------------------------------------------------
+
 
 class InstructorExtractor:
     """Structured extraction with automatic provider routing via litellm.
@@ -280,6 +285,7 @@ class InstructorExtractor:
         # ── Fallback: langchain-core format instructions + litellm raw call ─
         if _LANGCHAIN_CORE_AVAILABLE and _LITELLM_AVAILABLE and _litellm is not None:
             import json as _json
+
             format_hint = self._lc_format_instructions(response_model)
             augmented = list(messages)
             if augmented and format_hint:
@@ -322,8 +328,7 @@ class InstructorExtractor:
                         "content": (
                             "Analyse the following sleep journal entry and extract "
                             "structured information about sleep quality, mood, issues, "
-                            "and positive factors.\n\nJournal entry:\n"
-                            + text.strip()
+                            "and positive factors.\n\nJournal entry:\n" + text.strip()
                         ),
                     }
                 ],
@@ -368,6 +373,7 @@ class InstructorExtractor:
         if not isinstance(sleep_stats, dict) or not sleep_stats:
             return None
         import json
+
         try:
             return self._call_structured(
                 response_model=SleepInsight,

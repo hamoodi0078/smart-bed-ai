@@ -9,6 +9,7 @@ Routes:
   POST   /v1/mobile/alarms/{alarm_id}/toggle
   DELETE /v1/mobile/alarms/{alarm_id}
 """
+
 from __future__ import annotations
 
 import re
@@ -25,6 +26,7 @@ _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
+
 
 class AlarmUpsertRequest(BaseModel):
     time: str = Field(default="07:00", max_length=5)
@@ -61,6 +63,7 @@ class AlarmToggleRequest(BaseModel):
 
 def _alarm_to_dict(alarm: Any) -> dict[str, Any]:
     from time_utils import to_iso, ensure_utc
+
     return {
         "id": alarm.id,
         "time": alarm.time,
@@ -76,9 +79,11 @@ def _alarm_to_dict(alarm: Any) -> dict[str, Any]:
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
+
 @router.get("")
 def list_alarms(current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
     from database import AlarmRepository
+
     user_id: str = current_user["sub"]
     repo = AlarmRepository()
     alarms = repo.list_alarms(user_id)
@@ -86,8 +91,11 @@ def list_alarms(current_user: dict = Depends(get_current_user)) -> dict[str, Any
 
 
 @router.post("")
-def create_alarm(payload: AlarmUpsertRequest, current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
+def create_alarm(
+    payload: AlarmUpsertRequest, current_user: dict = Depends(get_current_user)
+) -> dict[str, Any]:
     from database import AlarmRepository
+
     user_id: str = current_user["sub"]
     repo = AlarmRepository()
     try:
@@ -106,8 +114,11 @@ def create_alarm(payload: AlarmUpsertRequest, current_user: dict = Depends(get_c
 
 
 @router.put("/{alarm_id}")
-def update_alarm(alarm_id: str, payload: AlarmUpsertRequest, current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
+def update_alarm(
+    alarm_id: str, payload: AlarmUpsertRequest, current_user: dict = Depends(get_current_user)
+) -> dict[str, Any]:
     from database import AlarmRepository
+
     user_id: str = current_user["sub"]
     repo = AlarmRepository()
     alarm = repo.update_alarm(
@@ -126,8 +137,11 @@ def update_alarm(alarm_id: str, payload: AlarmUpsertRequest, current_user: dict 
 
 
 @router.post("/{alarm_id}/toggle")
-def toggle_alarm(alarm_id: str, payload: AlarmToggleRequest, current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
+def toggle_alarm(
+    alarm_id: str, payload: AlarmToggleRequest, current_user: dict = Depends(get_current_user)
+) -> dict[str, Any]:
     from database import AlarmRepository
+
     user_id: str = current_user["sub"]
     repo = AlarmRepository()
     alarm = repo.update_alarm(alarm_id=alarm_id, user_id=user_id, enabled=payload.enabled)
@@ -139,6 +153,7 @@ def toggle_alarm(alarm_id: str, payload: AlarmToggleRequest, current_user: dict 
 @router.delete("/{alarm_id}")
 def delete_alarm(alarm_id: str, current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
     from database import AlarmRepository
+
     user_id: str = current_user["sub"]
     repo = AlarmRepository()
     deleted = repo.delete_alarm(alarm_id=alarm_id, user_id=user_id)

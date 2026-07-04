@@ -20,6 +20,7 @@ def _get_model() -> "SentenceTransformer":
     global _model
     if _model is None:
         from sentence_transformers import SentenceTransformer
+
         logger.info("Loading sentence-transformer model: {}", _MODEL_NAME)
         _model = SentenceTransformer(_MODEL_NAME)
         logger.info("Sentence-transformer model loaded.")
@@ -48,6 +49,7 @@ def is_available() -> bool:
     """Return True if sentence-transformers is importable."""
     try:
         import sentence_transformers  # noqa: F401
+
         return True
     except ImportError:
         return False

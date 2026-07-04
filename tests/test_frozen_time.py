@@ -18,8 +18,8 @@ from time_utils import utcnow
 
 # ─── HadithService — date-dependent cache path ───────────────────────────────
 
-class TestHadithServiceFrozenDate:
 
+class TestHadithServiceFrozenDate:
     @freeze_time("2026-05-05")
     def test_cache_path_contains_frozen_date(self, tmp_path):
         service = HadithService(cache_dir=tmp_path)
@@ -67,8 +67,8 @@ class TestHadithServiceFrozenDate:
 
 # ─── time_utils.utcnow — frozen to specific instant ──────────────────────────
 
-class TestUtcnowFrozenTime:
 
+class TestUtcnowFrozenTime:
     @freeze_time("2026-05-05 03:00:00", tz_offset=0)
     def test_utcnow_returns_frozen_instant(self):
         frozen = utcnow()

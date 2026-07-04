@@ -28,6 +28,7 @@ _FUZZY_THRESHOLD = 0.80
 @dataclass(frozen=True)
 class WakeResult:
     """Outcome of a wake-word detection attempt."""
+
     detected: bool
     matched_phrase: str = ""
     score: float = 0.0
@@ -82,7 +83,7 @@ class LocalWakeWordDetector:
         best_score = 0.0
         best_phrase = ""
         for phrase in self.all_phrases:
-            ratio = SequenceMatcher(None, phrase, candidate[:len(phrase) + 5]).ratio()
+            ratio = SequenceMatcher(None, phrase, candidate[: len(phrase) + 5]).ratio()
             if ratio > best_score:
                 best_score = ratio
                 best_phrase = phrase

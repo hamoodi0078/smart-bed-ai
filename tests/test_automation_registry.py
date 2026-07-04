@@ -61,8 +61,12 @@ class TestAutomationRegistry(unittest.TestCase):
                 )
             )
 
-            first = registry.run_automations(_ctx(now_utc=datetime(2026, 3, 5, 12, 0, tzinfo=timezone.utc)))
-            second = registry.run_automations(_ctx(now_utc=datetime(2026, 3, 5, 12, 10, tzinfo=timezone.utc)))
+            first = registry.run_automations(
+                _ctx(now_utc=datetime(2026, 3, 5, 12, 0, tzinfo=timezone.utc))
+            )
+            second = registry.run_automations(
+                _ctx(now_utc=datetime(2026, 3, 5, 12, 10, tzinfo=timezone.utc))
+            )
 
             self.assertEqual(len(first), 1)
             self.assertEqual(second, [])
@@ -84,8 +88,12 @@ class TestAutomationRegistry(unittest.TestCase):
                 )
             )
 
-            first = registry.run_automations(_ctx(now_utc=datetime(2026, 3, 5, 12, 0, tzinfo=timezone.utc)))
-            second = registry.run_automations(_ctx(now_utc=datetime(2026, 3, 5, 12, 1, tzinfo=timezone.utc)))
+            first = registry.run_automations(
+                _ctx(now_utc=datetime(2026, 3, 5, 12, 0, tzinfo=timezone.utc))
+            )
+            second = registry.run_automations(
+                _ctx(now_utc=datetime(2026, 3, 5, 12, 1, tzinfo=timezone.utc))
+            )
 
             self.assertEqual(len(first), 1)
             self.assertEqual(second, [])
@@ -336,7 +344,9 @@ class TestDefaultAutomations(unittest.TestCase):
                 sleep_mode_active=False,
             )
         )
-        led_ops = [effect.payload.get("op") for effect in effects if getattr(effect, "kind", "") == "led"]
+        led_ops = [
+            effect.payload.get("op") for effect in effects if getattr(effect, "kind", "") == "led"
+        ]
         self.assertNotIn("wake_up_scene", led_ops)
 
     def test_configurable_fajr_time_triggers_gentle_light(self):
@@ -348,7 +358,9 @@ class TestDefaultAutomations(unittest.TestCase):
                 fajr_light_time="05:20",
             )
         )
-        led_ops = [effect.payload.get("op") for effect in effects if getattr(effect, "kind", "") == "led"]
+        led_ops = [
+            effect.payload.get("op") for effect in effects if getattr(effect, "kind", "") == "led"
+        ]
         self.assertIn("fajr_gentle_light_scene", led_ops)
 
 

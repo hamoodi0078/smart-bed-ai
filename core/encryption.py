@@ -51,7 +51,7 @@ def _load_fernet():
         if is_production:
             raise RuntimeError(
                 "DATA_ENCRYPTION_KEY is not set. "
-                "Generate one: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+                'Generate one: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
             )
         logger.warning(
             "DATA_ENCRYPTION_KEY not set — using insecure dev-only fallback key. "
@@ -82,6 +82,7 @@ def encrypt_value(plaintext: str) -> str:
 def decrypt_value(ciphertext: str) -> str:
     """Decrypt *ciphertext* returned by :func:`encrypt_value`."""
     from cryptography.fernet import InvalidToken
+
     try:
         return _get_fernet().decrypt(ciphertext.encode()).decode()
     except InvalidToken as exc:

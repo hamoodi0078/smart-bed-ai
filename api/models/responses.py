@@ -59,7 +59,9 @@ class DetailedHealthResponse(BaseModel):
     status: str = Field(..., description="Overall health status")
     timestamp: str = Field(..., description="ISO timestamp")
     version: str = Field(..., description="Application version")
-    services: list[ServiceHealth] = Field(default_factory=list, description="Individual service health")
+    services: list[ServiceHealth] = Field(
+        default_factory=list, description="Individual service health"
+    )
     uptime_seconds: float | None = Field(None, description="Service uptime")
 
 

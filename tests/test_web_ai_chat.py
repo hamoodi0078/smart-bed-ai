@@ -35,7 +35,9 @@ class _FakeMemoryStore:
         self.prompt_inputs.append(str(user_text))
         return "Continuity memory: In prior sessions user mentioned -> sleep debt"
 
-    def record_turn(self, user_text: str, assistant_text: str, emotion_state: str, personality: str):
+    def record_turn(
+        self, user_text: str, assistant_text: str, emotion_state: str, personality: str
+    ):
         self.recorded.append(
             {
                 "user_text": str(user_text),
@@ -55,7 +57,9 @@ class TestWebAiChat(unittest.TestCase):
         self.database_url = f"sqlite:///{self.sqlite_path.as_posix()}"
         self.store = SubscriptionStore(db_path=self.db_path)
         self.store.hash_password = lambda password: _legacy_sha256(password)
-        self.store.check_password = lambda password, stored_hash: stored_hash == _legacy_sha256(password)
+        self.store.check_password = lambda password, stored_hash: (
+            stored_hash == _legacy_sha256(password)
+        )
 
         self._patch_env = patch.dict(
             os.environ,
@@ -100,7 +104,9 @@ class TestWebAiChat(unittest.TestCase):
         reset_auth_service_singleton()
         self._tmp.cleanup()
 
-    def _register(self, email: str = "chat@example.com", password: str = "Secret1234", name: str = "Chat User"):
+    def _register(
+        self, email: str = "chat@example.com", password: str = "Secret1234", name: str = "Chat User"
+    ):
         return self.client.post(
             "/v1/auth/register",
             json={"email": email, "password": password, "name": name},
@@ -139,10 +145,13 @@ class TestWebAiChat(unittest.TestCase):
 
         fake_engine = _FakeChatEngine("AI response from engine.")
         fake_memory = _FakeMemoryStore()
-        with patch("web_server._chat_engine_for_user", return_value=fake_engine), patch(
-            "web_server._memory_store_for_user", return_value=fake_memory
+        with (
+            patch("web_server._chat_engine_for_user", return_value=fake_engine),
+            patch("web_server._memory_store_for_user", return_value=fake_memory),
         ):
-            response = self.client.post("/v1/ai/chat", json={"message": "I feel tired and I need a plan."})
+            response = self.client.post(
+                "/v1/ai/chat", json={"message": "I feel tired and I need a plan."}
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json().get("reply"), "AI response from engine.")
@@ -164,8 +173,9 @@ class TestWebAiChat(unittest.TestCase):
 
         fake_engine = _FakeChatEngine("(Deepgram fallback - guide) temporary fallback text.")
         fake_memory = _FakeMemoryStore()
-        with patch("web_server._chat_engine_for_user", return_value=fake_engine), patch(
-            "web_server._memory_store_for_user", return_value=fake_memory
+        with (
+            patch("web_server._chat_engine_for_user", return_value=fake_engine),
+            patch("web_server._memory_store_for_user", return_value=fake_memory),
         ):
             response = self.client.post("/v1/ai/chat", json={"message": "show me system status"})
 
@@ -173,7 +183,9 @@ class TestWebAiChat(unittest.TestCase):
         reply = response.json().get("reply", "")
         self.assertIn("System looks stable right now", reply)
         self.assertEqual(len(fake_memory.recorded), 1)
-        self.assertIn("System looks stable right now", fake_memory.recorded[0].get("assistant_text", ""))
+        self.assertIn(
+            "System looks stable right now", fake_memory.recorded[0].get("assistant_text", "")
+        )
 
 
 if __name__ == "__main__":

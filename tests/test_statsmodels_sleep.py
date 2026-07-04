@@ -19,6 +19,7 @@ def _make_profile(
 ) -> dict:
     """Build a synthetic profile with *n_nights* of paired bed/wake history."""
     import random
+
     rng = random.Random(42)
     base_bed = datetime(2026, 3, 1, 23, 0, tzinfo=_UTC)
     beds, wakes = [], []
@@ -32,7 +33,6 @@ def _make_profile(
 
 
 class TestForecastSleepDuration(unittest.TestCase):
-
     def test_returns_unavailable_for_too_few_nights(self):
         profile = _make_profile(3)
         result = SleepAnalyzer().forecast_sleep_duration(profile)
@@ -79,7 +79,6 @@ class TestForecastSleepDuration(unittest.TestCase):
 
 
 class TestDecomposeSleepPattern(unittest.TestCase):
-
     def test_returns_unavailable_when_statsmodels_missing(self):
         profile = _make_profile(20)
         with patch("sleep_tracking.sleep_analyzer._STATSMODELS_AVAILABLE", False):
@@ -99,8 +98,15 @@ class TestDecomposeSleepPattern(unittest.TestCase):
         result = SleepAnalyzer().decompose_sleep_pattern(profile)
         if not result["available"]:
             self.skipTest("statsmodels not installed or insufficient data")
-        for key in ("trend_direction", "trend_change_hours", "seasonal_strength_hours",
-                    "peak_sleep_day", "trough_sleep_day", "residual_noise_std", "nights_analyzed"):
+        for key in (
+            "trend_direction",
+            "trend_change_hours",
+            "seasonal_strength_hours",
+            "peak_sleep_day",
+            "trough_sleep_day",
+            "residual_noise_std",
+            "nights_analyzed",
+        ):
             self.assertIn(key, result)
 
     def test_trend_direction_valid_value(self):
@@ -129,7 +135,6 @@ class TestDecomposeSleepPattern(unittest.TestCase):
 
 
 class TestStationarity(unittest.TestCase):
-
     def test_returns_unavailable_when_statsmodels_missing(self):
         profile = _make_profile(20)
         with patch("sleep_tracking.sleep_analyzer._STATSMODELS_AVAILABLE", False):
@@ -148,8 +153,14 @@ class TestStationarity(unittest.TestCase):
         result = SleepAnalyzer().test_stationarity(profile)
         if not result["available"]:
             self.skipTest("statsmodels not installed or insufficient data")
-        for key in ("is_stationary", "adf_statistic", "p_value", "critical_values",
-                    "lag1_autocorrelation", "interpretation"):
+        for key in (
+            "is_stationary",
+            "adf_statistic",
+            "p_value",
+            "critical_values",
+            "lag1_autocorrelation",
+            "interpretation",
+        ):
             self.assertIn(key, result)
 
     def test_stable_series_is_stationary(self):
@@ -180,7 +191,6 @@ class TestStationarity(unittest.TestCase):
 
 
 class TestDriftDetectionWithADF(unittest.TestCase):
-
     def test_stationarity_test_key_present_in_drift_result(self):
         profile = _make_profile(12, jitter=0.3)
         result = SleepAnalyzer().detect_bedtime_drift(profile, days=12)

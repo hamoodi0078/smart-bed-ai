@@ -26,7 +26,9 @@ class TestExtractedCommandHandlers(unittest.TestCase):
         led_effects = [effect for effect in result.effects if effect.kind == "led"]
         self.assertEqual(len(led_effects), 2)
 
-        color_effect = next(effect for effect in led_effects if effect.payload.get("op") == "set_user_color")
+        color_effect = next(
+            effect for effect in led_effects if effect.payload.get("op") == "set_user_color"
+        )
         self.assertEqual(color_effect.payload.get("color"), "warmwhite")
 
         brightness_effect = next(
@@ -50,16 +52,26 @@ class TestExtractedCommandHandlers(unittest.TestCase):
             now_provider=lambda: now,
         )
 
-        self.assertEqual(result.text, "Okay, I will remind you to check your project tonight at 9 pm.")
+        self.assertEqual(
+            result.text, "Okay, I will remind you to check your project tonight at 9 pm."
+        )
         store_effects = [effect for effect in result.effects if effect.kind == "store"]
         self.assertEqual(len(store_effects), 2)
 
-        append_effect = next(effect for effect in store_effects if effect.payload.get("op") == "append_planned_reminder")
+        append_effect = next(
+            effect
+            for effect in store_effects
+            if effect.payload.get("op") == "append_planned_reminder"
+        )
         reminder = append_effect.payload.get("reminder", {})
         self.assertEqual(reminder.get("task"), "check my project")
         self.assertEqual(reminder.get("time"), "9 pm")
 
-        nudge_effect = next(effect for effect in store_effects if effect.payload.get("op") == "set_reminder_nudge_state")
+        nudge_effect = next(
+            effect
+            for effect in store_effects
+            if effect.payload.get("op") == "set_reminder_nudge_state"
+        )
         state = nudge_effect.payload.get("state", {})
         self.assertTrue(bool(state.get("active")))
         self.assertEqual(state.get("task"), "check my project")
@@ -91,7 +103,9 @@ class TestExtractedCommandHandlers(unittest.TestCase):
             called["value"] = True
             return "scene applied"
 
-        reply = handle_sleep_intent("go to sleep", activate_sleep_scene=_activate, log=lambda _: None)
+        reply = handle_sleep_intent(
+            "go to sleep", activate_sleep_scene=_activate, log=lambda _: None
+        )
 
         self.assertTrue(called["value"])
         self.assertEqual(reply, "I have started sleep mode with a calm light scene.")

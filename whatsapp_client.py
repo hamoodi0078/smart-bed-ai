@@ -4,6 +4,7 @@ Requires environment variables:
   WHATSAPP_PHONE_NUMBER_ID  — your WhatsApp Business phone number ID
   WHATSAPP_ACCESS_TOKEN     — long-lived access token for the Graph API
 """
+
 from __future__ import annotations
 
 import json
@@ -26,10 +27,7 @@ if not _configured:
 
 
 def _api_url() -> str:
-    return (
-        f"https://graph.facebook.com/{WHATSAPP_API_VERSION}"
-        f"/{WHATSAPP_PHONE_NUMBER_ID}/messages"
-    )
+    return f"https://graph.facebook.com/{WHATSAPP_API_VERSION}/{WHATSAPP_PHONE_NUMBER_ID}/messages"
 
 
 def is_configured() -> bool:

@@ -23,6 +23,7 @@ import unicodedata
 
 try:
     import pyarabic.araby as _araby
+
     _PYARABIC_AVAILABLE = True
 except ImportError:
     _araby = None  # type: ignore[assignment]
@@ -30,6 +31,7 @@ except ImportError:
 
 try:
     import arabic_reshaper as _arabic_reshaper
+
     _RESHAPER_AVAILABLE = True
 except ImportError:
     _arabic_reshaper = None  # type: ignore[assignment]
@@ -56,7 +58,9 @@ def strip_diacritics(text: str) -> str:
     if _PYARABIC_AVAILABLE:
         return _araby.strip_tashkeel(str(text))
     # Fallback: strip via Unicode category (Mn = non-spacing mark)
-    return "".join(ch for ch in unicodedata.normalize("NFD", text) if unicodedata.category(ch) != "Mn")
+    return "".join(
+        ch for ch in unicodedata.normalize("NFD", text) if unicodedata.category(ch) != "Mn"
+    )
 
 
 def normalize_arabic(text: str) -> str:
@@ -130,6 +134,7 @@ def detect_language(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Rendering helpers (arabic-reshaper)
 # ---------------------------------------------------------------------------
+
 
 def reshape_arabic(text: str) -> str:
     """Reshape Arabic text for correct rendering in PIL/image contexts.

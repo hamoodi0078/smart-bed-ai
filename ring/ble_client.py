@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import asyncio
@@ -90,6 +91,7 @@ logger = logging.getLogger("ring.ble_client")
 _bleak: Any = None
 try:
     import bleak as _bleak_import
+
     _bleak = _bleak_import
 except ImportError:
     logger.debug("bleak not installed — ring BLE disabled.")
@@ -98,6 +100,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Ring BLE Client
 # ---------------------------------------------------------------------------
+
 
 class RingBleClient:
     """Manages BLE connection to a COLMI smart ring.
@@ -251,12 +254,14 @@ class RingBleClient:
                     if prefix in name.upper():
                         model = RingModel.from_str(f"colmi_{prefix.lower()}")
                         break
-                rings.append(RingDevice(
-                    address=str(d.address),
-                    name=name,
-                    rssi=int(getattr(d, "rssi", -100)),
-                    model=model,
-                ))
+                rings.append(
+                    RingDevice(
+                        address=str(d.address),
+                        name=name,
+                        rssi=int(getattr(d, "rssi", -100)),
+                        model=model,
+                    )
+                )
 
         logger.info("Found %d COLMI ring(s): %s", len(rings), [r.address for r in rings])
         self._state = RingConnectionState.DISCONNECTED
@@ -355,10 +360,12 @@ class RingBleClient:
 
         self._state = RingConnectionState.RECONNECTING
         for attempt in range(self._max_retries):
-            delay = min(self._backoff_max, self._backoff_base ** attempt)
+            delay = min(self._backoff_max, self._backoff_base**attempt)
             logger.info(
                 "Ring reconnect attempt %d/%d in %.0fs...",
-                attempt + 1, self._max_retries, delay,
+                attempt + 1,
+                self._max_retries,
+                delay,
             )
             await asyncio.sleep(delay)
             if await self.connect():
@@ -456,7 +463,9 @@ class RingBleClient:
                 loop.close()
 
         self._bg_thread = threading.Thread(
-            target=_run, name="ring-ble-bg", daemon=True,
+            target=_run,
+            name="ring-ble-bg",
+            daemon=True,
         )
         self._bg_thread.start()
         logger.info("Ring BLE background thread started.")
@@ -609,6 +618,7 @@ class RingBleClient:
 # ---------------------------------------------------------------------------
 # Noop fallback (same pattern as NoopHeartRateMonitor)
 # ---------------------------------------------------------------------------
+
 
 class NoopRingClient:
     """Placeholder when ring is disabled or bleak is not installed.

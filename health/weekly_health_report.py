@@ -111,6 +111,7 @@ class WeeklyHealthReport:
         consistency = 100
         if len(bed_minutes) > 1:
             import statistics
+
             try:
                 std = statistics.stdev(bed_minutes)
                 consistency = max(0, min(100, int(100 - std)))
@@ -134,17 +135,21 @@ class WeeklyHealthReport:
         scores = [int(h.get("score", 0)) for h in recent]
 
         overthinking = profile.get("daily_life", {}).get("overthinking_entries", [])
-        recent_overthinking = len([
-            e for e in overthinking
-            if str(e.get("at", "")) >= (_utcnow() - timedelta(days=7)).isoformat()
-        ])
+        recent_overthinking = len(
+            [
+                e
+                for e in overthinking
+                if str(e.get("at", "")) >= (_utcnow() - timedelta(days=7)).isoformat()
+            ]
+        )
 
         return {
             "avg_stress_score": round(sum(scores) / len(scores), 1) if scores else 0,
             "high_stress_days": sum(1 for s in scores if s >= 60),
             "overthinking_entries": recent_overthinking,
-            "stress_trend": "improving" if len(scores) >= 3 and scores[-1] < scores[0]
-                           else ("worsening" if len(scores) >= 3 and scores[-1] > scores[0] else "stable"),
+            "stress_trend": "improving"
+            if len(scores) >= 3 and scores[-1] < scores[0]
+            else ("worsening" if len(scores) >= 3 and scores[-1] > scores[0] else "stable"),
         }
 
     def _compile_hydration(self, profile: dict) -> dict[str, Any]:
@@ -205,7 +210,9 @@ class WeeklyHealthReport:
         if sleep.get("consistency_score", 100) < 60:
             recs.append("Your bedtime varies a lot. A consistent schedule improves sleep quality.")
         if sleep.get("total_debt_hours", 0) > 3:
-            recs.append(f"You have {sleep['total_debt_hours']:.0f}h sleep debt. Plan a recovery weekend.")
+            recs.append(
+                f"You have {sleep['total_debt_hours']:.0f}h sleep debt. Plan a recovery weekend."
+            )
         if sleep.get("short_nights", 0) >= 3:
             recs.append("Too many short nights this week. Prioritize sleep duration.")
 
@@ -261,6 +268,7 @@ class WeeklyHealthReport:
         Raises RuntimeError if reportlab is not installed.
         """
         from reports.pdf_generator import generate_weekly_pdf
+
         return generate_weekly_pdf(report, output_path)
 
     def to_html_pdf(self, report: dict[str, Any], output_path: str) -> str:
@@ -270,11 +278,13 @@ class WeeklyHealthReport:
         Raises RuntimeError if weasyprint is not installed.
         """
         from reports.html_report_renderer import render_pdf
+
         return render_pdf(report, output_path)
 
     def to_html(self, report: dict[str, Any]) -> str:
         """Return the report as a styled HTML document string."""
         from reports.html_report_renderer import render_html
+
         return render_html(report)
 
     def _build_whatsapp_text(self, report: dict) -> str:

@@ -26,8 +26,8 @@ class TestMobileMonetizationUndoApi(unittest.TestCase):
 
         self.store = SubscriptionStore(db_path=self._subscription_db_path)
         self.store.hash_password = lambda password: _legacy_sha256(password)
-        self.store.check_password = (
-            lambda password, stored_hash: stored_hash == _legacy_sha256(password)
+        self.store.check_password = lambda password, stored_hash: (
+            stored_hash == _legacy_sha256(password)
         )
 
         self._env_patch = patch.dict(
@@ -168,8 +168,7 @@ class TestMobileMonetizationUndoApi(unittest.TestCase):
         rows = timeline.json().get("items", [])
         self.assertFalse(
             any(
-                isinstance(row, dict)
-                and str(row.get("command_id", "") or "") == command_id
+                isinstance(row, dict) and str(row.get("command_id", "") or "") == command_id
                 for row in rows
             )
         )

@@ -119,7 +119,10 @@ class SpotifyManager:
                 if response.status_code == 401:
                     return False, "Spotify token expired/invalid. Refresh access token."
                 if response.status_code == 404:
-                    return False, "No active Spotify device found. Open Spotify app and start playback once."
+                    return (
+                        False,
+                        "No active Spotify device found. Open Spotify app and start playback once.",
+                    )
                 return False, f"Spotify API error ({response.status_code}): {text}"
             return True, "ok"
         except Exception:

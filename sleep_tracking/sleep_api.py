@@ -91,7 +91,9 @@ def end_sleep(request: SleepEndRequest) -> dict:
     )
     _update_log_score(session_id=str(completed.get("session_id", "")), score=score)
     label = sleep_score_calculator.get_score_label(score)
-    advice = sleep_score_calculator.get_score_advice(score, float(completed.get("total_hours", 0.0) or 0.0))
+    advice = sleep_score_calculator.get_score_advice(
+        score, float(completed.get("total_hours", 0.0) or 0.0)
+    )
     completed["sleep_score"] = score
 
     return {
@@ -135,7 +137,9 @@ def get_latest_sleep_score(user_id: str) -> dict:
         "found": True,
         "score": score,
         "label": sleep_score_calculator.get_score_label(score),
-        "advice": sleep_score_calculator.get_score_advice(score, float(latest.get("total_hours", 0.0) or 0.0)),
+        "advice": sleep_score_calculator.get_score_advice(
+            score, float(latest.get("total_hours", 0.0) or 0.0)
+        ),
         "session_id": latest.get("session_id"),
     }
 

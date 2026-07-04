@@ -3,6 +3,7 @@
 Extracted from web_server.py so routers can manage session cookies
 without importing the legacy monolith.
 """
+
 from __future__ import annotations
 
 from fastapi import HTTPException, Request, Response
@@ -11,6 +12,7 @@ from config import settings
 
 
 # ── Origin enforcement ────────────────────────────────────────────────────────
+
 
 def enforce_same_origin(request: Request) -> None:
     """Raise HTTP 403 if the request's Origin/Referer is not in the allow-list.
@@ -21,6 +23,7 @@ def enforce_same_origin(request: Request) -> None:
     - localhost/127.0.0.1 origins in non-production environments.
     """
     import os
+
     origin = (
         str(request.headers.get("Origin", "") or "").strip()
         or str(request.headers.get("Referer", "") or "").strip()

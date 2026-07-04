@@ -13,22 +13,60 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
-
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
 POSITIVE_KEYWORDS = {
-    "happy", "joy", "peace", "light", "flying", "garden", "water", "family",
-    "love", "success", "beautiful", "calm", "paradise", "angel", "prayer",
+    "happy",
+    "joy",
+    "peace",
+    "light",
+    "flying",
+    "garden",
+    "water",
+    "family",
+    "love",
+    "success",
+    "beautiful",
+    "calm",
+    "paradise",
+    "angel",
+    "prayer",
 }
 NEGATIVE_KEYWORDS = {
-    "scary", "fear", "falling", "chase", "dark", "lost", "death", "fire",
-    "monster", "trapped", "pain", "cry", "scream", "nightmare", "snake",
+    "scary",
+    "fear",
+    "falling",
+    "chase",
+    "dark",
+    "lost",
+    "death",
+    "fire",
+    "monster",
+    "trapped",
+    "pain",
+    "cry",
+    "scream",
+    "nightmare",
+    "snake",
 }
 NEUTRAL_KEYWORDS = {
-    "house", "car", "school", "work", "walk", "talk", "eat", "sleep",
-    "travel", "road", "door", "window", "room", "people", "friend",
+    "house",
+    "car",
+    "school",
+    "work",
+    "walk",
+    "talk",
+    "eat",
+    "sleep",
+    "travel",
+    "road",
+    "door",
+    "window",
+    "room",
+    "people",
+    "friend",
 }
 
 
@@ -147,7 +185,12 @@ class DreamJournalEnhanced:
             label = "neutral"
             score = 0.0
 
-        return {"label": label, "score": round(score, 2), "positive_count": pos, "negative_count": neg}
+        return {
+            "label": label,
+            "score": round(score, 2),
+            "positive_count": pos,
+            "negative_count": neg,
+        }
 
     def _extract_themes(self, text: str) -> list[str]:
         text_lower = text.lower()

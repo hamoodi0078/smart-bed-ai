@@ -55,16 +55,19 @@ class TrialAutomation:
             "started": True,
             "trial_end": sub["trial_end_date"],
             "days": self._trial_days,
-            "actions": [{
-                "type": "notification",
-                "category": "trial_welcome",
-                "message": "Welcome to Dana! Your premium trial starts now. Explore all features!",
-                "priority": "high",
-            }, {
-                "type": "voice",
-                "message": "Welcome to Dana! Let's set up your profile for the best experience.",
-                "volume": 0.5,
-            }],
+            "actions": [
+                {
+                    "type": "notification",
+                    "category": "trial_welcome",
+                    "message": "Welcome to Dana! Your premium trial starts now. Explore all features!",
+                    "priority": "high",
+                },
+                {
+                    "type": "voice",
+                    "message": "Welcome to Dana! Let's set up your profile for the best experience.",
+                    "volume": 0.5,
+                },
+            ],
         }
 
     # ------------------------------------------------------------------
@@ -108,85 +111,107 @@ class TrialAutomation:
 
     def _get_touchpoint(self, day: int, features: list, sub: dict) -> list[dict[str, Any]] | None:
         if day == 1:
-            return [{
-                "type": "notification",
-                "category": "trial_day1",
-                "message": "Day 1: Explore voice commands, sleep tracking, and prayer automation!",
-                "priority": "medium",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "trial_day1",
+                    "message": "Day 1: Explore voice commands, sleep tracking, and prayer automation!",
+                    "priority": "medium",
+                }
+            ]
 
         if day == 3:
             unused = self._find_unused_features(features)
             tip = f"Try {unused[0]}!" if unused else "You're exploring great!"
-            return [{
-                "type": "notification",
-                "category": "trial_day3",
-                "message": f"Day 3 of your trial. {tip} Features used: {len(features)}.",
-                "priority": "medium",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "trial_day3",
+                    "message": f"Day 3 of your trial. {tip} Features used: {len(features)}.",
+                    "priority": "medium",
+                }
+            ]
 
         if day == 7:
-            return [{
-                "type": "notification",
-                "category": "trial_midpoint",
-                "message": "Halfway through your trial! You've used {} features. See your sleep improvement so far.".format(len(features)),
-                "priority": "high",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "trial_midpoint",
+                    "message": "Halfway through your trial! You've used {} features. See your sleep improvement so far.".format(
+                        len(features)
+                    ),
+                    "priority": "high",
+                }
+            ]
 
         if day == 11:
-            return [{
-                "type": "notification",
-                "category": "trial_expiring_soon",
-                "message": "Trial ends in 3 days. After that, you'll lose premium features like smart wake and AI coaching.",
-                "priority": "high",
-            }, {
-                "type": "prompt",
-                "action": "show_upgrade_comparison",
-                "message": "Compare free vs premium features",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "trial_expiring_soon",
+                    "message": "Trial ends in 3 days. After that, you'll lose premium features like smart wake and AI coaching.",
+                    "priority": "high",
+                },
+                {
+                    "type": "prompt",
+                    "action": "show_upgrade_comparison",
+                    "message": "Compare free vs premium features",
+                },
+            ]
 
         if day == 13:
-            return [{
-                "type": "notification",
-                "category": "trial_last_day_warning",
-                "message": "Last full day of your trial tomorrow! Subscribe today for 20% off your first month.",
-                "priority": "high",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "trial_last_day_warning",
+                    "message": "Last full day of your trial tomorrow! Subscribe today for 20% off your first month.",
+                    "priority": "high",
+                }
+            ]
 
         if day == self._trial_days:
-            return [{
-                "type": "notification",
-                "category": "trial_expired",
-                "message": "Your trial has ended. Upgrade anytime to restore premium features.",
-                "priority": "high",
-            }, {
-                "type": "system",
-                "action": "downgrade_to_free",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "trial_expired",
+                    "message": "Your trial has ended. Upgrade anytime to restore premium features.",
+                    "priority": "high",
+                },
+                {
+                    "type": "system",
+                    "action": "downgrade_to_free",
+                },
+            ]
 
         if day == self._trial_days + 1:
-            return [{
-                "type": "notification",
-                "category": "post_trial_day1",
-                "message": "Miss the smart wake feature? Upgrade to get it back anytime.",
-                "priority": "low",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "post_trial_day1",
+                    "message": "Miss the smart wake feature? Upgrade to get it back anytime.",
+                    "priority": "low",
+                }
+            ]
 
         if day == self._trial_days + 3:
-            return [{
-                "type": "notification",
-                "category": "post_trial_day3",
-                "message": "Your sleep insights are waiting. Upgrade to continue tracking improvements.",
-                "priority": "low",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "post_trial_day3",
+                    "message": "Your sleep insights are waiting. Upgrade to continue tracking improvements.",
+                    "priority": "low",
+                }
+            ]
 
         if day == self._trial_days + 7:
-            return [{
-                "type": "notification",
-                "category": "post_trial_week1",
-                "message": "It's been a week since your trial ended. Come back with a special offer!",
-                "priority": "low",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "post_trial_week1",
+                    "message": "It's been a week since your trial ended. Come back with a special offer!",
+                    "priority": "low",
+                }
+            ]
 
         return None
 
@@ -253,8 +278,15 @@ class TrialAutomation:
     @staticmethod
     def _find_unused_features(used: list) -> list[str]:
         all_features = [
-            "smart_wake", "sleep_tracking", "prayer_automation", "ai_coaching",
-            "breathing_exercises", "mood_tracking", "circadian_lighting",
-            "nap_detection", "weekly_report", "partner_mode",
+            "smart_wake",
+            "sleep_tracking",
+            "prayer_automation",
+            "ai_coaching",
+            "breathing_exercises",
+            "mood_tracking",
+            "circadian_lighting",
+            "nap_detection",
+            "weekly_report",
+            "partner_mode",
         ]
         return [f for f in all_features if f not in used][:3]

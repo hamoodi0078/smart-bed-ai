@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from led.led_control import LEDController
 
+
 def normalize_followup_tone(value: str) -> str:
     tone = str(value or "soft").strip().lower().replace("-", " ").replace("_", " ")
     if tone in ("teen", "teen friendly", "teenfriendly", "gen z", "youth"):
@@ -11,6 +12,7 @@ def normalize_followup_tone(value: str) -> str:
     if tone in ("islamic", "islamic supportive", "faith", "deen"):
         return "islamic"
     return "soft"
+
 
 def is_islamic_reminder_request(lowered_user_text: str) -> bool:
     text = str(lowered_user_text or "").lower()
@@ -20,6 +22,7 @@ def is_islamic_reminder_request(lowered_user_text: str) -> bool:
         or ("deen reminder" in text)
         or ("allah" in text)
     )
+
 
 def next_islamic_reminder(profile: dict) -> str:
     reminders = [
@@ -32,6 +35,7 @@ def next_islamic_reminder(profile: dict) -> str:
     selected = reminders[reminder_index % len(reminders)]
     runtime_flags["islamic_reminder_index"] = reminder_index + 1
     return selected
+
 
 def apply_fajr_gentle_light_scene(led: LEDController):
     led.set_user_animation("breathing")

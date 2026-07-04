@@ -18,7 +18,9 @@ class ContinuousBargeInMonitor:
         def _run():
             while self._active.is_set():
                 try:
-                    text, confidence = self.wake_word_manager.capture_barge_in_text_with_confidence()
+                    text, confidence = (
+                        self.wake_word_manager.capture_barge_in_text_with_confidence()
+                    )
                     cleaned = self.wake_word_manager._sanitize_barge_in_text(text, confidence)
                     if cleaned:
                         on_barge_in(cleaned, confidence)

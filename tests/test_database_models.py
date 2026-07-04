@@ -86,9 +86,7 @@ class TestDatabaseModels(unittest.TestCase):
         db.create_tables()
         with db.engine.connect() as connection:
             stored = connection.execute(
-                text(
-                    "SELECT value FROM schema_meta WHERE key = :key"
-                ),
+                text("SELECT value FROM schema_meta WHERE key = :key"),
                 {"key": DatabaseConnection.SCHEMA_VERSION_KEY},
             ).scalar_one_or_none()
         self.assertEqual(int(str(stored or "0")), DatabaseConnection.CURRENT_SCHEMA_VERSION)

@@ -39,10 +39,14 @@ class BreathingExercise:
         for cycle in range(1, total_cycles + 1):
             sequence.append({"action": "Inhale", "seconds": int(pattern["inhale"]), "cycle": cycle})
             if int(pattern["hold_in"]) > 0:
-                sequence.append({"action": "Hold", "seconds": int(pattern["hold_in"]), "cycle": cycle})
+                sequence.append(
+                    {"action": "Hold", "seconds": int(pattern["hold_in"]), "cycle": cycle}
+                )
             sequence.append({"action": "Exhale", "seconds": int(pattern["exhale"]), "cycle": cycle})
             if int(pattern["hold_out"]) > 0:
-                sequence.append({"action": "Hold Out", "seconds": int(pattern["hold_out"]), "cycle": cycle})
+                sequence.append(
+                    {"action": "Hold Out", "seconds": int(pattern["hold_out"]), "cycle": cycle}
+                )
 
         return sequence
 

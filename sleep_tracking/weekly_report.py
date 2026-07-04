@@ -76,7 +76,8 @@ class WeeklyReportGenerator:
 
     def generate_report(self, user_id: str) -> dict:
         sessions = [
-            item for item in self._read_log()
+            item
+            for item in self._read_log()
             if isinstance(item, dict)
             and str(item.get("user_id")) == str(user_id)
             and str(item.get("status", "")) == "completed"
@@ -116,7 +117,9 @@ class WeeklyReportGenerator:
         for session in current_week:
             entry = dict(session)
             entry["score"] = self._session_score(session)
-            entry["session_date"] = self._session_date(session).isoformat() if self._session_date(session) else ""
+            entry["session_date"] = (
+                self._session_date(session).isoformat() if self._session_date(session) else ""
+            )
             enriched.append(entry)
 
         avg_sleep_hours = round(
@@ -155,7 +158,9 @@ class WeeklyReportGenerator:
 
         avg_hours = float(report.get("avg_sleep_hours", 0.0) or 0.0)
         avg_score = float(report.get("avg_score", 0.0) or 0.0)
-        best_night = report.get("best_night", {}) if isinstance(report.get("best_night", {}), dict) else {}
+        best_night = (
+            report.get("best_night", {}) if isinstance(report.get("best_night", {}), dict) else {}
+        )
         best_date_text = str(best_night.get("date", "")).strip()
         best_day = "your best night"
         if best_date_text:

@@ -56,6 +56,7 @@ from api.dependencies import (
 
 logger = logging.getLogger("api.automation_routes")
 
+
 def _get_service(request: Request, service_name: str) -> Any:
     """Retrieve a service instance from app state."""
     services = getattr(request.app.state, "services", {})
@@ -64,6 +65,7 @@ def _get_service(request: Request, service_name: str) -> Any:
         raise HTTPException(status_code=503, detail=f"Service '{service_name}' not available")
     return service
 
+
 def _get_profile(request: Request) -> Any:
     """Retrieve the current user profile from request state."""
     profile = getattr(request.state, "user_profile", None)
@@ -71,12 +73,14 @@ def _get_profile(request: Request) -> Any:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return profile
 
+
 router = APIRouter(prefix="/v1/automation", tags=["automation"])
 
 
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
+
 
 class PressureReading(BaseModel):
     left: float = 0.0
@@ -146,10 +150,11 @@ def _utcnow() -> datetime:
 # PHASE 1: Core Infrastructure
 # ===================================================================
 
+
 @router.post("/backup/run")
 async def run_backup(
     backup_type: str = "daily",
-    mgr = Depends(get_backup_manager),
+    mgr=Depends(get_backup_manager),
 ):
     """Run a backup of the specified type."""
     return mgr.run_backup(backup_type)
@@ -158,7 +163,7 @@ async def run_backup(
 @router.get("/backup/list")
 async def list_backups(
     backup_type: str = "",
-    mgr = Depends(get_backup_manager),
+    mgr=Depends(get_backup_manager),
 ):
     """List available backups."""
     return mgr.list_backups(backup_type)
@@ -167,26 +172,26 @@ async def list_backups(
 @router.post("/backup/validate")
 async def validate_backup(
     backup_path: str,
-    mgr = Depends(get_backup_manager),
+    mgr=Depends(get_backup_manager),
 ):
     """Validate a backup file."""
     return mgr.validate_backup(backup_path)
 
 
 @router.get("/health")
-async def health_check(mon = Depends(get_health_monitor)):
+async def health_check(mon=Depends(get_health_monitor)):
     """Get health summary for automation services."""
     return mon.get_health_summary()
 
 
 @router.get("/health/details")
-async def health_details(mon = Depends(get_health_monitor)):
+async def health_details(mon=Depends(get_health_monitor)):
     """Get detailed health check results."""
     return mon.run_all_checks()
 
 
 @router.get("/health/recovery-log")
-async def health_recovery_log(mon = Depends(get_health_monitor)):
+async def health_recovery_log(mon=Depends(get_health_monitor)):
     """Get health recovery log."""
     return mon.get_recovery_log()
 
@@ -206,6 +211,7 @@ async def track_event(request: Request, event_type: str, user_id: str = ""):
 async def get_events(request: Request, event_type: str = "", days: int = 7, limit: int = 100):
     eng = _get_service(request, "analytics_engine")
     from datetime import timedelta
+
     since = _utcnow() - timedelta(days=max(1, days))
     return eng.get_events(event_type=event_type, since=since, limit=limit)
 
@@ -228,6 +234,7 @@ async def chart_sleep_trend(request: Request, user_id: str = "", days: int = 30)
     eng = _get_service(request, "analytics_engine")
     trend = eng.sleep_trend(user_id, days)
     from reports.chart_generator import sleep_trend_chart
+
     return sleep_trend_chart(trend)
 
 
@@ -237,6 +244,7 @@ async def chart_daily_activity(request: Request, user_id: str = "", days: int = 
     eng = _get_service(request, "analytics_engine")
     daily = eng.daily_active_events(user_id=user_id, days=days)
     from reports.chart_generator import daily_activity_chart
+
     return daily_activity_chart(daily)
 
 
@@ -246,6 +254,7 @@ async def chart_automation_effectiveness(request: Request, user_id: str = "", da
     eng = _get_service(request, "analytics_engine")
     data = eng.automation_effectiveness(user_id, days)
     from reports.chart_generator import automation_effectiveness_chart
+
     return automation_effectiveness_chart(data)
 
 
@@ -255,12 +264,14 @@ async def chart_feature_adoption(request: Request, user_id: str = "", days: int 
     eng = _get_service(request, "analytics_engine")
     data = eng.feature_adoption(user_id, days)
     from reports.chart_generator import feature_adoption_chart
+
     return feature_adoption_chart(data)
 
 
 # ===================================================================
 # PHASE 2: Sleep Intelligence
 # ===================================================================
+
 
 @router.get("/sleep/patterns")
 async def sleep_patterns(request: Request):
@@ -297,6 +308,7 @@ async def wake_sequence(request: Request):
     if not alarm:
         return {"sequence": [], "message": "No alarm set."}
     from datetime import datetime as dt
+
     alarm_dt = dt.fromisoformat(alarm)
     return {"sequence": optimizer.get_wake_sequence(alarm_dt)}
 
@@ -385,6 +397,7 @@ async def nap_stats(request: Request, days: int = 30):
 # PHASE 3: Islamic Mode
 # ===================================================================
 
+
 @router.get("/islamic/prayer/status")
 async def prayer_status(request: Request):
     pa = _get_service(request, "prayer_automation")
@@ -457,6 +470,7 @@ async def log_quran_pages(request: Request, body: QuranPages):
 # PHASE 4: Presence & Context
 # ===================================================================
 
+
 @router.post("/pressure/record")
 async def record_pressure(request: Request, body: PressureReading):
     pi = _get_service(request, "pressure_intelligence")
@@ -504,6 +518,7 @@ async def guest_detection_status(request: Request):
 # ===================================================================
 # PHASE 5: Health & Wellness
 # ===================================================================
+
 
 @router.get("/health/stress")
 async def stress_status(request: Request):
@@ -556,6 +571,7 @@ async def weekly_report(request: Request):
 # PHASE 6: Scenes & Lighting
 # ===================================================================
 
+
 @router.get("/scenes/circadian")
 async def circadian_settings(request: Request):
     ce = _get_service(request, "circadian_engine")
@@ -606,6 +622,7 @@ async def activity_patterns(request: Request):
 # ===================================================================
 # PHASE 7: Mobile Integration
 # ===================================================================
+
 
 @router.post("/mobile/location")
 async def update_location(request: Request, body: LocationUpdate):
@@ -667,6 +684,7 @@ async def automation_insights(request: Request):
 # PHASE 8: Partner Mode
 # ===================================================================
 
+
 @router.get("/partner/status")
 async def partner_status(request: Request):
     pe = _get_service(request, "partner_engine")
@@ -674,7 +692,9 @@ async def partner_status(request: Request):
     pi = request.app.state.__dict__.get("pressure_intelligence")
     if pi:
         occ = pi.get_occupancy_dict()
-        return pe.identify_from_pressure(profile, occ.get("left_occupied", False), occ.get("right_occupied", False))
+        return pe.identify_from_pressure(
+            profile, occ.get("left_occupied", False), occ.get("right_occupied", False)
+        )
     return {"partner_mode": False, "reason": "No pressure data."}
 
 
@@ -726,6 +746,7 @@ async def wake_schedule(request: Request):
 # PHASE 9: Subscription & Engagement
 # ===================================================================
 
+
 @router.get("/subscription/trial/status")
 async def trial_status(request: Request):
     ta = _get_service(request, "trial_automation")
@@ -771,6 +792,7 @@ async def evaluate_achievements(request: Request):
 # ===================================================================
 # PHASE 10: Advanced Features
 # ===================================================================
+
 
 @router.get("/personality/stage")
 async def personality_stage(request: Request):

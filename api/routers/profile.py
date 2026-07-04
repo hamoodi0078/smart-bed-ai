@@ -8,6 +8,7 @@ Routes:
   GET  /v1/mobile/routine
   POST /v1/mobile/routine
 """
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -24,6 +25,7 @@ _profile_repo = ProfileRepository()
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
+
 
 class UserProfilePrefsRequest(BaseModel):
     display_name: str = Field(default="", max_length=256)
@@ -80,6 +82,7 @@ def _location_summary(prefs: dict[str, Any]) -> dict[str, Any]:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+
 @router.get("/v1/mobile/profile")
 def mobile_profile(current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
     uid: str = current_user["sub"]
@@ -93,7 +96,9 @@ def mobile_profile(current_user: dict = Depends(get_current_user)) -> dict[str, 
 
 
 @router.post("/v1/mobile/profile")
-def upsert_mobile_profile(payload: UserProfilePrefsRequest, current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
+def upsert_mobile_profile(
+    payload: UserProfilePrefsRequest, current_user: dict = Depends(get_current_user)
+) -> dict[str, Any]:
     uid: str = current_user["sub"]
     updated = _profile_repo.upsert_profile_prefs(uid, **payload.model_dump())
     return {
@@ -111,7 +116,9 @@ def mobile_settings(current_user: dict = Depends(get_current_user)) -> dict[str,
 
 
 @router.post("/v1/mobile/settings")
-def upsert_mobile_settings(payload: UserSettingsRequest, current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
+def upsert_mobile_settings(
+    payload: UserSettingsRequest, current_user: dict = Depends(get_current_user)
+) -> dict[str, Any]:
     uid: str = current_user["sub"]
     updated = _profile_repo.upsert_settings(uid, **payload.model_dump())
     return {"ok": True, "settings": updated}
@@ -125,7 +132,9 @@ def mobile_routine(current_user: dict = Depends(get_current_user)) -> dict[str, 
 
 
 @router.post("/v1/mobile/routine")
-def upsert_mobile_routine(payload: UserRoutineRequest, current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
+def upsert_mobile_routine(
+    payload: UserRoutineRequest, current_user: dict = Depends(get_current_user)
+) -> dict[str, Any]:
     uid: str = current_user["sub"]
     updated = _profile_repo.upsert_routine(uid, **payload.model_dump(exclude_none=True))
     return {"ok": True, "routine": updated}

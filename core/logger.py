@@ -52,6 +52,7 @@ def setup_logging(level: str = "INFO", log_dir: Path | None = None) -> None:
     # Rotating JSON file log (14-day retention)
     if log_dir is None:
         from config import settings  # late import avoids circular at module load
+
         log_dir = Path(settings.runtime_data_dir) / "logs"
 
     log_dir.mkdir(parents=True, exist_ok=True)

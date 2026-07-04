@@ -18,6 +18,7 @@ from loguru import logger
 
 try:
     from croniter import croniter as _croniter
+
     _CRONITER_AVAILABLE = True
 except ImportError:
     _croniter = None  # type: ignore[assignment]

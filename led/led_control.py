@@ -98,7 +98,11 @@ class LEDController:
 
     def _rebuild_backend(self):
         existing = self._backend
-        if existing is not None and hasattr(existing, "close") and existing is not self._custom_backend:
+        if (
+            existing is not None
+            and hasattr(existing, "close")
+            and existing is not self._custom_backend
+        ):
             try:
                 existing.close()
             except Exception:
@@ -221,16 +225,18 @@ class LEDController:
             return
 
         normalized = " ".join(
-            part for part in "".join(ch.lower() if (ch.isalnum() or ch.isspace()) else " " for ch in text).split() if part
+            part
+            for part in "".join(
+                ch.lower() if (ch.isalnum() or ch.isspace()) else " " for ch in text
+            ).split()
+            if part
         )
         for name in self.NAMED_COLORS:
             if f" {name} " in f" {normalized} ":
                 self.set_color_name(name)
                 return
 
-        print(
-            "[LED] Unsupported color format. Use name, #RRGGBB, or rgb(r,g,b)."
-        )
+        print("[LED] Unsupported color format. Use name, #RRGGBB, or rgb(r,g,b).")
 
     def set_state(self, state: str):
         key = state.strip().lower()
@@ -323,8 +329,8 @@ class LEDController:
         clamped = max(0.0, min(self.MAX_SAFE_BRIGHTNESS, float(value)))
         if float(value) > self.MAX_SAFE_BRIGHTNESS:
             print(
-                f"[LED][UserStrip] Brightness request {int(float(value)*100)}% "
-                f"capped to safety limit {int(self.MAX_SAFE_BRIGHTNESS*100)}%"
+                f"[LED][UserStrip] Brightness request {int(float(value) * 100)}% "
+                f"capped to safety limit {int(self.MAX_SAFE_BRIGHTNESS * 100)}%"
             )
         self.user_strip_brightness = clamped
         new_percent = int(self.user_strip_brightness * 100)

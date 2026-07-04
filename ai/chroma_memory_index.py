@@ -44,7 +44,9 @@ class ChromaMemoryIndex:
                 name=self.COLLECTION_NAME,
                 metadata={"hnsw:space": "cosine"},
             )
-            logger.debug("ChromaDB collection '{}' ready at {}", self.COLLECTION_NAME, self._persist_dir)
+            logger.debug(
+                "ChromaDB collection '{}' ready at {}", self.COLLECTION_NAME, self._persist_dir
+            )
             return True
         except Exception as exc:
             logger.debug("ChromaDB unavailable: {}", exc)
@@ -56,6 +58,7 @@ class ChromaMemoryIndex:
             return False
         try:
             from ai.embedding_service import encode
+
             vec = encode(text).tolist()
             self._collection.upsert(
                 ids=[doc_id],
@@ -68,7 +71,9 @@ class ChromaMemoryIndex:
             logger.debug("ChromaDB upsert failed doc_id={}: {}", doc_id, exc)
             return False
 
-    def query(self, text: str, n_results: int = 3, min_similarity: float = 0.25) -> list[dict[str, Any]]:
+    def query(
+        self, text: str, n_results: int = 3, min_similarity: float = 0.25
+    ) -> list[dict[str, Any]]:
         """Return up to n_results entries most similar to text.
 
         Each result dict contains: id, document, metadata, distance, similarity.
@@ -77,6 +82,7 @@ class ChromaMemoryIndex:
             return []
         try:
             from ai.embedding_service import encode
+
             vec = encode(text).tolist()
             results = self._collection.query(
                 query_embeddings=[vec],
@@ -91,7 +97,14 @@ class ChromaMemoryIndex:
             for doc_id, doc, meta, dist in zip(ids, docs, metas, dists):
                 sim = 1.0 - float(dist)  # cosine distance → similarity
                 if sim >= min_similarity:
-                    hits.append({"id": doc_id, "document": doc, "metadata": meta, "similarity": round(sim, 4)})
+                    hits.append(
+                        {
+                            "id": doc_id,
+                            "document": doc,
+                            "metadata": meta,
+                            "similarity": round(sim, 4),
+                        }
+                    )
             hits.sort(key=lambda h: h["similarity"], reverse=True)
             return hits
         except Exception as exc:

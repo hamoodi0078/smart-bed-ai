@@ -11,7 +11,9 @@ class TestLongTermMemoryStore(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "memory.json"
             store = LongTermMemoryStore(path=str(path))
-            store.record_turn("I am stressed about my exam", "Let's make a plan.", "distressed", "therapist")
+            store.record_turn(
+                "I am stressed about my exam", "Let's make a plan.", "distressed", "therapist"
+            )
             store.record_turn("I finished workout", "Great momentum.", "motivated", "coach")
 
             items = store.retrieve_relevant("exam stress plan", max_items=1)
@@ -22,7 +24,9 @@ class TestLongTermMemoryStore(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "memory.json"
             store = LongTermMemoryStore(path=str(path))
-            store.record_turn("I keep waking up at 3am", "Use a wind-down routine.", "low_energy", "therapist")
+            store.record_turn(
+                "I keep waking up at 3am", "Use a wind-down routine.", "low_energy", "therapist"
+            )
 
             line = store.memory_prompt_line("sleep issue")
             self.assertIn("Continuity memory", line)

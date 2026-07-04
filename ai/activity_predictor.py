@@ -13,19 +13,43 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
-
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
 ACTIVITY_SCENES = {
-    "reading": {"color": "#FFF8DC", "brightness": 0.40, "animation": "solid", "name": "Reading Mode"},
+    "reading": {
+        "color": "#FFF8DC",
+        "brightness": 0.40,
+        "animation": "solid",
+        "name": "Reading Mode",
+    },
     "nap": {"color": "#FF8C00", "brightness": 0.05, "animation": "breathing", "name": "Nap Mode"},
-    "prayer": {"color": "#FFF5E0", "brightness": 0.15, "animation": "gentle_pulse", "name": "Prayer Mode"},
-    "relaxing": {"color": "#00CED1", "brightness": 0.15, "animation": "slow_pulse", "name": "Relaxation"},
+    "prayer": {
+        "color": "#FFF5E0",
+        "brightness": 0.15,
+        "animation": "gentle_pulse",
+        "name": "Prayer Mode",
+    },
+    "relaxing": {
+        "color": "#00CED1",
+        "brightness": 0.15,
+        "animation": "slow_pulse",
+        "name": "Relaxation",
+    },
     "focus": {"color": "#90EE90", "brightness": 0.50, "animation": "solid", "name": "Focus Mode"},
-    "meditation": {"color": "#E6E6FA", "brightness": 0.10, "animation": "breathing", "name": "Meditation"},
-    "wind_down": {"color": "#FFC87C", "brightness": 0.20, "animation": "breathing", "name": "Wind Down"},
+    "meditation": {
+        "color": "#E6E6FA",
+        "brightness": 0.10,
+        "animation": "breathing",
+        "name": "Meditation",
+    },
+    "wind_down": {
+        "color": "#FFC87C",
+        "brightness": 0.20,
+        "animation": "breathing",
+        "name": "Wind Down",
+    },
 }
 
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -81,20 +105,27 @@ class ActivityPredictor:
 
         ap["observations"].append(observation)
         cutoff_dt = now - timedelta(weeks=self._learning_weeks)
+
         def _parse_ts(s: str) -> datetime | None:
             try:
                 dt = datetime.fromisoformat(str(s or ""))
                 return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
             except Exception:
                 return None
+
         cutoff_naive = cutoff_dt.replace(tzinfo=None) if cutoff_dt.tzinfo is not None else cutoff_dt
         ap["observations"] = [
-            o for o in ap["observations"]
+            o
+            for o in ap["observations"]
             if (ts := _parse_ts(o.get("timestamp", ""))) is not None and ts >= cutoff_naive
         ]
         ap["observations"] = ap["observations"][-500:]
 
-        return {"recorded": True, "activity": observation["activity"], "observations_total": len(ap["observations"])}
+        return {
+            "recorded": True,
+            "activity": observation["activity"],
+            "observations_total": len(ap["observations"]),
+        }
 
     # ------------------------------------------------------------------
     # Prediction
@@ -161,7 +192,9 @@ class ActivityPredictor:
                 "animation": scene["animation"],
             }
             if should_auto:
-                result["message"] = f"Auto-activating {scene['name']} (confidence {confidence:.0%})."
+                result["message"] = (
+                    f"Auto-activating {scene['name']} (confidence {confidence:.0%})."
+                )
             else:
                 result["message"] = f"Ready for {scene['name']}? (based on your usual pattern)"
 
@@ -235,7 +268,9 @@ class ActivityPredictor:
             "activities_list": sorted(activities),
             "predictions_accepted": accepted,
             "predictions_declined": declined,
-            "acceptance_rate": round(accepted / total_responses * 100, 1) if total_responses > 0 else 0,
+            "acceptance_rate": round(accepted / total_responses * 100, 1)
+            if total_responses > 0
+            else 0,
             "auto_activated": int(ap.get("auto_activated_count", 0)),
             "discovered_patterns": len(self.get_patterns(profile)),
         }

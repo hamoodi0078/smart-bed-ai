@@ -126,6 +126,7 @@ THERAPIST_DISTRESS_KEYWORDS = (
     "مضغوط",
 )
 
+
 def ensure_emotional_followup_shape(profile: dict) -> dict:
     daily = profile.setdefault("daily_life", {})
     daily.setdefault("overthinking_entries", [])
@@ -136,13 +137,25 @@ def ensure_emotional_followup_shape(profile: dict) -> dict:
     daily.setdefault("last_emotional_followup_date", "")
     return daily
 
+
 def _is_meaningful_followup_turn(user_text: str) -> bool:
     normalized = normalize_for_intent(user_text)
     if not normalized:
         return False
-    if len(normalized.split()) <= 1 and normalized in {"hi", "hey", "hello", "yo", "sup", "ok", "okay", "yes", "no"}:
+    if len(normalized.split()) <= 1 and normalized in {
+        "hi",
+        "hey",
+        "hello",
+        "yo",
+        "sup",
+        "ok",
+        "okay",
+        "yes",
+        "no",
+    }:
         return False
     return True
+
 
 def _extract_concern_emotion(normalized: str) -> str:
     if has_any(normalized, ("sad", "down", "depressed", "حزين", "زعلان")):
@@ -153,6 +166,7 @@ def _extract_concern_emotion(normalized: str) -> str:
         return "stressed"
     return "concerned"
 
+
 def _topic_summary(user_text: str, max_words: int = 12) -> str:
     cleaned = re.sub(r"\s+", " ", (user_text or "").strip())
     words = cleaned.split()
@@ -161,7 +175,10 @@ def _topic_summary(user_text: str, max_words: int = 12) -> str:
     short = " ".join(words[:max_words]).strip(" ,.;:-")
     return short or "something that felt heavy"
 
-def record_therapist_concern(profile: dict, user_text: str, personality: str, now: datetime | None = None) -> bool:
+
+def record_therapist_concern(
+    profile: dict, user_text: str, personality: str, now: datetime | None = None
+) -> bool:
     if (personality or "").strip().lower() != "therapist":
         return False
     daily = ensure_emotional_followup_shape(profile)
@@ -196,6 +213,7 @@ def record_therapist_concern(profile: dict, user_text: str, personality: str, no
     daily["emotional_followups"] = entries[-40:]
     return True
 
+
 def build_bed_guide_steps() -> tuple[str, ...]:
     return (
         "Wake and sleep: say 'wake' to start and 'sleep mode' to end active listening.",
@@ -205,6 +223,7 @@ def build_bed_guide_steps() -> tuple[str, ...]:
         "Routines: try 'set bedtime routine for 22:30' and 'set morning routine for 07:00'.",
         "Care and privacy: ask 'sleep help', 'privacy status', or 'delete all my data'.",
     )
+
 
 def render_bed_guide_step(step_index: int) -> str:
     steps = build_bed_guide_steps()
@@ -216,6 +235,7 @@ def render_bed_guide_step(step_index: int) -> str:
         f"Bed guide {step_index + 1}/{len(steps)}: {steps[step_index]} "
         "Say 'next guide step' to continue, 'repeat guide step' to hear this again, or 'stop bed guide'."
     )
+
 
 def resolve_bed_guide_shortcut_intent(user_text: str) -> str:
     normalized = normalize_for_intent(user_text)
@@ -269,7 +289,10 @@ def resolve_bed_guide_shortcut_intent(user_text: str) -> str:
         return "bed_guide_stop"
     return ""
 
-def resolve_therapist_followup_if_answered(profile: dict, user_text: str, now: datetime | None = None) -> bool:
+
+def resolve_therapist_followup_if_answered(
+    profile: dict, user_text: str, now: datetime | None = None
+) -> bool:
     daily = ensure_emotional_followup_shape(profile)
     entries = daily.get("emotional_followups", [])
     active = None
@@ -286,7 +309,9 @@ def resolve_therapist_followup_if_answered(profile: dict, user_text: str, now: d
     if not normalized:
         return False
 
-    if has_any(normalized, ("dont ask", "do not ask", "stop asking", "leave this", "لا تسال", "لا تسأل")):
+    if has_any(
+        normalized, ("dont ask", "do not ask", "stop asking", "leave this", "لا تسال", "لا تسأل")
+    ):
         active["resolved"] = True
         daily["followup_opt_out"] = True
         now = now or datetime.now()
@@ -320,7 +345,10 @@ def resolve_therapist_followup_if_answered(profile: dict, user_text: str, now: d
     active["resolved_at"] = now.isoformat(timespec="seconds")
     return True
 
-def get_due_therapist_followup(profile: dict, personality: str, user_text: str, now: datetime | None = None) -> str:
+
+def get_due_therapist_followup(
+    profile: dict, personality: str, user_text: str, now: datetime | None = None
+) -> str:
     if (personality or "").strip().lower() != "therapist":
         return ""
     if not _is_meaningful_followup_turn(user_text):
@@ -351,7 +379,9 @@ def get_due_therapist_followup(profile: dict, personality: str, user_text: str, 
         return ""
 
     topic = str(due_entry.get("topic", "")).strip() or "what you shared yesterday"
-    tone = normalize_followup_tone(profile.get("preferences", {}).get("therapist_followup_tone", "soft"))
+    tone = normalize_followup_tone(
+        profile.get("preferences", {}).get("therapist_followup_tone", "soft")
+    )
     templates_by_tone = {
         "soft": (
             "Yesterday you sounded worried about {topic}. How are you feeling now?",
@@ -376,6 +406,7 @@ def get_due_therapist_followup(profile: dict, personality: str, user_text: str, 
     daily["last_emotional_followup_date"] = today
     return prompt
 
+
 def _parse_yes_no(value: str, default: bool = True) -> bool:
     text = (value or "").strip().lower()
     if not text:
@@ -385,6 +416,7 @@ def _parse_yes_no(value: str, default: bool = True) -> bool:
     if text in ("n", "no", "off", "false", "0"):
         return False
     return default
+
 
 def build_help_overview() -> str:
     return (
@@ -405,6 +437,7 @@ def build_help_overview() -> str:
         "New: 'start breathing guide', 'dream journal', 'adaptive personality insights'."
     )
 
+
 def build_sleep_help() -> str:
     return (
         "Sleep help -> 1) Wind-down: 'start wind down autopilot 45'. "
@@ -419,6 +452,7 @@ def build_sleep_help() -> str:
         "8) Signature experiences: 'start deep recovery', 'run couple harmony wake', '90 second reset'."
     )
 
+
 def _select_runtime_phrase(
     profile: dict,
     runtime_orchestrator: PersonalityRuntimeOrchestrator | None,
@@ -429,10 +463,13 @@ def _select_runtime_phrase(
     options = list(candidates or [])
     if runtime_orchestrator is not None:
         try:
-            return runtime_orchestrator.choose_unique_phrase(profile, options, phrase_kind=phrase_kind)
+            return runtime_orchestrator.choose_unique_phrase(
+                profile, options, phrase_kind=phrase_kind
+            )
         except Exception:
             pass
     return options[0] if options else ""
+
 
 def build_wake_greeting(
     profile: dict,
@@ -450,31 +487,48 @@ def build_wake_greeting(
     if use_arabic:
         if 5 <= hour < 12:
             candidates = ("صباح الخير", "أهلا صباحك جميل", "صباح النور")
-            intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_ar_morning")
+            intro = _select_runtime_phrase(
+                profile, runtime_orchestrator, candidates, phrase_kind="greeting_ar_morning"
+            )
         elif 12 <= hour < 18:
             candidates = ("مساء الخير", "أهلا مساءك جميل", "مساء النور")
-            intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_ar_afternoon")
+            intro = _select_runtime_phrase(
+                profile, runtime_orchestrator, candidates, phrase_kind="greeting_ar_afternoon"
+            )
         else:
             candidates = ("أهلا", "هلا", "أهلا وسهلا")
-            intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_ar_evening")
+            intro = _select_runtime_phrase(
+                profile, runtime_orchestrator, candidates, phrase_kind="greeting_ar_evening"
+            )
         if raw_name:
             return f"{intro} {raw_name}. أنا هنا وجاهز للمساعدة. قل 'sleep mode' لإنهاء الجلسة."
         return f"{intro}. أنا هنا وجاهز للمساعدة. قل 'sleep mode' لإنهاء الجلسة."
 
     if 5 <= hour < 12:
         candidates = ("Good morning", "Morning", "Good morning and welcome back")
-        intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_en_morning")
+        intro = _select_runtime_phrase(
+            profile, runtime_orchestrator, candidates, phrase_kind="greeting_en_morning"
+        )
     elif 12 <= hour < 18:
         candidates = ("Good afternoon", "Hey, good afternoon", "Welcome back this afternoon")
-        intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_en_afternoon")
+        intro = _select_runtime_phrase(
+            profile, runtime_orchestrator, candidates, phrase_kind="greeting_en_afternoon"
+        )
     else:
         candidates = ("Good evening", "Evening", "Good evening, welcome back")
-        intro = _select_runtime_phrase(profile, runtime_orchestrator, candidates, phrase_kind="greeting_en_evening")
+        intro = _select_runtime_phrase(
+            profile, runtime_orchestrator, candidates, phrase_kind="greeting_en_evening"
+        )
     if raw_name:
-        return f"{intro}, {raw_name}. I am here and listening. Say 'sleep mode' to end this session."
+        return (
+            f"{intro}, {raw_name}. I am here and listening. Say 'sleep mode' to end this session."
+        )
     return f"{intro}. I am here and listening. Say 'sleep mode' to end this session."
 
-def build_transition_ack(profile: dict, runtime_orchestrator: PersonalityRuntimeOrchestrator) -> str:
+
+def build_transition_ack(
+    profile: dict, runtime_orchestrator: PersonalityRuntimeOrchestrator
+) -> str:
     candidates = (
         "Okay, one moment.",
         "Got it, give me a second.",
@@ -486,6 +540,7 @@ def build_transition_ack(profile: dict, runtime_orchestrator: PersonalityRuntime
         list(candidates),
         phrase_kind="transition_ack",
     )
+
 
 def should_use_local_music_fallback(message: str) -> bool:
     text = (message or "").lower()
@@ -500,11 +555,15 @@ def should_use_local_music_fallback(message: str) -> bool:
     )
     return any(k in text for k in keywords)
 
+
 def _parse_health_summary_counts(health_report: str) -> tuple[int, int]:
-    match = re.search(r"health summary\s+(\d+)\s*/\s*(\d+)\s+checks passed", health_report or "", re.IGNORECASE)
+    match = re.search(
+        r"health summary\s+(\d+)\s*/\s*(\d+)\s+checks passed", health_report or "", re.IGNORECASE
+    )
     if not match:
         return 0, 0
     return int(match.group(1)), int(match.group(2))
+
 
 def _parse_health_warn_names(health_report: str) -> set[str]:
     return {
@@ -513,17 +572,29 @@ def _parse_health_warn_names(health_report: str) -> set[str]:
         if name.strip()
     }
 
+
 def build_pilot_readiness_checklist(profile: dict, health_report: str) -> str:
     preferences = profile.get("preferences", {})
     speed_mode = str(preferences.get("speed_mode", "normal") or "normal").strip().lower()
     response_style = str(preferences.get("response_style", "quick") or "quick").strip().lower()
     engagement = str(preferences.get("engagement_level", "normal") or "normal").strip().lower()
 
-    quick_timeout = _safe_int(settings.chat_quick_timeout_seconds, default_value=4, min_value=1, max_value=60)
-    total_timeout = _safe_int(settings.chat_total_timeout_seconds, default_value=10, min_value=1, max_value=120)
-    max_tokens = _safe_int(settings.chat_max_response_tokens, default_value=120, min_value=32, max_value=512)
+    quick_timeout = _safe_int(
+        settings.chat_quick_timeout_seconds, default_value=4, min_value=1, max_value=60
+    )
+    total_timeout = _safe_int(
+        settings.chat_total_timeout_seconds, default_value=10, min_value=1, max_value=120
+    )
+    max_tokens = _safe_int(
+        settings.chat_max_response_tokens, default_value=120, min_value=32, max_value=512
+    )
 
-    latency_ok = quick_timeout <= 4 and total_timeout <= 10 and max_tokens <= 140 and speed_mode in ("fast", "normal")
+    latency_ok = (
+        quick_timeout <= 4
+        and total_timeout <= 10
+        and max_tokens <= 140
+        and speed_mode in ("fast", "normal")
+    )
     off_topic_ok = response_style in ("quick", "balanced")
     boredom_ok = engagement in ("high", "normal")
 
@@ -531,7 +602,9 @@ def build_pilot_readiness_checklist(profile: dict, health_report: str) -> str:
     warn_names = _parse_health_warn_names(health_report)
     spotify_only_warn = warn_names == {"SPOTIFY_CONFIG"}
     local_music_ok = "LOCAL_MUSIC" not in warn_names
-    failure_ok = (checks_total > 0 and checks_ok == checks_total) or (spotify_only_warn and local_music_ok)
+    failure_ok = (checks_total > 0 and checks_ok == checks_total) or (
+        spotify_only_warn and local_music_ok
+    )
 
     latency_status = "PASS" if latency_ok else "WARN"
     off_topic_status = "PASS" if off_topic_ok else "WARN"
@@ -546,17 +619,21 @@ def build_pilot_readiness_checklist(profile: dict, health_report: str) -> str:
         f"failure_handling={failure_status} (health={checks_ok}/{checks_total}, warns={','.join(sorted(warn_names)) if warn_names else 'none'})."
     )
 
+
 def build_pilot_go_no_go(profile: dict, health_report: str) -> str:
     checklist = build_pilot_readiness_checklist(profile, health_report)
     if "WARN" in checklist:
         return "Pilot signoff -> HOLD. Resolve WARN items before onboarding testers. " + checklist
     return "Pilot signoff -> GO. Core readiness checks are passing. " + checklist
 
+
 from core.text_utils import normalize_for_intent, has_any  # noqa: E402
+
 
 def _is_llm_fallback_response(text: str) -> bool:
     value = str(text or "").strip()
     return value.startswith("(Deepgram fallback -") or value.startswith("(Offline fallback -")
+
 
 def _voice_offline_fallback_response(offline_pack: OfflineIntentPack, user_text: str) -> str:
     offline_response, handled_offline = offline_pack.handle(user_text)
@@ -567,6 +644,7 @@ def _voice_offline_fallback_response(offline_pack: OfflineIntentPack, user_text:
         "I can still handle core local commands like alarms, routines, lights, and local music."
     )
 
+
 def _is_voice_circuit_reset_command(text: str) -> bool:
     lowered = str(text or "").strip().lower()
     return lowered in {
@@ -575,6 +653,7 @@ def _is_voice_circuit_reset_command(text: str) -> bool:
         "reset voice pipeline",
         "reset voice breaker",
     }
+
 
 def _extract_openai_chat_text(payload: dict) -> str:
     if not isinstance(payload, dict):
@@ -597,6 +676,7 @@ def _extract_openai_chat_text(payload: dict) -> str:
                 parts.append(str(text_value))
         return "".join(parts).strip()
     return ""
+
 
 def _build_gpt_route_diagnostics(backend_client: BedBackendClient | None) -> dict:
     issues: list[str] = []
@@ -625,6 +705,7 @@ def _build_gpt_route_diagnostics(backend_client: BedBackendClient | None) -> dic
         "backend_proxy_enabled": backend_proxy_enabled,
         "issues": issues,
     }
+
 
 def _request_openai_chat_reply(
     *,
@@ -659,7 +740,9 @@ def _request_openai_chat_reply(
     if user_context.strip():
         messages.append({"role": "system", "content": f"User context:\n{user_context.strip()}"})
     if realtime_context.strip():
-        messages.append({"role": "system", "content": f"Realtime context:\n{realtime_context.strip()}"})
+        messages.append(
+            {"role": "system", "content": f"Realtime context:\n{realtime_context.strip()}"}
+        )
     messages.append({"role": "user", "content": str(user_text_for_ai or "").strip()})
     payload = {
         "model": model,
@@ -685,7 +768,10 @@ def _request_openai_chat_reply(
     except Exception as e:
         return False, f"OpenAI chat request error: {e}"
 
-def _looks_like_echo_capture(user_text: str, last_assistant_response: str, confidence: float) -> bool:
+
+def _looks_like_echo_capture(
+    user_text: str, last_assistant_response: str, confidence: float
+) -> bool:
     user_norm = normalize_for_intent(user_text)
     assistant_norm = normalize_for_intent(last_assistant_response)
     if (not user_norm) or (not assistant_norm):
@@ -699,7 +785,10 @@ def _looks_like_echo_capture(user_text: str, last_assistant_response: str, confi
     is_low_conf = float(confidence or 0.0) < 0.78
     return is_low_conf and (score >= 0.88 or likely_clip)
 
-def detect_natural_bed_intent(user_text: str, breathing_offer_active: bool = False) -> tuple[str, dict]:
+
+def detect_natural_bed_intent(
+    user_text: str, breathing_offer_active: bool = False
+) -> tuple[str, dict]:
     text = normalize_for_intent(user_text)
     payload: dict = {}
     light_scope = has_any(
@@ -728,8 +817,13 @@ def detect_natural_bed_intent(user_text: str, breathing_offer_active: bool = Fal
     # Breathing guide intents
     if (
         (
-            has_any(text, ("breathe", "breathing", "4-7-8", "4 7 8", "478", "تنفس", "التنفس", "4-7-8"))
-            and has_any(text, ("start", "begin", "do", "try", "guide", "ابدأ", "ابدا", "نبدأ", "ابدئي", "خلينا"))
+            has_any(
+                text, ("breathe", "breathing", "4-7-8", "4 7 8", "478", "تنفس", "التنفس", "4-7-8")
+            )
+            and has_any(
+                text,
+                ("start", "begin", "do", "try", "guide", "ابدأ", "ابدا", "نبدأ", "ابدئي", "خلينا"),
+            )
         )
         or has_any(
             text,
@@ -747,7 +841,19 @@ def detect_natural_bed_intent(user_text: str, breathing_offer_active: bool = Fal
         )
         or (
             breathing_offer_active
-            and text in ("lets start", "let's start", "okay", "ok", "yes", "نعم", "اوكي", "حسنا", "تمام", "يلا")
+            and text
+            in (
+                "lets start",
+                "let's start",
+                "okay",
+                "ok",
+                "yes",
+                "نعم",
+                "اوكي",
+                "حسنا",
+                "تمام",
+                "يلا",
+            )
         )
     ):
         return "start_breathing", payload
@@ -1052,20 +1158,41 @@ def detect_natural_bed_intent(user_text: str, breathing_offer_active: bool = Fal
     # Lighting intents
     if light_scope and has_any(
         text,
-        ("brighter", "increase brightness", "more bright", "زيد الاضاءة", "زيد الإضاءة", "ارفع الاضاءة", "ارفع الإضاءة"),
+        (
+            "brighter",
+            "increase brightness",
+            "more bright",
+            "زيد الاضاءة",
+            "زيد الإضاءة",
+            "ارفع الاضاءة",
+            "ارفع الإضاءة",
+        ),
     ):
         return "brightness_up", payload
 
     if light_scope and has_any(
         text,
-        ("dim", "dimmer", "lower brightness", "less bright", "خفف الاضاءة", "خفف الإضاءة", "قلل الاضاءة", "قلل الإضاءة"),
+        (
+            "dim",
+            "dimmer",
+            "lower brightness",
+            "less bright",
+            "خفف الاضاءة",
+            "خفف الإضاءة",
+            "قلل الاضاءة",
+            "قلل الإضاءة",
+        ),
     ):
         return "brightness_down", payload
 
     brightness_match = re.search(r"(\d{1,3})\s*%?", text)
-    if light_scope and brightness_match and has_any(
-        text,
-        ("brightness", "bright", "dim to", "set to", "اضاءة", "إضاءة", "سطوع"),
+    if (
+        light_scope
+        and brightness_match
+        and has_any(
+            text,
+            ("brightness", "bright", "dim to", "set to", "اضاءة", "إضاءة", "سطوع"),
+        )
     ):
         payload["brightness_percent"] = int(brightness_match.group(1))
         return "brightness_set", payload
@@ -1111,21 +1238,25 @@ def detect_natural_bed_intent(user_text: str, breathing_offer_active: bool = Fal
     ):
         return "music_lights_status", payload
 
-    if music_scope and has_any(
-        text,
-        (
-            "turn on",
-            "enable",
-            "start sync",
-            "sync",
-            "on",
-            "شغل",
-            "تشغيل",
-            "فعل",
-            "فعّل",
-            "مزامنة",
-        ),
-    ) and not has_any(text, ("off", "disable", "stop", "ايقاف", "إيقاف", "وقف", "تعطيل")):
+    if (
+        music_scope
+        and has_any(
+            text,
+            (
+                "turn on",
+                "enable",
+                "start sync",
+                "sync",
+                "on",
+                "شغل",
+                "تشغيل",
+                "فعل",
+                "فعّل",
+                "مزامنة",
+            ),
+        )
+        and not has_any(text, ("off", "disable", "stop", "ايقاف", "إيقاف", "وقف", "تعطيل"))
+    ):
         return "music_lights_on", payload
 
     if music_scope and has_any(
@@ -1149,11 +1280,16 @@ def detect_natural_bed_intent(user_text: str, breathing_offer_active: bool = Fal
     if music_scope and has_any(text, ("energetic", "party", "حماسي", "حفلة", "قوي")):
         return "music_lights_energetic", payload
 
-    if music_scope and has_any(text, ("both strips", "both", "strip both", "الشريطين", "كله", "كلاهما")):
+    if music_scope and has_any(
+        text, ("both strips", "both", "strip both", "الشريطين", "كله", "كلاهما")
+    ):
         payload["target"] = "both"
         return "music_lights_target", payload
 
-    if music_scope and has_any(text, ("user strip", "main strip", "single strip", "strip only", "شريط المستخدم", "شريط واحد")):
+    if music_scope and has_any(
+        text,
+        ("user strip", "main strip", "single strip", "strip only", "شريط المستخدم", "شريط واحد"),
+    ):
         payload["target"] = "user_only"
         return "music_lights_target", payload
 
@@ -1163,7 +1299,11 @@ def detect_natural_bed_intent(user_text: str, breathing_offer_active: bool = Fal
         return "music_lights_mode", payload
 
     brightness_match = re.search(r"(\d{1,3})\s*%?", text)
-    if music_scope and brightness_match and has_any(text, ("brightness", "bright", "سطوع", "إضاءة", "اضاءة")):
+    if (
+        music_scope
+        and brightness_match
+        and has_any(text, ("brightness", "bright", "سطوع", "إضاءة", "اضاءة"))
+    ):
         payload["brightness_percent"] = int(brightness_match.group(1))
         return "music_lights_brightness", payload
 
@@ -1203,6 +1343,7 @@ def detect_natural_bed_intent(user_text: str, breathing_offer_active: bool = Fal
 
     return "", payload
 
+
 def build_wake_aliases_from_profile(profile: dict) -> list[str]:
     prefs = profile.get("preferences", {})
     aliases = []
@@ -1236,6 +1377,7 @@ def build_wake_aliases_from_profile(profile: dict) -> list[str]:
             cleaned.append(alias)
     return cleaned[:8]
 
+
 def apply_bed_nickname(profile: dict, wake_word_manager: WakeWordManager, raw_nickname: str) -> str:
     nickname = re.sub(r"\s+", " ", str(raw_nickname or "")).strip(" '")
     if not nickname:
@@ -1245,6 +1387,7 @@ def apply_bed_nickname(profile: dict, wake_word_manager: WakeWordManager, raw_ni
     profile.setdefault("preferences", {})["bed_nickname"] = nickname
     wake_word_manager.set_wake_aliases(build_wake_aliases_from_profile(profile))
     return nickname
+
 
 def build_user_context(
     profile: dict,
@@ -1270,17 +1413,17 @@ def build_user_context(
     else:
         language_instruction = f"Reply in language: {language}."
     if detailed_mode:
-        detail_instruction = "User asked for detail now; provide a fuller explanation with one practical example."
+        detail_instruction = (
+            "User asked for detail now; provide a fuller explanation with one practical example."
+        )
     elif style == "detailed":
-        detail_instruction = (
-            "Preferred style is detailed: answer in 3-5 lines with clear structure and one concrete example."
-        )
+        detail_instruction = "Preferred style is detailed: answer in 3-5 lines with clear structure and one concrete example."
     elif style == "balanced":
-        detail_instruction = (
-            "Preferred style is balanced: answer in 2-4 natural lines and include one concrete idea or example when useful."
-        )
+        detail_instruction = "Preferred style is balanced: answer in 2-4 natural lines and include one concrete idea or example when useful."
     else:
-        detail_instruction = "Preferred style is quick: keep replies in 1-2 short lines unless user asks for depth."
+        detail_instruction = (
+            "Preferred style is quick: keep replies in 1-2 short lines unless user asks for depth."
+        )
     engagement_instruction = (
         "Engagement rule: respond like a real conversation partner. "
         "Use the user's exact wording when helpful, avoid generic advice, and keep continuity with previous turns. "
@@ -1304,6 +1447,7 @@ def build_user_context(
         "Keep responses concise, natural, and professionally useful."
     )
 
+
 def wants_detailed_answer(user_text: str) -> bool:
     lower = (user_text or "").lower()
     detail_markers = (
@@ -1323,6 +1467,7 @@ def wants_detailed_answer(user_text: str) -> bool:
     )
     return any(k in lower for k in detail_markers)
 
+
 def is_contextual_short_followup(user_text: str) -> bool:
     lower = (user_text or "").lower().strip()
     words = lower.split()
@@ -1330,8 +1475,7 @@ def is_contextual_short_followup(user_text: str) -> bool:
         return False
 
     normalized = " ".join(
-        re.sub(r"^[^a-z0-9\u0600-\u06ff']+|[^a-z0-9\u0600-\u06ff']+$", "", w)
-        for w in words
+        re.sub(r"^[^a-z0-9\u0600-\u06ff']+|[^a-z0-9\u0600-\u06ff']+$", "", w) for w in words
     ).strip()
     markers = {
         "yes",
@@ -1367,7 +1511,10 @@ def is_contextual_short_followup(user_text: str) -> bool:
     }
     return normalized in markers
 
-def clamp_non_detail_response(response_text: str, detailed_mode: bool, response_style: str = "quick") -> str:
+
+def clamp_non_detail_response(
+    response_text: str, detailed_mode: bool, response_style: str = "quick"
+) -> str:
     text = (response_text or "").strip()
     if detailed_mode or not text:
         return text
@@ -1403,7 +1550,9 @@ def clamp_non_detail_response(response_text: str, detailed_mode: bool, response_
     words = cleaned.split()
     if len(words) > word_limit:
         cleaned_for_split = re.sub(r"\b(\d+)\.\s+", rf"\1{marker_token} ", cleaned)
-        sentence_parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", cleaned_for_split) if p.strip()]
+        sentence_parts = [
+            p.strip() for p in re.split(r"(?<=[.!?])\s+", cleaned_for_split) if p.strip()
+        ]
         kept_sentences = []
         kept_words = 0
         for part in sentence_parts:
@@ -1422,6 +1571,7 @@ def clamp_non_detail_response(response_text: str, detailed_mode: bool, response_
 
     return cleaned
 
+
 def get_personality_voice(profile: dict) -> str:
     personality = profile.get("preferences", {}).get("personality", "therapist").lower().strip()
     if personality == "coach":
@@ -1429,6 +1579,7 @@ def get_personality_voice(profile: dict) -> str:
     if personality == "guide":
         return settings.tts_voice_guide
     return settings.tts_voice_therapist
+
 
 def _execute_resolved_action(
     resolved: dict,
@@ -1469,7 +1620,9 @@ def _execute_resolved_action(
         return (f"Done — reverted the last action. {msg}".strip(), handled)
 
     if intent == "start_wind_down":
-        minutes = routine_engine.parse_minutes_from_text(str(slots.get("minutes", "45")), default_minutes=45)
+        minutes = routine_engine.parse_minutes_from_text(
+            str(slots.get("minutes", "45")), default_minutes=45
+        )
         autopilot_text = sleep_engine.build_wind_down_autopilot(profile, minutes=minutes)
         led.set_user_animation("breathing")
         led.set_user_brightness(0.22)
@@ -1559,6 +1712,7 @@ def _execute_resolved_action(
 
     return "", False
 
+
 def get_speed_tuning(profile: dict):
     speed_mode = profile.get("preferences", {}).get("speed_mode", "normal").lower().strip()
     if speed_mode in ("super_fast", "superfast", "ultra"):
@@ -1576,6 +1730,7 @@ def get_speed_tuning(profile: dict):
         "allow_realtime_context": True,
     }
 
+
 def get_turn_speed_tuning(profile: dict, user_text: str):
     tuning = dict(get_speed_tuning(profile))
     speed_mode = profile.get("preferences", {}).get("speed_mode", "normal").lower().strip()
@@ -1590,6 +1745,7 @@ def get_turn_speed_tuning(profile: dict, user_text: str):
 
     return tuning
 
+
 def ensure_progress_shape(profile: dict):
     profile.setdefault("progress", {})
     progress = profile["progress"]
@@ -1602,6 +1758,7 @@ def ensure_progress_shape(profile: dict):
     progress.setdefault("best_streak_days", 0)
     progress.setdefault("completion_history_dates", [])
 
+
 def _is_next_day(prev_iso_date: str, current_iso_date: str) -> bool:
     try:
         prev = datetime.fromisoformat(prev_iso_date).date()
@@ -1609,6 +1766,7 @@ def _is_next_day(prev_iso_date: str, current_iso_date: str) -> bool:
         return (curr - prev).days == 1
     except Exception:
         return False
+
 
 def record_goal_completion(profile: dict):
     ensure_progress_shape(profile)
@@ -1635,11 +1793,13 @@ def record_goal_completion(profile: dict):
     )
     progress["last_goal_completion_date"] = today_iso
 
+
 def mark_session_started(profile: dict):
     ensure_progress_shape(profile)
     progress = profile["progress"]
     progress["sessions_count"] = int(progress.get("sessions_count", 0)) + 1
     progress["last_session_date"] = datetime.now().date().isoformat()
+
 
 def build_progress_summary(profile: dict) -> str:
     ensure_progress_shape(profile)
@@ -1662,6 +1822,7 @@ def build_progress_summary(profile: dict) -> str:
         f"sessions={sessions}, goals_created={created}, goals_completed={completed}, streak_days={streak}."
     )
 
+
 def format_progress_report(profile: dict) -> str:
     ensure_progress_shape(profile)
     progress = profile.get("progress", {})
@@ -1676,6 +1837,7 @@ def format_progress_report(profile: dict) -> str:
         f"Progress report: sessions={sessions}, goals completed={completed}/{created} "
         f"({completion_rate:.0f}%), trend={trend}, streak={streak} day(s), best_streak={best_streak}."
     )
+
 
 def format_weekly_review(profile: dict, goal_manager: SessionGoalManager) -> str:
     ensure_progress_shape(profile)
@@ -1698,6 +1860,7 @@ def format_weekly_review(profile: dict, goal_manager: SessionGoalManager) -> str
         f"Current streak = {int(progress.get('current_streak_days', 0))} day(s). "
         f"Top active goals: {top_active}."
     )
+
 
 def run_first_boot_intro(tts=None, tts_player=None):
     def _speak(line: str):
@@ -1824,6 +1987,7 @@ def run_first_boot_intro(tts=None, tts_player=None):
     )
     return profile
 
+
 def ensure_profile_shape(profile: dict):
     profile.setdefault("age", "?")
     profile.setdefault("preferences", {})
@@ -1841,7 +2005,9 @@ def ensure_profile_shape(profile: dict):
     profile["preferences"].setdefault("engagement_level", "high")
     profile["preferences"].setdefault("speed_mode", "normal")
     profile["preferences"].setdefault("guide_level", "beginner")
-    profile["preferences"].setdefault("quiet_window", str(settings.quiet_hours_default_window or "22:00-07:00"))
+    profile["preferences"].setdefault(
+        "quiet_window", str(settings.quiet_hours_default_window or "22:00-07:00")
+    )
     profile["preferences"].setdefault("quiet_mode_active", False)
     profile["preferences"].setdefault("quiet_hours_override_until_utc", "")
     profile["preferences"].setdefault("timezone", "UTC")
@@ -1866,12 +2032,14 @@ def ensure_profile_shape(profile: dict):
     ensure_hardware_shape(profile)
     return profile
 
+
 def _is_simple_yes(text: str) -> bool:
     normalized = normalize_for_intent(text)
     yes_tokens = {"yes", "yeah", "yep", "ok", "okay", "sure", "confirm", "نعم", "اوكي", "تمام"}
     if normalized in yes_tokens:
         return True
     return bool(set(normalized.split()).intersection(yes_tokens))
+
 
 def _is_simple_no(text: str) -> bool:
     normalized = normalize_for_intent(text)
@@ -1880,9 +2048,11 @@ def _is_simple_no(text: str) -> bool:
         return True
     return bool(set(normalized.split()).intersection(no_tokens))
 
+
 def _is_app_exit_command(text: str) -> bool:
     normalized = normalize_for_intent(text)
     return normalized in {"exit", "quit"}
+
 
 def _is_session_end_command(text: str) -> bool:
     normalized = normalize_for_intent(text)
@@ -1915,6 +2085,7 @@ def _is_session_end_command(text: str) -> bool:
         )
     )
 
+
 def _is_wake_only_utterance(wake_word_manager: WakeWordManager, text: str) -> bool:
     normalized = normalize_for_intent(text)
     if not normalized:
@@ -1933,7 +2104,9 @@ def _is_wake_only_utterance(wake_word_manager: WakeWordManager, text: str) -> bo
         "لو",
         "طيب",
     }
-    wake_tokens = {token for token in normalize_for_intent(wake_word_manager.wake_word).split() if token}
+    wake_tokens = {
+        token for token in normalize_for_intent(wake_word_manager.wake_word).split() if token
+    }
     for alias in wake_word_manager.get_wake_phrases():
         wake_tokens.update(token for token in normalize_for_intent(alias).split() if token)
 
@@ -1946,6 +2119,7 @@ def _is_wake_only_utterance(wake_word_manager: WakeWordManager, text: str) -> bo
         return True
     return False
 
+
 def _resolve_followup_control_intent(user_text: str, profile: dict) -> tuple[str, dict]:
     normalized = normalize_for_intent(user_text)
     if not normalized:
@@ -1955,7 +2129,13 @@ def _resolve_followup_control_intent(user_text: str, profile: dict) -> tuple[str
     last_action = runtime_flags.get("last_action", {}) if isinstance(runtime_flags, dict) else {}
     last_intent = str(last_action.get("intent", "") or "").strip().lower()
 
-    if last_intent in {"set_scene", "set_color", "brightness_up", "brightness_down", "brightness_set"}:
+    if last_intent in {
+        "set_scene",
+        "set_color",
+        "brightness_up",
+        "brightness_down",
+        "brightness_set",
+    }:
         if has_any(normalized, ("brighter", "more", "increase", "higher", "up", "زيد", "ارفع")):
             return "brightness_up", {}
         if has_any(normalized, ("dimmer", "dim", "less", "decrease", "lower", "down", "خف", "قلل")):
@@ -1980,13 +2160,22 @@ def _resolve_followup_control_intent(user_text: str, profile: dict) -> tuple[str
 
     return "", {}
 
-def _detect_compound_control_intents(user_text: str, profile: dict, breathing_offer_active: bool = False) -> list[dict]:
+
+def _detect_compound_control_intents(
+    user_text: str, profile: dict, breathing_offer_active: bool = False
+) -> list[dict]:
     raw = str(user_text or "").strip()
     if not raw:
         return []
 
-    connector_pattern = r"\s*(?:,| and then | then | and | also | plus | بعدها | ثم | وبعدين |\sو\s)\s*"
-    parts = [p.strip(" ,.;") for p in re.split(connector_pattern, raw, flags=re.IGNORECASE) if p.strip(" ,.;")]
+    connector_pattern = (
+        r"\s*(?:,| and then | then | and | also | plus | بعدها | ثم | وبعدين |\sو\s)\s*"
+    )
+    parts = [
+        p.strip(" ,.;")
+        for p in re.split(connector_pattern, raw, flags=re.IGNORECASE)
+        if p.strip(" ,.;")
+    ]
     if len(parts) < 2:
         return []
 
@@ -2004,7 +2193,9 @@ def _detect_compound_control_intents(user_text: str, profile: dict, breathing_of
 
     steps: list[dict] = []
     for part in parts:
-        intent, payload = detect_natural_bed_intent(part, breathing_offer_active=breathing_offer_active)
+        intent, payload = detect_natural_bed_intent(
+            part, breathing_offer_active=breathing_offer_active
+        )
         if intent in allowed:
             steps.append({"intent": intent, "slots": dict(payload or {})})
             continue
@@ -2014,7 +2205,9 @@ def _detect_compound_control_intents(user_text: str, profile: dict, breathing_of
             steps.append({"intent": followup_intent, "slots": dict(followup_payload or {})})
             continue
 
-        resolved = resolve_action(part, profile, context={"breathing_offer_active": breathing_offer_active})
+        resolved = resolve_action(
+            part, profile, context={"breathing_offer_active": breathing_offer_active}
+        )
         resolved_intent = str(resolved.get("intent", "") or "").strip().lower()
         confidence = float(resolved.get("confidence", 0.0) or 0.0)
         if resolved_intent in allowed and confidence >= 0.74:
@@ -2024,6 +2217,7 @@ def _detect_compound_control_intents(user_text: str, profile: dict, breathing_of
     if len(steps) < 2:
         return []
     return steps
+
 
 def _execute_compound_control_steps(
     steps: list[dict],
@@ -2144,16 +2338,13 @@ def _execute_compound_control_steps(
         return merged.strip(), True
     return "", False
 
+
 def _split_for_fast_tts_start(text: str, head_limit_chars: int = 140) -> tuple[str, str]:
     content = re.sub(r"\s+", " ", str(text or "")).strip()
     if len(content) <= head_limit_chars:
         return content, ""
 
-    punctuation_points = [
-        idx
-        for idx, ch in enumerate(content[:head_limit_chars])
-        if ch in ".!?;:"
-    ]
+    punctuation_points = [idx for idx, ch in enumerate(content[:head_limit_chars]) if ch in ".!?;:"]
     if punctuation_points:
         split_at = punctuation_points[-1] + 1
     else:
@@ -2164,6 +2355,7 @@ def _split_for_fast_tts_start(text: str, head_limit_chars: int = 140) -> tuple[s
     head = content[:split_at].strip()
     tail = content[split_at:].strip()
     return head, tail
+
 
 def _infer_interim_intent_hint(text: str) -> dict:
     normalized = normalize_for_intent(text)
@@ -2191,6 +2383,7 @@ def _infer_interim_intent_hint(text: str) -> dict:
         return {"intent": "lighting", "category": "control", "normalized": normalized}
 
     return {}
+
 
 def play_tts_with_fast_start(
     tts: TTSManager,
@@ -2245,6 +2438,7 @@ def play_tts_with_fast_start(
 
     return first_audio_path
 
+
 def run_streaming_voice_turn(
     *,
     chat: ConversationEngine,
@@ -2290,7 +2484,9 @@ def run_streaming_voice_turn(
     stream_started_at = time.monotonic()
 
     def _filler_watcher():
-        while (not watch_stop.is_set()) and (not first_chunk_seen.is_set()) and (not _should_stop()):
+        while (
+            (not watch_stop.is_set()) and (not first_chunk_seen.is_set()) and (not _should_stop())
+        ):
             elapsed = time.monotonic() - stream_started_at
             if filler_manager.should_play(elapsed) and tts_player.is_ready():
                 filler = filler_manager.pick()
@@ -2314,6 +2510,7 @@ def run_streaming_voice_turn(
     barge_in_monitor.start(_on_barge_in)
     response_text = ""
     try:
+
         def _on_preload_phase(phase: str):
             if phase:
                 environment_orchestrator.preload_transition_for_response(led, profile, phase)
@@ -2352,6 +2549,7 @@ def run_streaming_voice_turn(
 
     return response_text, interrupted["text"]
 
+
 def get_query_text(
     stt_manager: STTManager,
     wake_word_manager: WakeWordManager,
@@ -2363,7 +2561,9 @@ def get_query_text(
         stream_capture = getattr(stt_manager, "transcribe_microphone_with_interim", None)
         if callable(stream_capture):
             phrase_limit = wake_word_manager.get_voice_phrase_limit_seconds()
-            max_phrase_seconds = float(phrase_limit) if isinstance(phrase_limit, int) and phrase_limit > 0 else 16.0
+            max_phrase_seconds = (
+                float(phrase_limit) if isinstance(phrase_limit, int) and phrase_limit > 0 else 16.0
+            )
             last_interim = {"text": ""}
             last_hint = {"key": ""}
             active_mic_index = wake_word_manager.get_active_mic_index()
@@ -2415,9 +2615,13 @@ def get_query_text(
                 print("Bed: STT source -> Deepgram live stream.")
             elif require_api_stream:
                 now = time.time()
-                last_warning_at = float(getattr(get_query_text, "_strict_stt_last_warning_at", 0.0) or 0.0)
+                last_warning_at = float(
+                    getattr(get_query_text, "_strict_stt_last_warning_at", 0.0) or 0.0
+                )
                 if now - last_warning_at >= 4.0:
-                    print("Bed: Deepgram live STT did not capture speech. Strict stream mode is enabled, so fallback STT is disabled.")
+                    print(
+                        "Bed: Deepgram live STT did not capture speech. Strict stream mode is enabled, so fallback STT is disabled."
+                    )
                     setattr(get_query_text, "_strict_stt_last_warning_at", now)
                 time.sleep(0.18)
                 return "", 0.0
@@ -2455,6 +2659,7 @@ def get_query_text(
         return retry, 1.0 if retry else 0.0
 
     return raw, 1.0 if raw else 0.0
+
 
 def handle_local_commands(
     user_text: str,
@@ -2507,6 +2712,7 @@ def handle_local_commands(
         return reflection_response, True
 
     if proactive_engine is None:
+
         class _NoOpProactiveEngine:
             @staticmethod
             def daily_summary(_profile: dict) -> str:
@@ -2515,6 +2721,7 @@ def handle_local_commands(
         proactive_engine = _NoOpProactiveEngine()
 
     if signature_engine is None:
+
         class _NoOpSignatureEngine:
             @staticmethod
             def run(*_args, **_kwargs):
@@ -2523,6 +2730,7 @@ def handle_local_commands(
         signature_engine = _NoOpSignatureEngine()
 
     if memory_store is None:
+
         class _NoOpMemoryStore:
             @staticmethod
             def inject_daily_events(*_args, **_kwargs) -> int:
@@ -2547,6 +2755,7 @@ def handle_local_commands(
         memory_store = _NoOpMemoryStore()
 
     if tts is None:
+
         class _NoOpTTS:
             @staticmethod
             def synthesize_to_mp3(*_args, **_kwargs):
@@ -2555,6 +2764,7 @@ def handle_local_commands(
         tts = _NoOpTTS()
 
     if wake_word_manager is None:
+
         class _NoOpWakeWordManager:
             wake_word = "hey smart bed"
 
@@ -2625,18 +2835,31 @@ def handle_local_commands(
             runtime_flags["awaiting_data_delete_confirm"] = False
             save_profile(profile)
             return "Data deletion cancelled.", True
-        if bool(tokens.intersection(confirm_tokens)) or bool(raw_tokens.intersection(confirm_tokens)):
+        if bool(tokens.intersection(confirm_tokens)) or bool(
+            raw_tokens.intersection(confirm_tokens)
+        ):
             runtime_flags["awaiting_data_delete_confirm"] = False
             if delete_profile(profile=profile):
                 profile.clear()
                 profile["runtime_flags"] = {"session_locked_after_delete": True}
-                return "Current user data was deleted on this device. Shared subscription records were kept. Please restart so I can run fresh setup.", True
+                return (
+                    "Current user data was deleted on this device. Shared subscription records were kept. Please restart so I can run fresh setup.",
+                    True,
+                )
             return "I could not delete local data right now. Please try again.", True
         return "Please say confirm or cancel.", True
 
     if runtime_flags.get("awaiting_bed_nickname"):
         nickname_candidate = normalize_for_intent(user_text)
-        if nickname_candidate in ("cancel", "stop", "never mind", "nevermind", "خلاص", "الغاء", "إلغاء"):
+        if nickname_candidate in (
+            "cancel",
+            "stop",
+            "never mind",
+            "nevermind",
+            "خلاص",
+            "الغاء",
+            "إلغاء",
+        ):
             runtime_flags["awaiting_bed_nickname"] = False
             save_profile(profile)
             return "Okay, nickname setup cancelled.", True
@@ -2721,7 +2944,11 @@ def handle_local_commands(
         if handled:
             return message, True
 
-    if lower in ("what did you auto-manage today", "auto manage summary", "proactive summary status"):
+    if lower in (
+        "what did you auto-manage today",
+        "auto manage summary",
+        "proactive summary status",
+    ):
         return proactive_engine.daily_summary(profile), True
 
     signature_response, signature_handled = signature_engine.run(
@@ -2748,7 +2975,9 @@ def handle_local_commands(
         "sleep optimize room",
     )
     if lower not in optimize_room_phrases:
-        resolved = resolve_action(user_text, profile, context={"breathing_offer_active": breathing_offer_active})
+        resolved = resolve_action(
+            user_text, profile, context={"breathing_offer_active": breathing_offer_active}
+        )
         confidence = float(resolved.get("confidence", 0.0) or 0.0)
         if confidence >= 0.78:
             msg, handled = _execute_resolved_action(
@@ -2778,7 +3007,9 @@ def handle_local_commands(
         return "Sure. What nickname do you want for me?", True
 
     if natural_intent == "set_bed_nickname":
-        nickname = apply_bed_nickname(profile, wake_word_manager, str(natural_payload.get("nickname", "")))
+        nickname = apply_bed_nickname(
+            profile, wake_word_manager, str(natural_payload.get("nickname", ""))
+        )
         if not nickname:
             runtime_flags["awaiting_bed_nickname"] = True
             save_profile(profile)
@@ -2873,7 +3104,9 @@ def handle_local_commands(
         return adaptive_personality.get_personality_insights(profile), True
 
     if natural_intent == "adaptive_toggle":
-        msg = adaptive_personality.set_adaptive_enabled(profile, bool(natural_payload.get("enabled", True)))
+        msg = adaptive_personality.set_adaptive_enabled(
+            profile, bool(natural_payload.get("enabled", True))
+        )
         save_profile(profile)
         return msg, True
 
@@ -2951,7 +3184,9 @@ def handle_local_commands(
 
     if natural_intent == "start_bedtime_routine":
         minutes = routine_engine.parse_minutes_from_text(user_text, default_minutes=30)
-        return routine_engine.start_bedtime_routine(led, local_music, sleep_routine, minutes=minutes), True
+        return routine_engine.start_bedtime_routine(
+            led, local_music, sleep_routine, minutes=minutes
+        ), True
 
     if natural_intent == "start_morning_routine":
         return routine_engine.trigger_morning_routine(led, local_music), True
@@ -3069,16 +3304,26 @@ def handle_local_commands(
     if lower in ("delete all my data", "erase my data", "reset my data"):
         runtime_flags["awaiting_data_delete_confirm"] = True
         save_profile(profile)
-        return "This will delete data for your current local user profile on this device. Shared subscription records for other users are kept. Say confirm to proceed or cancel.", True
+        return (
+            "This will delete data for your current local user profile on this device. Shared subscription records for other users are kept. Say confirm to proceed or cancel.",
+            True,
+        )
 
     if lower in ("privacy status", "show privacy settings", "data retention"):
-        days = _safe_int(profile.get("preferences", {}).get("data_retention_days", 14), default_value=14, min_value=1, max_value=365)
+        days = _safe_int(
+            profile.get("preferences", {}).get("data_retention_days", 14),
+            default_value=14,
+            min_value=1,
+            max_value=365,
+        )
         return (
             f"Privacy defaults -> text retention target: {days} days, raw audio storage: off by default. "
             "Say 'delete all my data' for one-click local wipe."
         ), True
 
-    retention_match = re.search(r"set (?:data )?retention(?: to)?\s*(\d{1,3})\s*(?:day|days)?", lower)
+    retention_match = re.search(
+        r"set (?:data )?retention(?: to)?\s*(\d{1,3})\s*(?:day|days)?", lower
+    )
     if retention_match:
         days = max(1, min(365, int(retention_match.group(1))))
         profile.setdefault("preferences", {})["data_retention_days"] = days
@@ -3117,19 +3362,29 @@ def handle_local_commands(
         lines = []
         if diag["openai_direct_enabled"]:
             if diag["openai_ready"]:
-                lines.append(f"Direct OpenAI GPT route: ready (model={settings.openai_chat_model}).")
+                lines.append(
+                    f"Direct OpenAI GPT route: ready (model={settings.openai_chat_model})."
+                )
             else:
                 lines.append("Direct OpenAI GPT route: not ready.")
         else:
             lines.append("Direct OpenAI GPT route: disabled (USE_OPENAI_DIRECT=0).")
 
-        if diag["backend_proxy_enabled"] and (backend_client is not None) and backend_client.is_configured():
+        if (
+            diag["backend_proxy_enabled"]
+            and (backend_client is not None)
+            and backend_client.is_configured()
+        ):
             backend_client.fetch_entitlement()
             lines.append(f"Backend GPT route: {backend_client.status_line()}")
             if not backend_client.is_feature_allowed("cloud_chat"):
-                lines.append("Backend feature gate: cloud_chat is disabled for this device/subscription.")
+                lines.append(
+                    "Backend feature gate: cloud_chat is disabled for this device/subscription."
+                )
         elif diag["backend_proxy_enabled"]:
-            lines.append("Backend GPT route: not configured (set APP_BACKEND_BASE_URL and BED_DEVICE_ID).")
+            lines.append(
+                "Backend GPT route: not configured (set APP_BACKEND_BASE_URL and BED_DEVICE_ID)."
+            )
         else:
             lines.append("Backend GPT route: disabled (USE_BACKEND_AI_PROXY=0).")
 
@@ -3177,7 +3432,11 @@ def handle_local_commands(
         save_profile(profile)
         return "Done. Music lights are in calm mode.", True
 
-    if lower in ("make music lights more energetic", "music lights energetic", "apply party music lighting"):
+    if lower in (
+        "make music lights more energetic",
+        "music lights energetic",
+        "apply party music lighting",
+    ):
         prefs["music_lights_energy"] = "energetic"
         apply_music_led_preferences(led, profile)
         save_profile(profile)
@@ -3288,7 +3547,9 @@ def handle_local_commands(
     if lower in ("pilot readiness", "pilot readiness report", "readiness report"):
         preferences = profile.get("preferences", {})
         ack_mode = str(preferences.get("thinking_ack_mode", "minimal") or "minimal")
-        retention_days = _safe_int(preferences.get("data_retention_days", 14), default_value=14, min_value=1, max_value=365)
+        retention_days = _safe_int(
+            preferences.get("data_retention_days", 14), default_value=14, min_value=1, max_value=365
+        )
         speed_mode = str(preferences.get("speed_mode", "normal") or "normal")
         response_style = str(preferences.get("response_style", "quick") or "quick")
         engagement = str(preferences.get("engagement_level", "normal") or "normal")
@@ -3314,7 +3575,10 @@ def handle_local_commands(
         completed_at = str(onboarding.get("bed_phase_completed_at", "") or "")
         if done:
             return f"Bed phase status -> completed at {completed_at}.", True
-        return "Bed phase status -> not completed yet. Run 'pilot go no go' then 'mark bed phase complete' when GO.", True
+        return (
+            "Bed phase status -> not completed yet. Run 'pilot go no go' then 'mark bed phase complete' when GO.",
+            True,
+        )
 
     if lower in ("mark bed phase complete", "complete bed phase", "mark pilot phase complete"):
         health_report = health_report_builder()
@@ -3389,7 +3653,9 @@ def handle_local_commands(
         if music_ok:
             apply_music_led_preferences(led, profile, active=True)
         if not (music_msg or "").strip():
-            music_msg = "Audio: sleep audio is not available right now, but room settings are optimized."
+            music_msg = (
+                "Audio: sleep audio is not available right now, but room settings are optimized."
+            )
         save_profile(profile)
         return f"{scene_line} {autopilot_text} {music_msg}".strip(), True
 
@@ -3492,7 +3758,9 @@ def handle_local_commands(
     if partner_name_match:
         slot = int(partner_name_match.group(1))
         # Safer extraction from original text preserving case for names.
-        name_text = re.split(r"^set\s+partner\s+[12]\s+name\s+", user_text, maxsplit=1, flags=re.IGNORECASE)
+        name_text = re.split(
+            r"^set\s+partner\s+[12]\s+name\s+", user_text, maxsplit=1, flags=re.IGNORECASE
+        )
         partner_name = name_text[1].strip() if len(name_text) > 1 else ""
         if not partner_name:
             return "Use: set partner <1|2> name <name>", True
@@ -3503,7 +3771,9 @@ def handle_local_commands(
     partner_style_match = re.match(r"^set\s+partner\s+([12])\s+wake\s+style\s+(.+)$", lower)
     if partner_style_match:
         slot = int(partner_style_match.group(1))
-        style_text = re.split(r"^set\s+partner\s+[12]\s+wake\s+style\s+", user_text, maxsplit=1, flags=re.IGNORECASE)
+        style_text = re.split(
+            r"^set\s+partner\s+[12]\s+wake\s+style\s+", user_text, maxsplit=1, flags=re.IGNORECASE
+        )
         wake_style = style_text[1].strip() if len(style_text) > 1 else ""
         if not wake_style:
             return "Use: set partner <1|2> wake style <gentle|balanced|energizing>", True
@@ -3568,7 +3838,11 @@ def handle_local_commands(
         save_profile(profile)
         return f"{line} {message}".strip(), True
 
-    if lower.startswith("mood scene ") or lower.startswith("play mood ") or lower.startswith("mood bundle "):
+    if (
+        lower.startswith("mood scene ")
+        or lower.startswith("play mood ")
+        or lower.startswith("mood bundle ")
+    ):
         mood = user_text
         for marker in ("mood scene", "play mood", "mood bundle"):
             if lower.startswith(marker):
@@ -3711,7 +3985,7 @@ def handle_local_commands(
         steps = goal_strategy.decompose_goal_text(text)
         if not steps:
             return "Use: decompose <goal text>", True
-        return "Micro-plan: " + " | ".join(f"{idx+1}. {s}" for idx, s in enumerate(steps)), True
+        return "Micro-plan: " + " | ".join(f"{idx + 1}. {s}" for idx, s in enumerate(steps)), True
 
     if lower.startswith("mark goal missed "):
         payload = user_text.split("mark goal missed", 1)[1].strip()
@@ -3771,14 +4045,17 @@ def handle_local_commands(
         tone = normalize_followup_tone(tone_value)
         profile.setdefault("preferences", {})["therapist_followup_tone"] = tone
         save_profile(profile)
-        return (
-            "Therapist follow-up tone set to "
-            + tone
-            + ". Options: soft, teen, islamic."
-        ), True
+        return ("Therapist follow-up tone set to " + tone + ". Options: soft, teen, islamic."), True
 
-    if lower in ("show followup tone", "show follow up tone", "what is followup tone", "what is follow up tone"):
-        tone = normalize_followup_tone(profile.get("preferences", {}).get("therapist_followup_tone", "soft"))
+    if lower in (
+        "show followup tone",
+        "show follow up tone",
+        "what is followup tone",
+        "what is follow up tone",
+    ):
+        tone = normalize_followup_tone(
+            profile.get("preferences", {}).get("therapist_followup_tone", "soft")
+        )
         return f"Current therapist follow-up tone is {tone}.", True
 
     if lower.startswith("set thinking acknowledgements to "):
@@ -3795,7 +4072,11 @@ def handle_local_commands(
         save_profile(profile)
         return f"Thinking acknowledgement mode set to {mode}.", True
 
-    if lower in ("mute thinking acknowledgements", "disable thinking acknowledgements", "no thinking acknowledgement"):
+    if lower in (
+        "mute thinking acknowledgements",
+        "disable thinking acknowledgements",
+        "no thinking acknowledgement",
+    ):
         profile["preferences"]["thinking_ack_mode"] = "off"
         save_profile(profile)
         return "Thinking acknowledgements are now off.", True
@@ -3837,7 +4118,9 @@ def handle_local_commands(
         ok, message = goal_manager.complete_goal(profile, ref)
         if ok:
             ensure_progress_shape(profile)
-            profile["progress"]["goals_completed"] = int(profile["progress"].get("goals_completed", 0)) + 1
+            profile["progress"]["goals_completed"] = (
+                int(profile["progress"].get("goals_completed", 0)) + 1
+            )
             record_goal_completion(profile)
             save_profile(profile)
         return message, True
@@ -3883,14 +4166,18 @@ def handle_local_commands(
         return f"Bedtime routine set for {alarm.time_24h} ({repeat_text}). ID: {alarm.id}", True
 
     if lower in ("list morning routines", "show morning routines"):
-        routines = [a for a in schedule.list_alarms() if a.label.lower().startswith("morning routine")]
+        routines = [
+            a for a in schedule.list_alarms() if a.label.lower().startswith("morning routine")
+        ]
         if not routines:
             return "No morning routines set.", True
         lines = [f"{a.id} -> {a.time_24h} ({format_repeat_days(a.repeat_days)})" for a in routines]
         return "Morning routines: " + " | ".join(lines), True
 
     if lower in ("list bedtime routines", "show bedtime routines"):
-        routines = [a for a in schedule.list_alarms() if a.label.lower().startswith("bedtime routine")]
+        routines = [
+            a for a in schedule.list_alarms() if a.label.lower().startswith("bedtime routine")
+        ]
         if not routines:
             return "No bedtime routines set.", True
         lines = [f"{a.id} -> {a.time_24h} ({format_repeat_days(a.repeat_days)})" for a in routines]
@@ -4122,7 +4409,10 @@ def handle_local_commands(
         return f"Set user strip animation to {animation}.", True
 
     if lower in ("list animations", "show animations", "what animations"):
-        return "Available animations: solid, breathing, pulse, rainbow, wave, strobe. Music modes: pulse, wave, spectrum.", True
+        return (
+            "Available animations: solid, breathing, pulse, rainbow, wave, strobe. Music modes: pulse, wave, spectrum.",
+            True,
+        )
 
     if lower.startswith("set user strip to "):
         new_color = user_text.split("to", 1)[1].strip()
@@ -4226,7 +4516,11 @@ def handle_local_commands(
         save_profile(profile)
         return msg, True
 
-    if lower.startswith("i dreamed") or lower.startswith("my dream") or lower.startswith("i had a dream"):
+    if (
+        lower.startswith("i dreamed")
+        or lower.startswith("my dream")
+        or lower.startswith("i had a dream")
+    ):
         if dream_journal.is_prompting:
             msg, _ = dream_journal.capture_dream_response(user_text, profile)
             save_profile(profile)
@@ -4253,4 +4547,3 @@ def handle_local_commands(
         return msg, True
 
     return "", False
-

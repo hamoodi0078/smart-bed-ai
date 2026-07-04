@@ -125,9 +125,15 @@ class SceneStore:
     def _normalize_scene(self, scene: dict) -> dict:
         out = deepcopy(scene)
         scene_id = str(out.get("id", "")).strip() or str(uuid4())
-        created_at = str(out.get("created_at", "")).strip() or to_iso(utcnow().replace(microsecond=0))
+        created_at = str(out.get("created_at", "")).strip() or to_iso(
+            utcnow().replace(microsecond=0)
+        )
         tags_raw = out.get("tags", [])
-        tags = [str(tag).strip() for tag in tags_raw if str(tag).strip()] if isinstance(tags_raw, list) else []
+        tags = (
+            [str(tag).strip() for tag in tags_raw if str(tag).strip()]
+            if isinstance(tags_raw, list)
+            else []
+        )
 
         light_raw = out.get("light", {})
         audio_raw = out.get("audio", {})

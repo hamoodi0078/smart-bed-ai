@@ -19,12 +19,14 @@ try:
     from statsmodels.tsa.seasonal import seasonal_decompose as _seasonal_decompose
     from statsmodels.tsa.stattools import acf as _acf
     from statsmodels.tsa.stattools import adfuller as _adfuller
+
     _STATSMODELS_AVAILABLE = True
 except ImportError:
     _STATSMODELS_AVAILABLE = False
 
 try:
     import litellm as _litellm
+
     _LITELLM_AVAILABLE = True
 except ImportError:
     _litellm = None  # type: ignore[assignment]
@@ -34,6 +36,7 @@ try:
     from langchain_core.prompts import ChatPromptTemplate as _ChatPromptTemplate
     from langchain_core.prompts import PromptTemplate as _PromptTemplate
     from langchain_core.output_parsers import StrOutputParser as _StrOutputParser
+
     _LANGCHAIN_CORE_AVAILABLE = True
     _lc_str_parser = _StrOutputParser()
 except ImportError:
@@ -72,8 +75,14 @@ class SleepAnalyzer:
     def analyze_patterns(self, profile: dict) -> dict[str, Any]:
         """Full pattern analysis from profile sleep data."""
         sleep = profile.get("sleep", {}) if isinstance(profile, dict) else {}
-        bed_hist = sleep.get("bedtime_history", []) if isinstance(sleep.get("bedtime_history"), list) else []
-        wake_hist = sleep.get("wake_history", []) if isinstance(sleep.get("wake_history"), list) else []
+        bed_hist = (
+            sleep.get("bedtime_history", [])
+            if isinstance(sleep.get("bedtime_history"), list)
+            else []
+        )
+        wake_hist = (
+            sleep.get("wake_history", []) if isinstance(sleep.get("wake_history"), list) else []
+        )
 
         bed_times = self._parse_timestamps(bed_hist[-30:])
         wake_times = self._parse_timestamps(wake_hist[-30:])
@@ -91,22 +100,34 @@ class SleepAnalyzer:
             "avg_sleep_hours": round(float(s.mean()), 2) if not s.empty else 0.0,
             "median_sleep_hours": round(float(s.median()), 2) if not s.empty else 0.0,
             "stddev_sleep_hours": round(float(s.std()), 2) if len(s) > 1 else 0.0,
-            "avg_bedtime": _minutes_to_hhmm(_circular_mean_minutes(bed_minutes)) if bed_minutes else "N/A",
-            "avg_wake_time": _minutes_to_hhmm(_circular_mean_minutes(wake_minutes)) if wake_minutes else "N/A",
+            "avg_bedtime": _minutes_to_hhmm(_circular_mean_minutes(bed_minutes))
+            if bed_minutes
+            else "N/A",
+            "avg_wake_time": _minutes_to_hhmm(_circular_mean_minutes(wake_minutes))
+            if wake_minutes
+            else "N/A",
             "bedtime_consistency_score": self._consistency_score(bed_minutes),
             "wake_consistency_score": self._consistency_score(wake_minutes),
-            "weekday_avg_bedtime": _minutes_to_hhmm(_circular_mean_minutes(
-                [_minutes_of_day(dt) for dt in weekday_beds]
-            )) if weekday_beds else "N/A",
-            "weekend_avg_bedtime": _minutes_to_hhmm(_circular_mean_minutes(
-                [_minutes_of_day(dt) for dt in weekend_beds]
-            )) if weekend_beds else "N/A",
-            "weekday_avg_wake": _minutes_to_hhmm(_circular_mean_minutes(
-                [_minutes_of_day(dt) for dt in weekday_wakes]
-            )) if weekday_wakes else "N/A",
-            "weekend_avg_wake": _minutes_to_hhmm(_circular_mean_minutes(
-                [_minutes_of_day(dt) for dt in weekend_wakes]
-            )) if weekend_wakes else "N/A",
+            "weekday_avg_bedtime": _minutes_to_hhmm(
+                _circular_mean_minutes([_minutes_of_day(dt) for dt in weekday_beds])
+            )
+            if weekday_beds
+            else "N/A",
+            "weekend_avg_bedtime": _minutes_to_hhmm(
+                _circular_mean_minutes([_minutes_of_day(dt) for dt in weekend_beds])
+            )
+            if weekend_beds
+            else "N/A",
+            "weekday_avg_wake": _minutes_to_hhmm(
+                _circular_mean_minutes([_minutes_of_day(dt) for dt in weekday_wakes])
+            )
+            if weekday_wakes
+            else "N/A",
+            "weekend_avg_wake": _minutes_to_hhmm(
+                _circular_mean_minutes([_minutes_of_day(dt) for dt in weekend_wakes])
+            )
+            if weekend_wakes
+            else "N/A",
             "late_night_count": sum(1 for m in bed_minutes if 60 <= m <= 180),
             "short_sleep_count": sum(1 for d in durations if d < 6.0),
             "optimal_bedtime": self._predict_optimal_bedtime(bed_minutes, durations),
@@ -116,8 +137,14 @@ class SleepAnalyzer:
     def predict_bedtime(self, profile: dict, target_wake_time: str = "") -> dict[str, Any]:
         """Predict optimal bedtime based on history and optional target wake time."""
         sleep = profile.get("sleep", {}) if isinstance(profile, dict) else {}
-        bed_hist = sleep.get("bedtime_history", []) if isinstance(sleep.get("bedtime_history"), list) else []
-        wake_hist = sleep.get("wake_history", []) if isinstance(sleep.get("wake_history"), list) else []
+        bed_hist = (
+            sleep.get("bedtime_history", [])
+            if isinstance(sleep.get("bedtime_history"), list)
+            else []
+        )
+        wake_hist = (
+            sleep.get("wake_history", []) if isinstance(sleep.get("wake_history"), list) else []
+        )
 
         bed_times = self._parse_timestamps(bed_hist[-14:])
         wake_times = self._parse_timestamps(wake_hist[-14:])
@@ -132,9 +159,17 @@ class SleepAnalyzer:
                 parts = target_wake_time.split(":")
                 wake_minutes = int(parts[0]) * 60 + int(parts[1])
             except Exception:
-                wake_minutes = _circular_mean_minutes([_minutes_of_day(dt) for dt in wake_times]) if wake_times else 420
+                wake_minutes = (
+                    _circular_mean_minutes([_minutes_of_day(dt) for dt in wake_times])
+                    if wake_times
+                    else 420
+                )
         else:
-            wake_minutes = _circular_mean_minutes([_minutes_of_day(dt) for dt in wake_times]) if wake_times else 420
+            wake_minutes = (
+                _circular_mean_minutes([_minutes_of_day(dt) for dt in wake_times])
+                if wake_times
+                else 420
+            )
 
         bedtime_minutes = int(wake_minutes - recommended_hours * 60)
         if bedtime_minutes < 0:
@@ -154,7 +189,11 @@ class SleepAnalyzer:
     def detect_bedtime_drift(self, profile: dict, days: int = 7) -> dict[str, Any]:
         """Detect if user's bedtime is drifting later over recent nights."""
         sleep = profile.get("sleep", {}) if isinstance(profile, dict) else {}
-        bed_hist = sleep.get("bedtime_history", []) if isinstance(sleep.get("bedtime_history"), list) else []
+        bed_hist = (
+            sleep.get("bedtime_history", [])
+            if isinstance(sleep.get("bedtime_history"), list)
+            else []
+        )
         bed_times = self._parse_timestamps(bed_hist[-days:])
 
         if len(bed_times) < 3:
@@ -207,7 +246,9 @@ class SleepAnalyzer:
             "drift_minutes": round(drift_minutes, 1),
             "message": message,
             "nights_analyzed": len(bed_times),
-            "intervention_level": 3 if drift_minutes > 60 else (2 if drift_minutes > 45 else (1 if drift_detected else 0)),
+            "intervention_level": 3
+            if drift_minutes > 60
+            else (2 if drift_minutes > 45 else (1 if drift_detected else 0)),
             "stationarity_test": stationarity,
         }
 
@@ -351,16 +392,15 @@ class SleepAnalyzer:
             "rating": rating,
             "waso_minutes": round(float(awakenings_minutes or 0), 1),
             "recommendation": (
-                "Sleep efficiency is normal." if rating == "normal"
+                "Sleep efficiency is normal."
+                if rating == "normal"
                 else "Consider restricting time in bed to improve efficiency."
                 if rating == "below_average"
                 else "Poor sleep efficiency — consider CBT-I or sleep restriction therapy."
             ),
         }
 
-    def calculate_social_jet_lag(
-        self, profile: dict, weeks: int = 4
-    ) -> dict[str, Any]:
+    def calculate_social_jet_lag(self, profile: dict, weeks: int = 4) -> dict[str, Any]:
         """Compute social jet lag: the difference between weekday and weekend mid-sleep times.
 
         Social jet lag ≥ 2 hours is associated with higher metabolic risk, mood
@@ -371,8 +411,14 @@ class SleepAnalyzer:
         Returns absolute social jet lag in hours plus a severity rating.
         """
         sleep = profile.get("sleep", {}) if isinstance(profile, dict) else {}
-        bed_hist = sleep.get("bedtime_history", []) if isinstance(sleep.get("bedtime_history"), list) else []
-        wake_hist = sleep.get("wake_history", []) if isinstance(sleep.get("wake_history"), list) else []
+        bed_hist = (
+            sleep.get("bedtime_history", [])
+            if isinstance(sleep.get("bedtime_history"), list)
+            else []
+        )
+        wake_hist = (
+            sleep.get("wake_history", []) if isinstance(sleep.get("wake_history"), list) else []
+        )
 
         # Limit to the last N weeks (7 * weeks nights)
         max_nights = 7 * max(1, int(weeks))
@@ -381,7 +427,10 @@ class SleepAnalyzer:
         pairs = min(len(bed_times), len(wake_times))
 
         if pairs < 4:
-            return {"available": False, "reason": "Need at least 4 bed/wake pairs to calculate social jet lag."}
+            return {
+                "available": False,
+                "reason": "Need at least 4 bed/wake pairs to calculate social jet lag.",
+            }
 
         weekday_mids: list[float] = []
         weekend_mids: list[float] = []
@@ -401,7 +450,10 @@ class SleepAnalyzer:
                 weekend_mids.append(mid_min)
 
         if not weekday_mids or not weekend_mids:
-            return {"available": False, "reason": "Need both weekday and weekend data to calculate social jet lag."}
+            return {
+                "available": False,
+                "reason": "Need both weekday and weekend data to calculate social jet lag.",
+            }
 
         wd_mid = _circular_mean_minutes([int(m) for m in weekday_mids])
         we_mid = _circular_mean_minutes([int(m) for m in weekend_mids])
@@ -440,9 +492,7 @@ class SleepAnalyzer:
             "weekend_nights": len(weekend_mids),
         }
 
-    def forecast_sleep_duration(
-        self, profile: dict, nights: int = 3
-    ) -> dict[str, Any]:
+    def forecast_sleep_duration(self, profile: dict, nights: int = 3) -> dict[str, Any]:
         """Forecast the next *nights* nights of sleep duration using Holt-Winters
         exponential smoothing.
 
@@ -529,15 +579,22 @@ class SleepAnalyzer:
         durations = self._calculate_durations(bed_times, wake_times)
 
         if len(durations) < 14:
-            return {"available": False, "reason": "Need at least 14 nights for weekly decomposition."}
+            return {
+                "available": False,
+                "reason": "Need at least 14 nights for weekly decomposition.",
+            }
 
         try:
             series = pd.Series(
                 durations,
-                index=pd.date_range(end=pd.Timestamp.today().normalize(), periods=len(durations), freq="D"),
+                index=pd.date_range(
+                    end=pd.Timestamp.today().normalize(), periods=len(durations), freq="D"
+                ),
                 dtype=float,
             )
-            result = _seasonal_decompose(series, model="additive", period=7, extrapolate_trend="freq")
+            result = _seasonal_decompose(
+                series, model="additive", period=7, extrapolate_trend="freq"
+            )
 
             trend_vals = result.trend.dropna()
             trend_diff = float(trend_vals.iloc[-1]) - float(trend_vals.iloc[0])
@@ -594,7 +651,9 @@ class SleepAnalyzer:
 
         try:
             series = np.array(durations, dtype=float)
-            adf_stat, p_value, used_lags, nobs, critical_values, _ = _adfuller(series, autolag="AIC")
+            adf_stat, p_value, used_lags, nobs, critical_values, _ = _adfuller(
+                series, autolag="AIC"
+            )
 
             is_stationary = bool(p_value <= 0.05)
             interpretation = (
@@ -626,21 +685,29 @@ class SleepAnalyzer:
         Requires at least 7 paired bed/wake entries for a meaningful model.
         """
         sleep = profile.get("sleep", {}) if isinstance(profile, dict) else {}
-        bed_hist = sleep.get("bedtime_history", []) if isinstance(sleep.get("bedtime_history"), list) else []
-        wake_hist = sleep.get("wake_history", []) if isinstance(sleep.get("wake_history"), list) else []
+        bed_hist = (
+            sleep.get("bedtime_history", [])
+            if isinstance(sleep.get("bedtime_history"), list)
+            else []
+        )
+        wake_hist = (
+            sleep.get("wake_history", []) if isinstance(sleep.get("wake_history"), list) else []
+        )
 
         bed_times = self._parse_timestamps(bed_hist[-60:])
         wake_times = self._parse_timestamps(wake_hist[-60:])
         durations = self._calculate_durations(bed_times, wake_times)
-        bed_minutes = [_minutes_of_day(dt) for dt in bed_times[-len(durations):]]
+        bed_minutes = [_minutes_of_day(dt) for dt in bed_times[-len(durations) :]]
 
         if len(durations) < 7:
             return {"anomalous_nights": [], "message": "Not enough data (need ≥7 nights)."}
 
-        X = np.column_stack([
-            np.array(durations, dtype=float),
-            np.array(bed_minutes, dtype=float) / (24 * 60),  # normalize to [0, 1]
-        ])
+        X = np.column_stack(
+            [
+                np.array(durations, dtype=float),
+                np.array(bed_minutes, dtype=float) / (24 * 60),  # normalize to [0, 1]
+            ]
+        )
         X_scaled = StandardScaler().fit_transform(X)
 
         clf = IsolationForest(
@@ -796,7 +863,9 @@ class LLMSleepInsights:
                 (response.choices[0].message.content or "") if response.choices else ""
             ).strip()
             # Run through StrOutputParser for standard langchain-core output handling.
-            return _lc_str_parser.parse(raw) if _LANGCHAIN_CORE_AVAILABLE and _lc_str_parser else raw
+            return (
+                _lc_str_parser.parse(raw) if _LANGCHAIN_CORE_AVAILABLE and _lc_str_parser else raw
+            )
         except Exception:
             return ""
 
@@ -815,9 +884,16 @@ class LLMSleepInsights:
 
         if _LANGCHAIN_CORE_AVAILABLE and LLMSleepInsights._PATTERN_TEMPLATE is not None:
             return LLMSleepInsights._PATTERN_TEMPLATE.format(
-                nights=nights, avg_h=avg_h, trend=trend,
-                avg_bed=avg_bed, avg_wake=avg_wake, optimal=optimal,
-                bed_c=bed_c, wake_c=wake_c, short=short, late=late,
+                nights=nights,
+                avg_h=avg_h,
+                trend=trend,
+                avg_bed=avg_bed,
+                avg_wake=avg_wake,
+                optimal=optimal,
+                bed_c=bed_c,
+                wake_c=wake_c,
+                short=short,
+                late=late,
             )
 
         return (

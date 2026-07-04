@@ -64,7 +64,10 @@ class _FakeRoutineEngine:
 
 class TestActionResolver(unittest.TestCase):
     def setUp(self):
-        self.profile = {"preferences": {"response_style": "balanced", "thinking_ack_mode": "minimal"}, "runtime_flags": {}}
+        self.profile = {
+            "preferences": {"response_style": "balanced", "thinking_ack_mode": "minimal"},
+            "runtime_flags": {},
+        }
 
     def test_free_form_coverage_has_25_plus_phrasings(self):
         expected = [
@@ -124,7 +127,10 @@ class TestActionResolver(unittest.TestCase):
         routine_engine = _FakeRoutineEngine()
 
         msg_set, handled_set = _execute_resolved_action(
-            {"intent": "set_response_style", "slots": {"response_style": "quick", "thinking_ack_mode": "off"}},
+            {
+                "intent": "set_response_style",
+                "slots": {"response_style": "quick", "thinking_ack_mode": "off"},
+            },
             self.profile,
             led,
             spotify,

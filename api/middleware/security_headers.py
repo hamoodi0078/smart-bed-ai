@@ -29,9 +29,7 @@ _CSP = (
     "frame-ancestors 'none';"
 )
 
-_PERMISSIONS = (
-    "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
-)
+_PERMISSIONS = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):

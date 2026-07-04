@@ -100,7 +100,9 @@ class TestVoiceCircuitBreaker(unittest.TestCase):
             calls["fallback"] += 1
             return f"fallback:{reason}"
 
-        result, used_fallback, reason, snapshot = breaker.run(operation=_operation, fallback=_fallback)
+        result, used_fallback, reason, snapshot = breaker.run(
+            operation=_operation, fallback=_fallback
+        )
 
         self.assertTrue(used_fallback)
         self.assertEqual(reason, "circuit_open")

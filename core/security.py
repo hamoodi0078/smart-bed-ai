@@ -22,6 +22,7 @@ from loguru import logger
 
 try:
     import bcrypt as _bcrypt
+
     _BCRYPT_AVAILABLE = True
 except ImportError:
     _bcrypt = None  # type: ignore[assignment]
@@ -29,6 +30,7 @@ except ImportError:
 
 try:
     from passlib.context import CryptContext as _CryptContext
+
     _pwd_context = _CryptContext(schemes=["bcrypt"], deprecated="auto")
     _PASSLIB_AVAILABLE = True
 except ImportError:
@@ -61,10 +63,7 @@ def hash_password(password: str) -> str:
     if _PASSLIB_AVAILABLE and _pwd_context is not None:
         return _pwd_context.hash(secret.decode("utf-8", errors="ignore"))
 
-    raise RuntimeError(
-        "No password hashing backend available. "
-        "Install bcrypt or passlib[bcrypt]."
-    )
+    raise RuntimeError("No password hashing backend available. Install bcrypt or passlib[bcrypt].")
 
 
 def verify_password(password: str, stored_hash: str) -> bool:
@@ -128,33 +127,36 @@ def needs_rehash(stored_hash: str) -> bool:
 # CORS Security Configuration
 # ---------------------------------------------------------------------------
 
+
 def get_secure_cors_origins() -> list[str]:
     """Get secure CORS origins based on environment.
-    
+
     Returns:
         List of allowed CORS origins
     """
     import os
     from config import settings
-    
+
     # In production, only allow explicitly configured origins
     if os.getenv("DANAH_ENV") == "production":
         origins_str = os.getenv("WEB_ALLOWED_ORIGINS", "")
         if not origins_str:
-            logger.warning("Production mode but no WEB_ALLOWED_ORIGINS set - defaulting to restrictive policy")
+            logger.warning(
+                "Production mode but no WEB_ALLOWED_ORIGINS set - defaulting to restrictive policy"
+            )
             return []
-        
+
         origins = [o.strip() for o in origins_str.split(",") if o.strip()]
-        
+
         # Validate origins don't contain wildcards in production
         for origin in origins:
             if "*" in origin and origin != "*":
                 logger.error("Wildcard CORS origin not allowed in production: {}", origin)
                 raise ValueError(f"Wildcard CORS origin not allowed in production: {origin}")
-        
+
         logger.info("Production CORS origins: {}", origins)
         return origins
-    
+
     # Development: allow localhost variants
     return [
         "http://localhost:3000",
@@ -168,30 +170,31 @@ def get_secure_cors_origins() -> list[str]:
 
 def validate_cors_origin(origin: str) -> bool:
     """Validate a CORS origin matches security requirements.
-    
+
     Args:
         origin: Origin URL to validate
-        
+
     Returns:
         True if origin is valid
     """
     import re
-    
+
     if not origin:
         return False
-    
+
     # Must start with http:// or https://
     if not origin.startswith(("http://", "https://")):
         return False
-    
+
     # In production, enforce HTTPS
     import os
+
     if os.getenv("DANAH_ENV") == "production" and not origin.startswith("https://"):
         logger.warning("Non-HTTPS origin rejected in production: {}", origin)
         return False
-    
+
     # Reject origins with credentials in URL
     if "@" in origin:
         return False
-    
+
     return True

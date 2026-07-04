@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown."""
     # Startup
     logger.info("Starting Danah Abu Halifa API...")
-    
+
     # Initialize service registry
     registry = ServiceRegistry()
     app.state.services = registry
@@ -48,9 +48,9 @@ async def lifespan(app: FastAPI):
     setup_tracing(app)
 
     logger.info("API startup complete")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Danah Abu Halifa API...")
     registry.clear()
@@ -76,7 +76,9 @@ app.add_middleware(ErrorHandlerMiddleware)
 app.add_middleware(TraceIDMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-_master_allowed_origins = [o.strip() for o in settings.web_allowed_origins_raw.split(",") if o.strip()]
+_master_allowed_origins = [
+    o.strip() for o in settings.web_allowed_origins_raw.split(",") if o.strip()
+]
 _master_cors_credentials = bool(_master_allowed_origins) and "*" not in _master_allowed_origins
 app.add_middleware(
     CORSMiddleware,
@@ -145,10 +147,10 @@ def readiness_check(request: Request):
     """Kubernetes readiness probe - checks if service can accept traffic."""
     registry: ServiceRegistry = request.app.state.services
     service_health = registry.health_check()
-    
+
     all_healthy = all(service_health.values())
     status = "healthy" if all_healthy else "degraded"
-    
+
     return HealthStatus(
         status=status,
         timestamp=datetime.now(timezone.utc).isoformat(),
@@ -173,7 +175,7 @@ def system_status():
     """Get current system status."""
     controller = MasterController()
     status_data = controller.get_system_status()
-    
+
     return {
         "ok": True,
         "data": SystemStatus(**status_data),

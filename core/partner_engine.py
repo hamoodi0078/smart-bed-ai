@@ -31,33 +31,45 @@ class PartnerEngine:
         profile.setdefault("partner_mode", {})
         pm = profile["partner_mode"]
         pm.setdefault("enabled", False)
-        pm.setdefault("partner1", {
-            "name": "Partner 1",
-            "side": "left",
-            "wake_time": "07:00",
-            "sleep_target_hours": 8.0,
-            "scene_preferences": {},
-            "sleep_history": [],
-        })
-        pm.setdefault("partner2", {
-            "name": "Partner 2",
-            "side": "right",
-            "wake_time": "07:00",
-            "sleep_target_hours": 8.0,
-            "scene_preferences": {},
-            "sleep_history": [],
-        })
-        pm.setdefault("couple_goals", {
-            "active_challenges": [],
-            "achievements": [],
-            "shared_bedtime_target": "23:00",
-            "streak_both_met_goal": 0,
-        })
-        pm.setdefault("compromise_settings", {
-            "brightness_strategy": "average",
-            "sound_strategy": "quieter",
-            "wake_strategy": "staggered",
-        })
+        pm.setdefault(
+            "partner1",
+            {
+                "name": "Partner 1",
+                "side": "left",
+                "wake_time": "07:00",
+                "sleep_target_hours": 8.0,
+                "scene_preferences": {},
+                "sleep_history": [],
+            },
+        )
+        pm.setdefault(
+            "partner2",
+            {
+                "name": "Partner 2",
+                "side": "right",
+                "wake_time": "07:00",
+                "sleep_target_hours": 8.0,
+                "scene_preferences": {},
+                "sleep_history": [],
+            },
+        )
+        pm.setdefault(
+            "couple_goals",
+            {
+                "active_challenges": [],
+                "achievements": [],
+                "shared_bedtime_target": "23:00",
+                "streak_both_met_goal": 0,
+            },
+        )
+        pm.setdefault(
+            "compromise_settings",
+            {
+                "brightness_strategy": "average",
+                "sound_strategy": "quieter",
+                "wake_strategy": "staggered",
+            },
+        )
 
     # ------------------------------------------------------------------
     # Partner identification
@@ -200,7 +212,9 @@ class PartnerEngine:
 
         return {"added": True, "challenge": entry}
 
-    def update_challenge_progress(self, profile: dict, now: datetime | None = None) -> list[dict[str, Any]]:
+    def update_challenge_progress(
+        self, profile: dict, now: datetime | None = None
+    ) -> list[dict[str, Any]]:
         """Check and update couple challenge progress. Returns newly completed challenges."""
         now = now or _utcnow()
         self.ensure_shape(profile)
@@ -209,10 +223,9 @@ class PartnerEngine:
         completed: list[dict[str, Any]] = []
 
         comparison = self.get_comparison(profile, days=1)
-        both_slept_well = (
-            (comparison["partner1"].get("avg_score", 0) or 0) >= 70
-            and (comparison["partner2"].get("avg_score", 0) or 0) >= 70
-        )
+        both_slept_well = (comparison["partner1"].get("avg_score", 0) or 0) >= 70 and (
+            comparison["partner2"].get("avg_score", 0) or 0
+        ) >= 70
 
         for ch in challenges:
             if ch.get("completed", False):
@@ -223,10 +236,12 @@ class PartnerEngine:
                 ch["completed"] = True
                 ch["completed_at"] = now.isoformat()
                 completed.append(ch)
-                goals.setdefault("achievements", []).append({
-                    "name": ch.get("name", ""),
-                    "completed_at": now.isoformat(),
-                })
+                goals.setdefault("achievements", []).append(
+                    {
+                        "name": ch.get("name", ""),
+                        "completed_at": now.isoformat(),
+                    }
+                )
 
         return completed
 
@@ -241,10 +256,26 @@ class PartnerEngine:
     @staticmethod
     def get_default_challenges() -> list[dict[str, Any]]:
         return [
-            {"name": "Sync Sleepers", "description": "Both in bed by 11 PM for 7 nights", "target_days": 7},
-            {"name": "Dream Team", "description": "Combined sleep score >170 for 7 nights", "target_days": 7},
-            {"name": "Early Birds", "description": "Both wake before 7 AM for 5 days", "target_days": 5},
-            {"name": "Perfect Week", "description": "Both meet sleep goals every night for 7 days", "target_days": 7},
+            {
+                "name": "Sync Sleepers",
+                "description": "Both in bed by 11 PM for 7 nights",
+                "target_days": 7,
+            },
+            {
+                "name": "Dream Team",
+                "description": "Combined sleep score >170 for 7 nights",
+                "target_days": 7,
+            },
+            {
+                "name": "Early Birds",
+                "description": "Both wake before 7 AM for 5 days",
+                "target_days": 5,
+            },
+            {
+                "name": "Perfect Week",
+                "description": "Both meet sleep goals every night for 7 days",
+                "target_days": 7,
+            },
         ]
 
     # ------------------------------------------------------------------

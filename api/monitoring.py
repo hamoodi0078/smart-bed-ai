@@ -48,6 +48,7 @@ def get_process_memory() -> float | None:
     """Get current process memory usage in MB."""
     try:
         import psutil
+
         process = psutil.Process()
         return process.memory_info().rss / 1024 / 1024
     except ImportError:
@@ -78,7 +79,7 @@ async def get_detailed_metrics(
         platform=f"{platform.system()} {platform.release()}",
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
-    
+
     service_health = registry.health_check()
     service_metrics = [
         ServiceMetrics(
@@ -88,7 +89,7 @@ async def get_detailed_metrics(
         )
         for name, healthy in service_health.items()
     ]
-    
+
     # Try to get database metrics
     db_metrics = None
     db_conn = registry.get_optional("database")
@@ -97,7 +98,7 @@ async def get_detailed_metrics(
             db_metrics = db_conn.get_pool_status()
         except Exception:
             pass
-    
+
     return DetailedMetrics(
         system=system_metrics,
         services=service_metrics,
@@ -112,7 +113,7 @@ async def service_health_check(
     """Check health of all registered services."""
     health = registry.health_check()
     all_healthy = all(health.values())
-    
+
     return {
         "ok": all_healthy,
         "status": "healthy" if all_healthy else "degraded",

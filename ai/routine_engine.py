@@ -75,7 +75,9 @@ class RoutineEngine:
     @staticmethod
     def parse_minutes_from_text(user_text: str, default_minutes: int = 30) -> int:
         lower = user_text.lower()
-        parts = [p for p in lower.replace("minutes", "").replace("minute", "").split() if p.isdigit()]
+        parts = [
+            p for p in lower.replace("minutes", "").replace("minute", "").split() if p.isdigit()
+        ]
         if not parts:
             return default_minutes
         return max(1, int(parts[0]))

@@ -55,7 +55,9 @@ class TestIdempotencyStore(unittest.TestCase):
             with patch("automations.idempotency.utcnow", return_value=base_now):
                 self.assertFalse(store.is_duplicate(fp, window_seconds=60))
 
-            with patch("automations.idempotency.utcnow", return_value=base_now + timedelta(seconds=61)):
+            with patch(
+                "automations.idempotency.utcnow", return_value=base_now + timedelta(seconds=61)
+            ):
                 self.assertFalse(store.is_duplicate(fp, window_seconds=60))
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -71,7 +73,9 @@ class TestIdempotencyStore(unittest.TestCase):
                 store.record("still_valid", window_seconds=120)
                 store.record("expired_soon", window_seconds=30)
 
-            with patch("automations.idempotency.utcnow", return_value=base_now + timedelta(seconds=45)):
+            with patch(
+                "automations.idempotency.utcnow", return_value=base_now + timedelta(seconds=45)
+            ):
                 store.cleanup_expired()
 
             payload = locked_read_json(store_path)

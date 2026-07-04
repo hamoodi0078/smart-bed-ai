@@ -147,7 +147,9 @@ def register_device(device_id: str, bed_location: str = "Kuwait", *, claim_token
         "created_at": str((existing or {}).get("created_at", "") or now_iso),
         "paired": bool((existing or {}).get("paired", False)),
         "claim_token": resolved_claim,
-        "claim_token_rotated_at": now_iso if claim_changed else str((existing or {}).get("claim_token_rotated_at", "") or now_iso),
+        "claim_token_rotated_at": now_iso
+        if claim_changed
+        else str((existing or {}).get("claim_token_rotated_at", "") or now_iso),
         "pairing_generation": pairing_generation,
     }
     if bool(record.get("paired", False)):
@@ -167,5 +169,9 @@ if __name__ == "__main__":
     sample_device_id = generate_device_id()
     sample_output = QR_CODE_DIR / "sample_qr.png"
     sample_record = register_device(sample_device_id)
-    generate_qr_code(sample_device_id, str(sample_output), claim_token=str(sample_record.get("claim_token", "") or ""))
+    generate_qr_code(
+        sample_device_id,
+        str(sample_output),
+        claim_token=str(sample_record.get("claim_token", "") or ""),
+    )
     print(f"Generated sample QR for {sample_device_id} at {sample_output}")

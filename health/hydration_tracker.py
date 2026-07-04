@@ -77,14 +77,16 @@ class HydrationTracker:
             "progress_pct": pct,
             "goal_reached": current >= goal,
             "message": f"Logged {amount}ml. {current}/{goal}ml today ({pct}%)."
-                       + (" Goal reached!" if current >= goal else f" {remaining}ml to go."),
+            + (" Goal reached!" if current >= goal else f" {remaining}ml to go."),
         }
 
     # ------------------------------------------------------------------
     # Reminder evaluation
     # ------------------------------------------------------------------
 
-    def should_remind(self, profile: dict, now: datetime | None = None, bedtime_hour: int = 23) -> dict[str, Any]:
+    def should_remind(
+        self, profile: dict, now: datetime | None = None, bedtime_hour: int = 23
+    ) -> dict[str, Any]:
         """Check if a hydration reminder should be sent now."""
         now = now or _utcnow()
         self.ensure_shape(profile)
@@ -116,7 +118,10 @@ class HydrationTracker:
                     last = last.replace(tzinfo=timezone.utc)
                 elapsed = (now - last).total_seconds() / 3600.0
                 if elapsed < self._interval:
-                    return {"remind": False, "reason": f"Last reminder {elapsed:.1f}h ago (interval={self._interval}h)."}
+                    return {
+                        "remind": False,
+                        "reason": f"Last reminder {elapsed:.1f}h ago (interval={self._interval}h).",
+                    }
             except Exception:
                 pass
 
@@ -201,11 +206,13 @@ class HydrationTracker:
         intake = int(h.get("today_intake_ml", 0))
         goal = int(h.get("daily_goal_ml", self._daily_goal))
         history = h.get("history", [])
-        history.append({
-            "date": prev_date,
-            "intake_ml": intake,
-            "goal_ml": goal,
-            "goal_reached": intake >= goal,
-        })
+        history.append(
+            {
+                "date": prev_date,
+                "intake_ml": intake,
+                "goal_ml": goal,
+                "goal_reached": intake >= goal,
+            }
+        )
         h["history"] = history[-90:]
         h["total_days_tracked"] = len(history)

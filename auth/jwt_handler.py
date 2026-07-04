@@ -31,6 +31,7 @@ ExpiredSignatureError = ExpiredTokenError
 
 def _key() -> OctKey:
     import os
+
     secret = settings.secret_key
     _unsafe = {"change-me-in-production", "secret", "changeme", "development", ""}
     is_production = os.getenv("DANAH_ENV", "development").lower() == "production"
@@ -41,6 +42,7 @@ def _key() -> OctKey:
         )
     if secret in _unsafe:
         import warnings
+
         warnings.warn(
             "SECRET_KEY is default/weak — JWT tokens are NOT secure. Set SECRET_KEY in .env.",
             stacklevel=3,

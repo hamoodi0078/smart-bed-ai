@@ -11,7 +11,10 @@ class TestSleepQualityScore(unittest.TestCase):
         self.engine = SleepIntelligenceEngine()
 
     def test_sleep_quality_score_collecting_data_when_logs_are_insufficient(self):
-        profile = {"preferences": {"sleep_target_hours": 8.0}, "sleep": {"bedtime_history": [], "wake_history": []}}
+        profile = {
+            "preferences": {"sleep_target_hours": 8.0},
+            "sleep": {"bedtime_history": [], "wake_history": []},
+        }
 
         answer = self.engine.sleep_quality_score(profile)
 

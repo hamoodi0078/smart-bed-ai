@@ -28,6 +28,7 @@ def _get_smart_home():
     _smart_home_attempted = True
     try:
         from integrations.smart_home import get_controller
+
         _smart_home_ctrl = get_controller()
     except Exception as exc:
         logger.debug("Smart home controller unavailable: %s", exc)
@@ -73,7 +74,15 @@ BRIGHTNESS_MAP = {
     "on": 0.70,
 }
 
-OFF_WORDS = {"off", "turn off", "lights off", "switch off", "shut off", "kill the lights", "kill lights"}
+OFF_WORDS = {
+    "off",
+    "turn off",
+    "lights off",
+    "switch off",
+    "shut off",
+    "kill the lights",
+    "kill lights",
+}
 ON_WORDS = {"on", "turn on", "lights on", "switch on"}
 BEDTIME_WORDS = {"bedtime", "sleep", "night", "sleep mode", "bed mode"}
 SUNRISE_WORDS = {"sunrise", "wake up", "morning", "alarm", "rise and shine"}
@@ -82,6 +91,7 @@ SUNRISE_WORDS = {"sunrise", "wake up", "morning", "alarm", "rise and shine"}
 # ---------------------------------------------------------------------------
 # Intent parsing
 # ---------------------------------------------------------------------------
+
 
 def _parse_intent(text: str) -> dict[str, Any]:
     raw = str(text or "").strip().lower()
@@ -123,6 +133,7 @@ def _parse_intent(text: str) -> dict[str, Any]:
 # Smart home dispatcher
 # ---------------------------------------------------------------------------
 
+
 def _dispatch_to_smart_home(intent: dict[str, Any]) -> None:
     ctrl = _get_smart_home()
     if ctrl is None:
@@ -148,6 +159,7 @@ def _dispatch_to_smart_home(intent: dict[str, Any]) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def handle_light_intent_result(text: str) -> CommandResult:
     """Build a pure light command result with declarative LED effects."""
     intent = _parse_intent(text)
@@ -162,7 +174,10 @@ def handle_light_intent_result(text: str) -> CommandResult:
         effects = (
             Effect(kind="led", payload={"op": "set_user_brightness", "brightness": 0.10}),
             Effect(kind="led", payload={"op": "set_user_color", "color": "orange"}),
-            Effect(kind="say", payload={"text": "Switching to bedtime mode. Lights dimmed warm and low."}),
+            Effect(
+                kind="say",
+                payload={"text": "Switching to bedtime mode. Lights dimmed warm and low."},
+            ),
         )
         return CommandResult(
             text="Switching to bedtime mode. Lights dimmed warm and low.",
@@ -221,10 +236,16 @@ def handle_light_intent_result(text: str) -> CommandResult:
     if color_word:
         effects.append(Effect(kind="led", payload={"op": "set_user_color", "color": color_word}))
     if brightness_val is not None:
-        effects.append(Effect(kind="led", payload={"op": "set_user_brightness", "brightness": brightness_val}))
+        effects.append(
+            Effect(kind="led", payload={"op": "set_user_brightness", "brightness": brightness_val})
+        )
 
     if color_word and brightness_word:
-        level = "dim" if brightness_val and brightness_val <= 0.3 else ("full brightness" if brightness_val and brightness_val >= 0.9 else "bright")
+        level = (
+            "dim"
+            if brightness_val and brightness_val <= 0.3
+            else ("full brightness" if brightness_val and brightness_val >= 0.9 else "bright")
+        )
         reply = f"Setting the lights to {level} {color_word}."
     elif color_word:
         reply = f"Setting the lights to {color_word}."

@@ -10,6 +10,7 @@ Routes:
   POST /v1/mobile/scenes/preview
   POST /v1/mobile/scenes/save-tonight
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -22,18 +23,21 @@ router = APIRouter(tags=["scenes"])
 @router.get("/v1/mobile/scenes")
 def mobile_scenes(request: Request) -> dict[str, Any]:
     from web_server import mobile_scenes as _ws
+
     return _ws(request=request)
 
 
 @router.get("/v1/scenes/templates")
 def scene_templates(request: Request, premium_only: bool = False) -> dict[str, Any]:
     from web_server import scene_templates as _ws
+
     return _ws(request=request, premium_only=premium_only)
 
 
 @router.post("/v1/scenes/compose")
 async def compose_scene(request: Request) -> Any:
     from web_server import SceneComposeRequest, compose_scene as _ws
+
     body = await request.json()
     payload = SceneComposeRequest(**body)
     return _ws(payload=payload, request=request)
@@ -42,6 +46,7 @@ async def compose_scene(request: Request) -> Any:
 @router.post("/v1/mobile/scenes/preview")
 async def mobile_scene_preview(request: Request) -> Any:
     from web_server import SceneSelectionRequest, mobile_scene_preview as _ws
+
     body = await request.json()
     payload = SceneSelectionRequest(**body)
     return _ws(payload=payload, request=request)
@@ -50,6 +55,7 @@ async def mobile_scene_preview(request: Request) -> Any:
 @router.post("/v1/mobile/scenes/save-tonight")
 async def mobile_scene_save_tonight(request: Request) -> Any:
     from web_server import SceneSelectionRequest, mobile_scene_save_tonight as _ws
+
     body = await request.json()
     payload = SceneSelectionRequest(**body)
     return _ws(payload=payload, request=request)

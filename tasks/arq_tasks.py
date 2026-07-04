@@ -24,6 +24,7 @@ async def send_daily_email_summary(ctx: dict, *, user_id: str) -> bool:
     """Send a daily sleep summary email for one user, off the request thread."""
     try:
         from notifications.email_service import EmailService
+
         ok = EmailService().send_daily_summary_for_user(user_id)
         logger.info("arq: daily email sent user={} ok={}", user_id, ok)
         return ok
@@ -42,16 +43,23 @@ async def send_monthly_email_summary(
     """Send a monthly sleep summary email for one user, off the request thread."""
     try:
         from notifications.email_service import EmailService
+
         ok = EmailService().send_monthly_summary_for_user(user_id, int(year), int(month))
         logger.info(
             "arq: monthly email sent user={} year={} month={} ok={}",
-            user_id, year, month, ok,
+            user_id,
+            year,
+            month,
+            ok,
         )
         return ok
     except Exception as exc:
         logger.warning(
             "arq: monthly email failed user={} year={} month={} error={}",
-            user_id, year, month, exc,
+            user_id,
+            year,
+            month,
+            exc,
         )
         raise
 
@@ -90,6 +98,7 @@ async def embed_memory_entry(
 # ---------------------------------------------------------------------------
 # Notification tasks (migrated from Celery)
 # ---------------------------------------------------------------------------
+
 
 async def send_push_notification(
     ctx: dict,

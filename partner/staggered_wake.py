@@ -50,11 +50,14 @@ class StaggeredWake:
         pm = profile["partner_mode"]
         pm.setdefault("partner1", {}).setdefault("wake_time", "07:00")
         pm.setdefault("partner2", {}).setdefault("wake_time", "07:00")
-        pm.setdefault("staggered_wake", {
-            "enabled": True,
-            "snooze_escalation": True,
-            "vibration_enabled": True,
-        })
+        pm.setdefault(
+            "staggered_wake",
+            {
+                "enabled": True,
+                "snooze_escalation": True,
+                "vibration_enabled": True,
+            },
+        )
 
     # ------------------------------------------------------------------
     # Wake schedule computation
@@ -130,57 +133,67 @@ class StaggeredWake:
             {
                 "phase": "silent_approach",
                 "offset_minutes": -self._silent_duration,
-                "actions": [{
-                    "type": "zoned_led",
-                    "zone": side,
-                    "brightness": self._silent_brightness * 0.5,
-                    "color": "#FFB347",
-                    "animation": "very_slow_fade_in",
-                }, {
-                    "type": "zoned_led",
-                    "zone": other_side,
-                    "brightness": 0.0,
-                    "color": "#000000",
-                    "animation": "off",
-                }],
+                "actions": [
+                    {
+                        "type": "zoned_led",
+                        "zone": side,
+                        "brightness": self._silent_brightness * 0.5,
+                        "color": "#FFB347",
+                        "animation": "very_slow_fade_in",
+                    },
+                    {
+                        "type": "zoned_led",
+                        "zone": other_side,
+                        "brightness": 0.0,
+                        "color": "#000000",
+                        "animation": "off",
+                    },
+                ],
             },
             {
                 "phase": "silent_ramp",
                 "offset_minutes": -5,
-                "actions": [{
-                    "type": "zoned_led",
-                    "zone": side,
-                    "brightness": self._silent_brightness,
-                    "color": "#FFDAB9",
-                    "animation": "slow_fade_in",
-                }],
+                "actions": [
+                    {
+                        "type": "zoned_led",
+                        "zone": side,
+                        "brightness": self._silent_brightness,
+                        "color": "#FFDAB9",
+                        "animation": "slow_fade_in",
+                    }
+                ],
             },
             {
                 "phase": "vibration_wake",
                 "offset_minutes": 0,
-                "actions": [{
-                    "type": "vibration",
-                    "zone": side,
-                    "pattern": "gentle_pulse",
-                    "intensity": 0.3,
-                    "duration_seconds": 10,
-                }, {
-                    "type": "zoned_led",
-                    "zone": side,
-                    "brightness": self._silent_brightness * 2,
-                    "color": "#FFF8DC",
-                    "animation": "solid",
-                }],
+                "actions": [
+                    {
+                        "type": "vibration",
+                        "zone": side,
+                        "pattern": "gentle_pulse",
+                        "intensity": 0.3,
+                        "duration_seconds": 10,
+                    },
+                    {
+                        "type": "zoned_led",
+                        "zone": side,
+                        "brightness": self._silent_brightness * 2,
+                        "color": "#FFF8DC",
+                        "animation": "solid",
+                    },
+                ],
             },
             {
                 "phase": "post_wake",
                 "offset_minutes": 2,
-                "actions": [{
-                    "type": "voice",
-                    "message": f"Good morning, {first.get('name', '')}.",
-                    "volume": 0.15,
-                    "zone": side,
-                }],
+                "actions": [
+                    {
+                        "type": "voice",
+                        "message": f"Good morning, {first.get('name', '')}.",
+                        "volume": 0.15,
+                        "zone": side,
+                    }
+                ],
                 "condition": "first_partner_exited_bed",
             },
         ]
@@ -200,9 +213,17 @@ class StaggeredWake:
         return {
             "first_exited": True,
             "actions": [
-                {"type": "led_scene", "action": "restore_sleep_mode",
-                 "brightness": 0.0, "animation": "fade_to_black", "duration_seconds": 30},
-                {"type": "system", "message": f"Sleep mode restored for {second.get('name', 'partner')}."},
+                {
+                    "type": "led_scene",
+                    "action": "restore_sleep_mode",
+                    "brightness": 0.0,
+                    "animation": "fade_to_black",
+                    "duration_seconds": 30,
+                },
+                {
+                    "type": "system",
+                    "message": f"Sleep mode restored for {second.get('name', 'partner')}.",
+                },
             ],
             "second_alarm_at": second.get("wake_time", ""),
         }
@@ -218,7 +239,9 @@ class StaggeredWake:
         schedule = self.compute_wake_schedule(profile)
 
         is_first = partner == schedule.get("first_waker", {}).get("partner", "")
-        other_partner = schedule.get("second_waker", {}) if is_first else schedule.get("first_waker", {})
+        other_partner = (
+            schedule.get("second_waker", {}) if is_first else schedule.get("first_waker", {})
+        )
 
         snooze_min = max(3, min(15, int(snooze_minutes)))
 
@@ -227,11 +250,13 @@ class StaggeredWake:
         ]
 
         if is_first and sw.get("snooze_escalation", True):
-            actions.append({
-                "type": "notification",
-                "message": f"Snooze for {snooze_min} min. Using vibration-only to not disturb {other_partner.get('name', 'partner')}.",
-                "priority": "low",
-            })
+            actions.append(
+                {
+                    "type": "notification",
+                    "message": f"Snooze for {snooze_min} min. Using vibration-only to not disturb {other_partner.get('name', 'partner')}.",
+                    "priority": "low",
+                }
+            )
 
         return {
             "snoozed": True,
@@ -249,7 +274,9 @@ class StaggeredWake:
         self.ensure_shape(profile)
         schedule = self.compute_wake_schedule(profile)
         return {
-            "enabled": profile.get("partner_mode", {}).get("staggered_wake", {}).get("enabled", True),
+            "enabled": profile.get("partner_mode", {})
+            .get("staggered_wake", {})
+            .get("enabled", True),
             "schedule": schedule,
             "first_wake_triggered": self._first_wake_triggered,
             "second_wake_triggered": self._second_wake_triggered,
@@ -272,7 +299,12 @@ class StaggeredWake:
                 "phase": "gentle_approach",
                 "offset_minutes": -15,
                 "actions": [
-                    {"type": "led_scene", "brightness": 0.05, "color": "#FFB347", "animation": "slow_fade_in"},
+                    {
+                        "type": "led_scene",
+                        "brightness": 0.05,
+                        "color": "#FFB347",
+                        "animation": "slow_fade_in",
+                    },
                     {"type": "audio", "sound": "nature_ambient", "volume": 0.1},
                 ],
             },
@@ -280,7 +312,12 @@ class StaggeredWake:
                 "phase": "sunrise",
                 "offset_minutes": -10,
                 "actions": [
-                    {"type": "led_scene", "brightness": 0.15, "color": "#FFDAB9", "animation": "sunrise"},
+                    {
+                        "type": "led_scene",
+                        "brightness": 0.15,
+                        "color": "#FFDAB9",
+                        "animation": "sunrise",
+                    },
                     {"type": "audio", "sound": "birds_chirping", "volume": 0.3},
                 ],
             },
@@ -288,7 +325,12 @@ class StaggeredWake:
                 "phase": "morning_light",
                 "offset_minutes": -5,
                 "actions": [
-                    {"type": "led_scene", "brightness": 0.35, "color": "#FFF8DC", "animation": "solid"},
+                    {
+                        "type": "led_scene",
+                        "brightness": 0.35,
+                        "color": "#FFF8DC",
+                        "animation": "solid",
+                    },
                     {"type": "audio", "sound": "gentle_stream", "volume": 0.5},
                 ],
             },
@@ -296,9 +338,18 @@ class StaggeredWake:
                 "phase": "full_wake",
                 "offset_minutes": 0,
                 "actions": [
-                    {"type": "led_scene", "brightness": 0.70, "color": "#F5F5F5", "animation": "solid"},
+                    {
+                        "type": "led_scene",
+                        "brightness": 0.70,
+                        "color": "#F5F5F5",
+                        "animation": "solid",
+                    },
                     {"type": "audio", "sound": "morning_energy", "volume": 0.7},
-                    {"type": "voice", "message": f"Bismillah. Good morning{', ' + name if name else ''}! Time to rise.", "volume": 0.6},
+                    {
+                        "type": "voice",
+                        "message": f"Bismillah. Good morning{', ' + name if name else ''}! Time to rise.",
+                        "volume": 0.6,
+                    },
                 ],
             },
         ]

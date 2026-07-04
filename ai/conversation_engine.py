@@ -17,6 +17,7 @@ from core.http_client import http
 
 try:
     import anthropic as _anthropic
+
     _ANTHROPIC_AVAILABLE = True
 except ImportError:
     _anthropic = None  # type: ignore[assignment]
@@ -44,6 +45,7 @@ _AI_RETRY_KWARGS = dict(
 
 try:
     import litellm as _litellm
+
     _LITELLM_AVAILABLE = True
 except ImportError:
     _litellm = None  # type: ignore[assignment]
@@ -58,6 +60,7 @@ try:
     )
     from langchain_core.output_parsers import StrOutputParser as _StrOutputParser
     from langchain_core.prompts import ChatPromptTemplate as _ChatPromptTemplate
+
     _LANGCHAIN_CORE_AVAILABLE = True
     _str_parser = _StrOutputParser()
 except ImportError:
@@ -144,6 +147,7 @@ def _cognitive_load_instruction(mode: str) -> str:
         )
     return ""
 
+
 MOOD_LAYERS = {
     "distressed": (
         "Mood layer: user is distressed. Keep voice softer, validate first, and avoid performance pressure. "
@@ -174,6 +178,7 @@ def _build_temporal_grounding_message() -> str:
         f"UTC runtime datetime={now_utc.isoformat(timespec='seconds')}; "
         f"Current local year={now_local.year}."
     )
+
 
 PERSONA_METHOD_PACKS = {
     "therapist": (
@@ -467,10 +472,7 @@ class ConversationEngine:
                     event_type = str(event.get("type", "") or "").strip().lower()
                     if event_type in ("content.delta", "response.output_text.delta", "delta"):
                         chunk = str(
-                            event.get("delta")
-                            or event.get("text")
-                            or event.get("content")
-                            or ""
+                            event.get("delta") or event.get("text") or event.get("content") or ""
                         )
                     else:
                         choices = event.get("choices") or []
@@ -649,9 +651,7 @@ class AnthropicConversationEngine:
 
         try:
             response = _call()
-            text = "".join(
-                block.text for block in response.content if block.type == "text"
-            ).strip()
+            text = "".join(block.text for block in response.content if block.type == "text").strip()
             if text:
                 self._append_history(user_text, text)
                 return text
@@ -699,9 +699,7 @@ class AnthropicConversationEngine:
                         collected.append(chunk)
                         yield chunk
         except Exception as exc:
-            logger.debug(
-                "AnthropicConversationEngine.generate_response_stream error: {}", exc
-            )
+            logger.debug("AnthropicConversationEngine.generate_response_stream error: {}", exc)
             if not collected:
                 yield self._fallback_response(user_text, personality)
             return
@@ -811,9 +809,11 @@ class LiteLLMConversationEngine:
 
         if _LANGCHAIN_CORE_AVAILABLE:
             # Use ChatPromptTemplate for the stable persona+engagement block.
-            persona_template = _ChatPromptTemplate.from_messages([
-                ("system", "{persona}\n\n{engagement}\n\n{method_pack}\n\n{session_arc}"),
-            ])
+            persona_template = _ChatPromptTemplate.from_messages(
+                [
+                    ("system", "{persona}\n\n{engagement}\n\n{method_pack}\n\n{session_arc}"),
+                ]
+            )
             method_pack = PERSONA_METHOD_PACKS.get(p, "")
             base_block = persona_template.format_messages(
                 persona=SYSTEM_PROMPTS.get(p, SYSTEM_PROMPTS["guide"]),
@@ -908,7 +908,9 @@ class LiteLLMConversationEngine:
 
         @retry(
             retry=retry_if_exception(
-                lambda e: isinstance(e, (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.NetworkError))
+                lambda e: isinstance(
+                    e, (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.NetworkError)
+                )
             ),
             **_AI_RETRY_KWARGS,
         )
@@ -983,9 +985,7 @@ class LiteLLMConversationEngine:
                     collected.append(delta)
                     yield delta
         except Exception as exc:
-            logger.debug(
-                "LiteLLMConversationEngine.generate_response_stream error: {}", exc
-            )
+            logger.debug("LiteLLMConversationEngine.generate_response_stream error: {}", exc)
             if not collected:
                 yield self._fallback_response(user_text, personality)
             return
@@ -1009,10 +1009,14 @@ class LiteLLMConversationEngine:
         if len(self.history) > max_msgs:
             self.history = self.history[-max_msgs:]
         # Normalize to dicts for token counting, then convert back if needed
-        dict_history = self._messages_to_dicts(self.history) if _LANGCHAIN_CORE_AVAILABLE else list(self.history)
+        dict_history = (
+            self._messages_to_dicts(self.history)
+            if _LANGCHAIN_CORE_AVAILABLE
+            else list(self.history)
+        )
         dict_history = _trim_history_to_budget(dict_history)
         if _LANGCHAIN_CORE_AVAILABLE and len(dict_history) < len(self.history):
-            self.history = self.history[len(self.history) - len(dict_history):]
+            self.history = self.history[len(self.history) - len(dict_history) :]
         elif not _LANGCHAIN_CORE_AVAILABLE:
             self.history = dict_history
 

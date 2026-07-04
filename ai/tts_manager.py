@@ -173,9 +173,13 @@ class TTSManager:
                             if not chunk:
                                 continue
                             if isinstance(chunk, str):
-                                raise TypeError("TTS stream returned text chunk instead of raw MP3 bytes.")
+                                raise TypeError(
+                                    "TTS stream returned text chunk instead of raw MP3 bytes."
+                                )
                             if not isinstance(chunk, (bytes, bytearray)):
-                                raise TypeError(f"TTS stream returned unsupported chunk type: {type(chunk)!r}")
+                                raise TypeError(
+                                    f"TTS stream returned unsupported chunk type: {type(chunk)!r}"
+                                )
                             audio_buffer.extend(chunk)
                             if len(audio_buffer) >= min_start_bytes and not started.is_set():
                                 started.set()
@@ -236,7 +240,9 @@ class TTSManager:
 
         audio_bytes = bytes(content)
         buffer_len = len(audio_bytes)
-        _log.debug("Audio buffer length before write: %d bytes -> %s", buffer_len, output_path.resolve())
+        _log.debug(
+            "Audio buffer length before write: %d bytes -> %s", buffer_len, output_path.resolve()
+        )
         if buffer_len <= 0:
             raise ValueError("TTS audio buffer is empty (0 bytes); refusing to write MP3.")
 
@@ -249,9 +255,13 @@ class TTSManager:
                 # AudioPlaybackController.play_file() must stop/unload before this returns.
                 _write_bytes_with_retry(output_path, audio_bytes)
                 file_size = output_path.stat().st_size if output_path.exists() else 0
-                _log.debug("Audio file size after write: {} bytes -> {}", file_size, output_path.resolve())
+                _log.debug(
+                    "Audio file size after write: {} bytes -> {}", file_size, output_path.resolve()
+                )
                 if file_size <= 0:
-                    raise ValueError(f"TTS write produced empty file on disk: {output_path.resolve()}")
+                    raise ValueError(
+                        f"TTS write produced empty file on disk: {output_path.resolve()}"
+                    )
                 _log.debug("Finished writing audio file: {}", output_path.resolve())
                 return output_path
             finally:
@@ -281,10 +291,7 @@ class TTSManager:
             msg = "Missing API key; cannot synthesize MP3."
             _log.warning("%s Creating silent fallback audio.", msg)
             fallback_content = (
-                b'\xFF\xFB\x80\x00'
-                + b'\x00' * 417
-                + b'\xFF\xFB\x80\x00'
-                + b'\x00' * 417
+                b"\xff\xfb\x80\x00" + b"\x00" * 417 + b"\xff\xfb\x80\x00" + b"\x00" * 417
             )
             output_path.write_bytes(fallback_content)
             return str(output_path)
@@ -293,8 +300,12 @@ class TTSManager:
             emotion_state=emotion_state,
             profile_override=profile_override,
         )
-        voice_to_use = (voice_override or "").strip() or str(runtime_profile.get("voice", self.voice))
-        pace_value = max(0.5, min(2.0, pace_value * float(runtime_profile.get("pace_multiplier", 1.0))))
+        voice_to_use = (voice_override or "").strip() or str(
+            runtime_profile.get("voice", self.voice)
+        )
+        pace_value = max(
+            0.5, min(2.0, pace_value * float(runtime_profile.get("pace_multiplier", 1.0)))
+        )
         deepgram_model = self._resolve_deepgram_model(voice_to_use)
         cache_path = self._cache_path_for(normalized_text, voice_to_use, pace_value)
         if cache_path.exists() and cache_path.stat().st_size > 0:
@@ -333,10 +344,7 @@ class TTSManager:
             if result_path is None:
                 _log.warning("No playable TTS audio produced; creating silent fallback audio.")
                 fallback_content = (
-                    b'\xFF\xFB\x80\x00'
-                    + b'\x00' * 417
-                    + b'\xFF\xFB\x80\x00'
-                    + b'\x00' * 417
+                    b"\xff\xfb\x80\x00" + b"\x00" * 417 + b"\xff\xfb\x80\x00" + b"\x00" * 417
                 )
                 output_path.write_bytes(fallback_content)
                 return str(output_path)
@@ -344,10 +352,7 @@ class TTSManager:
         except Exception as e:
             _log.error("TTS synthesis failed: %s", e)
             fallback_content = (
-                b'\xFF\xFB\x80\x00'
-                + b'\x00' * 417
-                + b'\xFF\xFB\x80\x00'
-                + b'\x00' * 417
+                b"\xff\xfb\x80\x00" + b"\x00" * 417 + b"\xff\xfb\x80\x00" + b"\x00" * 417
             )
             output_path.write_bytes(fallback_content)
             return str(output_path)

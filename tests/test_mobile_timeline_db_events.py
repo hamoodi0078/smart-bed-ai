@@ -64,11 +64,17 @@ class TestMobileTimelineDbEvents(unittest.TestCase):
         mock_safe_profile.return_value = profile
         mock_require_user.return_value = {"user_id": "u1", "email": "u1@example.com"}
 
-        command_response = self.client.post("/v1/mobile/device-commands", json={"action": "winddown"})
+        command_response = self.client.post(
+            "/v1/mobile/device-commands", json={"action": "winddown"}
+        )
         self.assertEqual(command_response.status_code, 200)
 
         events = web_server._db_event_repository().get_events_by_user("u1", limit=20)
-        timeline_events = [row for row in events if str(getattr(row, "event_type", "")).lower() == "mobile_timeline_item"]
+        timeline_events = [
+            row
+            for row in events
+            if str(getattr(row, "event_type", "")).lower() == "mobile_timeline_item"
+        ]
         self.assertTrue(
             any(
                 "wind-down routine armed" in str((row.metadata_json or {}).get("event", "")).lower()

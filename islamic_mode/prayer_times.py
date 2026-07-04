@@ -21,14 +21,14 @@ class PrayerTimesService:
 
     # Aladhan API calculation method IDs mapped to human-readable names
     CALCULATION_METHODS: dict[int, str] = {
-        1:  "University of Islamic Sciences, Karachi (Hanafi)",
-        2:  "Islamic Society of North America (ISNA)",
-        3:  "Muslim World League (MWL)",
-        4:  "Umm Al-Qura University, Makkah",
-        5:  "Egyptian General Authority of Survey",
-        7:  "Institute of Geophysics, Tehran",
-        8:  "Gulf Region",
-        9:  "Kuwait",
+        1: "University of Islamic Sciences, Karachi (Hanafi)",
+        2: "Islamic Society of North America (ISNA)",
+        3: "Muslim World League (MWL)",
+        4: "Umm Al-Qura University, Makkah",
+        5: "Egyptian General Authority of Survey",
+        7: "Institute of Geophysics, Tehran",
+        8: "Gulf Region",
+        9: "Kuwait",
         10: "Qatar",
         11: "Majlis Ugama Islam Singapura (MUIS)",
         12: "Union Organization Islamique de France (UOIF)",
@@ -40,20 +40,20 @@ class PrayerTimesService:
     # Fiqh school shortcuts → (calculation_method_id, asr_method)
     # asr_method: 0 = Standard (Shafi'i/Maliki/Hanbali, shadow=1×), 1 = Hanafi (shadow=2×)
     FIQH_SCHOOL_PRESETS: dict[str, tuple[int, int]] = {
-        "hanafi":   (1, 1),   # Karachi method + Hanafi Asr
-        "shafii":   (3, 0),   # MWL method + Standard Asr
-        "maliki":   (3, 0),   # Same as Shafi'i for Asr
-        "hanbali":  (3, 0),   # Same as Shafi'i for Asr
-        "mwl":      (3, 0),   # Muslim World League
-        "isna":     (2, 0),   # North America
-        "egypt":    (5, 0),   # Egyptian method
-        "makkah":   (4, 0),   # Umm Al-Qura
-        "kuwait":   (9, 0),   # Kuwait
-        "qatar":    (10, 0),  # Qatar
-        "turkey":   (13, 0),  # Turkey
-        "france":   (12, 0),  # France
-        "russia":   (14, 0),  # Russia
-        "gulf":     (8, 0),   # Gulf Region
+        "hanafi": (1, 1),  # Karachi method + Hanafi Asr
+        "shafii": (3, 0),  # MWL method + Standard Asr
+        "maliki": (3, 0),  # Same as Shafi'i for Asr
+        "hanbali": (3, 0),  # Same as Shafi'i for Asr
+        "mwl": (3, 0),  # Muslim World League
+        "isna": (2, 0),  # North America
+        "egypt": (5, 0),  # Egyptian method
+        "makkah": (4, 0),  # Umm Al-Qura
+        "kuwait": (9, 0),  # Kuwait
+        "qatar": (10, 0),  # Qatar
+        "turkey": (13, 0),  # Turkey
+        "france": (12, 0),  # France
+        "russia": (14, 0),  # Russia
+        "gulf": (8, 0),  # Gulf Region
     }
 
     def __init__(
@@ -70,12 +70,16 @@ class PrayerTimesService:
     ):
         """
         Initialize PrayerTimesService with location settings.
-        
+
         If auto_detect_location is True, will attempt to detect location from IP.
         Otherwise uses provided parameters or falls back to config settings.
         """
         # Use config defaults if not provided
-        self.auto_detect = auto_detect_location if auto_detect_location is not None else settings.islamic_prayer_auto_location
+        self.auto_detect = (
+            auto_detect_location
+            if auto_detect_location is not None
+            else settings.islamic_prayer_auto_location
+        )
         self.date = str(date or "").strip()
         self.timeout_seconds = settings.islamic_prayer_timeout_seconds
         self.cache_path = settings.islamic_prayer_cache_path
@@ -105,13 +109,13 @@ class PrayerTimesService:
         city: Optional[str],
         country: Optional[str],
         latitude: Optional[float],
-        longitude: Optional[float]
+        longitude: Optional[float],
     ) -> None:
         """Setup location with auto-detection if enabled."""
         if self.auto_detect:
             logger.info("Auto-detecting location for prayer times...")
             geo_service = GeolocationService(timeout_seconds=self.timeout_seconds)
-            
+
             # Parse config lat/lon if set
             config_lat = None
             config_lon = None
@@ -121,33 +125,39 @@ class PrayerTimesService:
                     config_lon = float(settings.islamic_prayer_longitude)
                 except ValueError:
                     pass
-            
+
             location = geo_service.get_location_with_fallback(
                 default_city=settings.islamic_prayer_city,
                 default_country=settings.islamic_prayer_country,
                 default_latitude=config_lat,
-                default_longitude=config_lon
+                default_longitude=config_lon,
             )
-            
+
             self.city = location.get("city", settings.islamic_prayer_city)
             self.country = location.get("country", settings.islamic_prayer_country)
             self.latitude = location.get("latitude")
             self.longitude = location.get("longitude")
-            
+
             if location.get("auto_detected"):
                 detected_at = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
                 logger.info(
                     "IP geolocation auto-detection fired at=%s city=%s country=%s lat=%s lon=%s",
-                    detected_at, self.city, self.country, self.latitude, self.longitude,
+                    detected_at,
+                    self.city,
+                    self.country,
+                    self.latitude,
+                    self.longitude,
                 )
                 self._location_auto_detected_at = detected_at
             else:
-                logger.info("Using default/config location: city=%s country=%s", self.city, self.country)
+                logger.info(
+                    "Using default/config location: city=%s country=%s", self.city, self.country
+                )
         else:
             # Use provided params or config defaults
             self.city = city if city is not None else settings.islamic_prayer_city
             self.country = country if country is not None else settings.islamic_prayer_country
-            
+
             # Handle latitude/longitude
             if latitude is not None and longitude is not None:
                 self.latitude = latitude
@@ -170,7 +180,7 @@ class PrayerTimesService:
         city: Optional[str] = None,
         country: Optional[str] = None,
         latitude: Optional[float] = None,
-        longitude: Optional[float] = None
+        longitude: Optional[float] = None,
     ) -> None:
         """Update location dynamically."""
         if city is not None:
@@ -181,17 +191,17 @@ class PrayerTimesService:
             self.latitude = latitude
         if longitude is not None:
             self.longitude = longitude
-        
+
         logger.info(f"Prayer times location updated: {self.city}, {self.country}")
 
     def refresh_auto_location(self) -> bool:
         """Re-detect location if auto-detection is enabled. Returns True if successful."""
         if not self.auto_detect:
             return False
-        
+
         geo_service = GeolocationService(timeout_seconds=self.timeout_seconds)
         location = geo_service.get_location_from_ip()
-        
+
         if location:
             self.city = location.get("city", self.city)
             self.country = location.get("country", self.country)
@@ -199,7 +209,7 @@ class PrayerTimesService:
             self.longitude = location.get("longitude")
             logger.info(f"Location refreshed: {self.city}, {self.country}")
             return True
-        
+
         logger.warning("Failed to refresh location")
         return False
 
@@ -272,17 +282,30 @@ class PrayerTimesService:
         """
         preset = self.FIQH_SCHOOL_PRESETS.get(str(school).strip().lower())
         if preset is None:
-            logger.warning("Unknown Fiqh school '{}'. Valid options: {}", school, list(self.FIQH_SCHOOL_PRESETS))
+            logger.warning(
+                "Unknown Fiqh school '{}'. Valid options: {}",
+                school,
+                list(self.FIQH_SCHOOL_PRESETS),
+            )
             return False
         self.method, self.asr_method = preset
         self.fiqh_school = str(school).strip().lower()
-        logger.info("Fiqh school set to '{}': method={}, asr_method={}", self.fiqh_school, self.method, self.asr_method)
+        logger.info(
+            "Fiqh school set to '{}': method={}, asr_method={}",
+            self.fiqh_school,
+            self.method,
+            self.asr_method,
+        )
         return True
 
     def get_fiqh_info(self) -> dict:
         """Return the current Fiqh school and calculation method info."""
         method_name = self.CALCULATION_METHODS.get(int(self.method), f"Method {self.method}")
-        asr_desc = "Hanafi (shadow = 2× object)" if int(self.asr_method or 0) == 1 else "Standard (shadow = 1× object)"
+        asr_desc = (
+            "Hanafi (shadow = 2× object)"
+            if int(self.asr_method or 0) == 1
+            else "Standard (shadow = 1× object)"
+        )
         return {
             "fiqh_school": self.fiqh_school or "custom",
             "calculation_method_id": self.method,
@@ -324,8 +347,7 @@ class PrayerTimesService:
         timings = data.get("timings", {}) if isinstance(data, dict) else {}
         meta = data.get("meta", {}) if isinstance(data, dict) else {}
         resolved_prayers = {
-            prayer: self._normalize_time(timings.get(prayer, ""))
-            for prayer in self.PRAYER_ORDER
+            prayer: self._normalize_time(timings.get(prayer, "")) for prayer in self.PRAYER_ORDER
         }
         location = {
             "city": str(self.city or "").strip(),
@@ -410,5 +432,5 @@ class PrayerTimesService:
             "longitude": self.longitude,
             "method": self.method,
             "auto_detect": self.auto_detect,
-            "using_coordinates": self.latitude is not None and self.longitude is not None
+            "using_coordinates": self.latitude is not None and self.longitude is not None,
         }

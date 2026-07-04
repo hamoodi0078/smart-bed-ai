@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 def _sine_pcm(freq_hz: float = 440.0, sample_rate: int = 16000, duration_ms: int = 500) -> bytes:
     """Generate a sine-wave PCM burst that webrtcvad should classify as speech."""
     import math
+
     n = sample_rate * duration_ms // 1000
     samples = [int(16000 * math.sin(2 * math.pi * freq_hz * i / sample_rate)) for i in range(n)]
     return struct.pack(f"<{n}h", *samples)
@@ -21,50 +22,55 @@ def _silence_pcm(sample_rate: int = 16000, duration_ms: int = 500) -> bytes:
 
 
 class TestVadFilterImport(unittest.TestCase):
-
     def test_module_exports_vad_available_flag(self):
         from ai.vad_filter import VAD_AVAILABLE
+
         self.assertIsInstance(VAD_AVAILABLE, bool)
 
     def test_module_exports_vad_filter_class(self):
         from ai.vad_filter import VadFilter
+
         self.assertTrue(callable(VadFilter))
 
 
 class TestVadFilterConstruction(unittest.TestCase):
-
     def test_invalid_sample_rate_raises(self):
         from ai.vad_filter import VadFilter
+
         with self.assertRaises(ValueError):
             VadFilter(sample_rate=22050)
 
     def test_invalid_frame_ms_raises(self):
         from ai.vad_filter import VadFilter
+
         with self.assertRaises(ValueError):
             VadFilter(frame_ms=15)
 
     def test_valid_construction(self):
         from ai.vad_filter import VadFilter
+
         vf = VadFilter(sample_rate=16000, aggressiveness=2, frame_ms=20)
         self.assertIsNotNone(vf)
 
     def test_frame_bytes_correct_for_16khz_20ms(self):
         from ai.vad_filter import VadFilter
+
         vf = VadFilter(sample_rate=16000, frame_ms=20)
         # 16000 samples/s * 0.02 s * 2 bytes/sample = 640
         self.assertEqual(vf._frame_bytes, 640)
 
     def test_frame_bytes_correct_for_8khz_30ms(self):
         from ai.vad_filter import VadFilter
+
         vf = VadFilter(sample_rate=8000, frame_ms=30)
         # 8000 * 0.03 * 2 = 480
         self.assertEqual(vf._frame_bytes, 480)
 
 
 class TestVadFilterUnavailable(unittest.TestCase):
-
     def test_is_speech_frame_returns_false_when_unavailable(self):
         from ai.vad_filter import VadFilter
+
         with patch("ai.vad_filter.VAD_AVAILABLE", False):
             vf = VadFilter()
             vf._vad = None
@@ -73,6 +79,7 @@ class TestVadFilterUnavailable(unittest.TestCase):
 
     def test_process_chunk_returns_false_when_unavailable(self):
         from ai.vad_filter import VadFilter
+
         with patch("ai.vad_filter.VAD_AVAILABLE", False):
             vf = VadFilter()
             vf._vad = None
@@ -81,15 +88,16 @@ class TestVadFilterUnavailable(unittest.TestCase):
 
     def test_has_enough_speech_returns_false_when_unavailable(self):
         from ai.vad_filter import VadFilter
+
         with patch("ai.vad_filter.VAD_AVAILABLE", False):
             result = VadFilter.has_enough_speech(_sine_pcm(duration_ms=1000), 16000)
             self.assertFalse(result)
 
 
 class TestVadFilterSilence(unittest.TestCase):
-
     def test_silence_pcm_does_not_trigger_onset(self):
         from ai.vad_filter import VadFilter, VAD_AVAILABLE
+
         if not VAD_AVAILABLE:
             self.skipTest("webrtcvad not installed")
         vf = VadFilter(sample_rate=16000, aggressiveness=3, ring_size=10, onset_ratio=0.70)
@@ -98,6 +106,7 @@ class TestVadFilterSilence(unittest.TestCase):
 
     def test_reset_clears_state(self):
         from ai.vad_filter import VadFilter, VAD_AVAILABLE
+
         if not VAD_AVAILABLE:
             self.skipTest("webrtcvad not installed")
         vf = VadFilter()
@@ -111,9 +120,9 @@ class TestVadFilterSilence(unittest.TestCase):
 
 
 class TestVadFilterRingBuffer(unittest.TestCase):
-
     def test_onset_triggered_after_enough_speech_frames(self):
         from ai.vad_filter import VadFilter
+
         vf = VadFilter(ring_size=5, onset_ratio=0.60)
         # Manually push speech frames into ring to simulate onset
         for _ in range(4):  # 4/5 = 0.80 >= 0.60 → onset
@@ -129,6 +138,7 @@ class TestVadFilterRingBuffer(unittest.TestCase):
 
     def test_offset_triggered_after_enough_silence_frames(self):
         from ai.vad_filter import VadFilter
+
         vf = VadFilter(ring_size=5, offset_ratio=0.60)
         vf._is_speaking = True
         # 4 silence frames out of 5 → 0.80 silence ratio >= 0.60 → offset
@@ -142,6 +152,7 @@ class TestVadFilterRingBuffer(unittest.TestCase):
 
     def test_insufficient_speech_does_not_trigger_onset(self):
         from ai.vad_filter import VadFilter
+
         # With onset_ratio=0.70, 3/5 = 0.60 should NOT trigger onset
         vf = VadFilter(ring_size=5, onset_ratio=0.70)
         for _ in range(3):
@@ -155,9 +166,9 @@ class TestVadFilterRingBuffer(unittest.TestCase):
 
 
 class TestVadFilterIsSpeeFrame(unittest.TestCase):
-
     def test_wrong_frame_length_returns_false(self):
         from ai.vad_filter import VadFilter, VAD_AVAILABLE
+
         if not VAD_AVAILABLE:
             self.skipTest("webrtcvad not installed")
         vf = VadFilter(sample_rate=16000, frame_ms=20)
@@ -165,6 +176,7 @@ class TestVadFilterIsSpeeFrame(unittest.TestCase):
 
     def test_empty_frame_returns_false(self):
         from ai.vad_filter import VadFilter, VAD_AVAILABLE
+
         if not VAD_AVAILABLE:
             self.skipTest("webrtcvad not installed")
         vf = VadFilter()
@@ -172,9 +184,9 @@ class TestVadFilterIsSpeeFrame(unittest.TestCase):
 
 
 class TestHasEnoughSpeech(unittest.TestCase):
-
     def test_returns_false_for_all_silence(self):
         from ai.vad_filter import VadFilter, VAD_AVAILABLE
+
         if not VAD_AVAILABLE:
             self.skipTest("webrtcvad not installed")
         pcm = _silence_pcm(sample_rate=16000, duration_ms=2000)
@@ -183,6 +195,7 @@ class TestHasEnoughSpeech(unittest.TestCase):
 
     def test_returns_false_for_invalid_sample_rate(self):
         from ai.vad_filter import VadFilter, VAD_AVAILABLE
+
         if not VAD_AVAILABLE:
             self.skipTest("webrtcvad not installed")
         pcm = _sine_pcm(duration_ms=1000)
@@ -191,6 +204,7 @@ class TestHasEnoughSpeech(unittest.TestCase):
 
     def test_returns_false_for_too_short_pcm(self):
         from ai.vad_filter import VadFilter, VAD_AVAILABLE
+
         if not VAD_AVAILABLE:
             self.skipTest("webrtcvad not installed")
         pcm = b"\x00" * 20  # far less than one frame
@@ -199,9 +213,9 @@ class TestHasEnoughSpeech(unittest.TestCase):
 
 
 class TestFilterChunks(unittest.TestCase):
-
     def test_yields_tuple_for_each_chunk(self):
         from ai.vad_filter import VadFilter
+
         vf = VadFilter()
         chunks = [b"\x00" * 640, b"\x00" * 640, b"\x00" * 640]
         results = list(vf.filter_chunks(chunks))
@@ -212,6 +226,7 @@ class TestFilterChunks(unittest.TestCase):
 
     def test_passthrough_when_vad_unavailable(self):
         from ai.vad_filter import VadFilter
+
         with patch("ai.vad_filter.VAD_AVAILABLE", False):
             vf = VadFilter()
             vf._vad = None

@@ -33,8 +33,8 @@ class TestMobileTimelinePrioritization(unittest.TestCase):
         with (
             patch(
                 "web_server._mobile_timeline_items_db_first",
-                side_effect=lambda user_id, profile_items, trace_id="", limit=20: web_server._normalize_timeline_items(
-                    profile_items
+                side_effect=lambda user_id, profile_items, trace_id="", limit=20: (
+                    web_server._normalize_timeline_items(profile_items)
                 ),
             ),
             patch("web_server._progress_user_commands", return_value=([], False)),
@@ -49,7 +49,9 @@ class TestMobileTimelinePrioritization(unittest.TestCase):
         items = response.json().get("items", [])
         self.assertTrue(bool(items))
 
-        priorities = [int((row if isinstance(row, dict) else {}).get("priority", 0) or 0) for row in items]
+        priorities = [
+            int((row if isinstance(row, dict) else {}).get("priority", 0) or 0) for row in items
+        ]
         self.assertEqual(priorities, sorted(priorities, reverse=True))
         self.assertEqual(str(items[0].get("status", "")), "override")
         self.assertTrue(all("priority" in row for row in items if isinstance(row, dict)))

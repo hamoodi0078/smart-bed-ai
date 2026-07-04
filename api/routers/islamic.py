@@ -3,6 +3,7 @@
 Routes extracted from web_server.py lines 7255-7293.
 These call islamic_mode services directly — no web_server helpers needed.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -36,6 +37,7 @@ def _resolve_prayer_service(user: dict[str, Any], profile: dict[str, Any]):
 def mobile_islamic_overview(request: Request) -> dict[str, Any]:
     # Inline import avoids circular deps with web_server helpers during migration.
     from web_server import _require_premium_plan, _safe_profile, _mobile_islamic_overview_payload
+
     user = _require_premium_plan(request)
     profile = _safe_profile() or {}
     overview = _mobile_islamic_overview_payload(user, profile)
@@ -45,6 +47,7 @@ def mobile_islamic_overview(request: Request) -> dict[str, Any]:
 @router.get("/prayer-times")
 def mobile_islamic_prayer_times(request: Request) -> dict[str, Any]:
     from web_server import _require_premium_plan, _safe_profile
+
     user = _require_premium_plan(request)
     profile = _safe_profile() or {}
     service = _resolve_prayer_service(user, profile)
@@ -60,6 +63,7 @@ def mobile_islamic_prayer_times(request: Request) -> dict[str, Any]:
 @router.get("/next-prayer")
 def mobile_islamic_next_prayer(request: Request) -> dict[str, Any]:
     from web_server import _require_premium_plan, _safe_profile
+
     user = _require_premium_plan(request)
     profile = _safe_profile() or {}
     service = _resolve_prayer_service(user, profile)

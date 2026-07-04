@@ -61,7 +61,10 @@ class TestAutomationCooldownTimeline(unittest.TestCase):
         self.assertIn("quiet hours active", str(items[0].get("event", "")).lower())
         self.assertIn("next run available in 12 min", str(items[1].get("event", "")).lower())
 
-    @patch("web_server._compute_quiet_hours_override_until_utc", return_value="2026-03-06T07:00:00+00:00")
+    @patch(
+        "web_server._compute_quiet_hours_override_until_utc",
+        return_value="2026-03-06T07:00:00+00:00",
+    )
     @patch("web_server._save_profile")
     @patch("web_server._safe_profile", return_value={})
     @patch("web_server._require_user", return_value={"user_id": "u1", "email": "u1@example.com"})
@@ -73,7 +76,9 @@ class TestAutomationCooldownTimeline(unittest.TestCase):
         _mock_compute,
     ):
         client = TestClient(web_server.app)
-        response = client.post("/v1/mobile/device-commands", json={"action": "quiet_hours_override"})
+        response = client.post(
+            "/v1/mobile/device-commands", json={"action": "quiet_hours_override"}
+        )
         self.assertEqual(response.status_code, 200)
 
         body = response.json()

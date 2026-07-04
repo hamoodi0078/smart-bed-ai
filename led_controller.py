@@ -24,13 +24,17 @@ ARABIC_COLOR_MAP = {
     "وردي": "pink",
 }
 
+
 def _clamp_percent(value, default_value: int = 35) -> int:
     try:
         return max(0, min(100, int(value)))
     except (TypeError, ValueError):
         return max(0, min(100, int(default_value)))
 
-def _safe_int(value, default_value: int = 0, min_value: int | None = None, max_value: int | None = None) -> int:
+
+def _safe_int(
+    value, default_value: int = 0, min_value: int | None = None, max_value: int | None = None
+) -> int:
     try:
         parsed = int(value)
     except (TypeError, ValueError):
@@ -41,6 +45,7 @@ def _safe_int(value, default_value: int = 0, min_value: int | None = None, max_v
     if max_value is not None:
         parsed = min(int(max_value), parsed)
     return parsed
+
 
 def ensure_music_led_preferences(profile: dict) -> dict:
     prefs = profile.setdefault("preferences", {})
@@ -71,6 +76,7 @@ def ensure_music_led_preferences(profile: dict) -> dict:
     )
     return prefs
 
+
 def apply_music_led_preferences(led: LEDController, profile: dict, active: bool | None = None):
     prefs = ensure_music_led_preferences(profile)
     runtime_flags = profile.setdefault("runtime_flags", {})
@@ -84,8 +90,10 @@ def apply_music_led_preferences(led: LEDController, profile: dict, active: bool 
         mode=str(prefs.get("music_lights_mode", "pulse")),
         energy=str(prefs.get("music_lights_energy", "calm")),
         target=str(prefs.get("music_lights_target", "both")),
-        brightness=float(_clamp_percent(prefs.get("music_lights_brightness_percent", 35), 35)) / 100.0,
+        brightness=float(_clamp_percent(prefs.get("music_lights_brightness_percent", 35), 35))
+        / 100.0,
     )
+
 
 def ensure_hardware_shape(profile: dict):
     profile.setdefault("hardware", {})
@@ -95,18 +103,22 @@ def ensure_hardware_shape(profile: dict):
     hardware.setdefault("user_strip_led_count", int(settings.user_strip_led_count))
     hardware.setdefault("state_strip_led_count", int(settings.state_strip_led_count))
 
+
 def _to_int_or_default(value, default_value: int) -> int:
     try:
         return int(value)
     except (TypeError, ValueError):
         return int(default_value)
 
+
 def apply_led_hardware_config(led: LEDController, profile: dict):
     ensure_hardware_shape(profile)
     hardware = profile.get("hardware", {})
 
     user_pin = max(0, _to_int_or_default(hardware.get("user_strip_pin"), settings.user_strip_pin))
-    state_pin = max(0, _to_int_or_default(hardware.get("state_strip_pin"), settings.state_strip_pin))
+    state_pin = max(
+        0, _to_int_or_default(hardware.get("state_strip_pin"), settings.state_strip_pin)
+    )
     user_count = max(
         1,
         _to_int_or_default(hardware.get("user_strip_led_count"), settings.user_strip_led_count),
@@ -128,6 +140,7 @@ def apply_led_hardware_config(led: LEDController, profile: dict):
         state_strip_led_count=state_count,
     )
 
+
 def _extract_color_from_normalized_text(normalized: str) -> str:
     named = tuple(LEDController.NAMED_COLORS.keys())
     for name in named:
@@ -142,4 +155,3 @@ def _extract_color_from_normalized_text(normalized: str) -> str:
     if hex_match:
         return hex_match.group(0)
     return ""
-

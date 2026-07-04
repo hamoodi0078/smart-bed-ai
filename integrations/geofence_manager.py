@@ -133,27 +133,42 @@ class GeofenceManager:
     # Action builders
     # ------------------------------------------------------------------
 
-    def _build_arrival_actions(self, profile: dict, now: datetime, distance: float) -> list[dict[str, Any]]:
+    def _build_arrival_actions(
+        self, profile: dict, now: datetime, distance: float
+    ) -> list[dict[str, Any]]:
         gf = profile.get("geofence", {})
         actions: list[dict[str, Any]] = []
 
         if gf.get("arrival_scene_enabled", True):
             hour = now.hour
             if 17 <= hour <= 23:
-                actions.append({
-                    "type": "led_scene", "action": "welcome_home_evening",
-                    "color": "#FFD9B3", "brightness": 0.30, "animation": "warm_glow",
-                })
+                actions.append(
+                    {
+                        "type": "led_scene",
+                        "action": "welcome_home_evening",
+                        "color": "#FFD9B3",
+                        "brightness": 0.30,
+                        "animation": "warm_glow",
+                    }
+                )
             elif 6 <= hour <= 11:
-                actions.append({
-                    "type": "led_scene", "action": "welcome_home_morning",
-                    "color": "#FFF8DC", "brightness": 0.50, "animation": "solid",
-                })
+                actions.append(
+                    {
+                        "type": "led_scene",
+                        "action": "welcome_home_morning",
+                        "color": "#FFF8DC",
+                        "brightness": 0.50,
+                        "animation": "solid",
+                    }
+                )
 
-        actions.append({
-            "type": "system", "action": "disable_away_mode",
-            "message": "Welcome home! Away mode deactivated.",
-        })
+        actions.append(
+            {
+                "type": "system",
+                "action": "disable_away_mode",
+                "message": "Welcome home! Away mode deactivated.",
+            }
+        )
 
         return actions
 
@@ -207,14 +222,19 @@ class GeofenceManager:
         elapsed = (now - self._last_transition_at).total_seconds() / 60.0
         return elapsed >= self._debounce
 
-    def _log_transition(self, profile: dict, old: str, new: str, distance: float, now: datetime) -> None:
+    def _log_transition(
+        self, profile: dict, old: str, new: str, distance: float, now: datetime
+    ) -> None:
         gf = profile.get("geofence", {})
         history = gf.get("history", [])
-        history.append({
-            "from": old, "to": new,
-            "distance_m": round(distance, 1),
-            "timestamp": now.isoformat(),
-        })
+        history.append(
+            {
+                "from": old,
+                "to": new,
+                "distance_m": round(distance, 1),
+                "timestamp": now.isoformat(),
+            }
+        )
         gf["history"] = history[-50:]
 
     @staticmethod

@@ -36,7 +36,9 @@ class UndoManager:
         now = now_utc if now_utc is not None else utcnow()
         return now >= expires_at
 
-    def record_action(self, user_id: str, action_type: str, previous_state: Any, new_state: Any) -> None:
+    def record_action(
+        self, user_id: str, action_type: str, previous_state: Any, new_state: Any
+    ) -> None:
         key = self._normalize_user_id(user_id)
         if not key:
             return

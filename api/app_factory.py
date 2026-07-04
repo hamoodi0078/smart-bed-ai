@@ -39,6 +39,7 @@ async def _lifespan(app: FastAPI):
     # Validate production secrets on startup
     try:
         from config.settings import validate_production_secrets
+
         secret_warnings = validate_production_secrets()
         for w in secret_warnings:
             logger.warning("Secret config: %s", w)
@@ -48,6 +49,7 @@ async def _lifespan(app: FastAPI):
     # Service registry (automations, health monitor, etc.)
     try:
         from api.service_registry import initialize_services
+
         initialize_services(app)
     except Exception as exc:
         logger.warning("Service registry init error (non-fatal): %s", exc)
@@ -55,12 +57,14 @@ async def _lifespan(app: FastAPI):
     # Sentry error tracking (must be initialised early so it catches startup errors)
     try:
         import sys as _sys
+
         # Never report test-suite noise to production Sentry
         if settings.sentry_dsn and "pytest" not in _sys.modules:
             import sentry_sdk
             from sentry_sdk.integrations.fastapi import FastApiIntegration
             from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
             from sentry_sdk.integrations.logging import LoggingIntegration
+
             sentry_sdk.init(
                 dsn=settings.sentry_dsn,
                 environment=settings.sentry_environment,
@@ -81,6 +85,7 @@ async def _lifespan(app: FastAPI):
     # Async PostgreSQL pool
     try:
         from database import AsyncDatabaseConnection
+
         _async_db = AsyncDatabaseConnection()
         await _async_db.initialize()
         app.state.async_db = _async_db
@@ -94,6 +99,7 @@ async def _lifespan(app: FastAPI):
     # pgvector memory index
     try:
         from ai.pgvector_memory_index import PgVectorMemoryIndex
+
         if app.state.async_db is not None:
             app.state.pgvector_index = PgVectorMemoryIndex(app.state.async_db)
         else:
@@ -106,6 +112,7 @@ async def _lifespan(app: FastAPI):
     try:
         from arq import create_pool
         from arq.connections import RedisSettings
+
         app.state.arq = await create_pool(RedisSettings.from_dsn(settings.arq_redis_url))
     except Exception as exc:
         logger.warning("arq pool init skipped: %s", exc)
@@ -114,6 +121,7 @@ async def _lifespan(app: FastAPI):
     # Firebase FCM
     try:
         from notifications.fcm_sender import FcmSender, initialize_firebase
+
         firebase_ok = initialize_firebase(
             credentials_path=settings.firebase_credentials_path,
             credentials_json=settings.firebase_credentials_json,
@@ -143,7 +151,9 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     from config.settings import settings
 
-    _cors_raw = str(settings.web_allowed_origins_raw or "http://127.0.0.1:8000,http://localhost:8000")
+    _cors_raw = str(
+        settings.web_allowed_origins_raw or "http://127.0.0.1:8000,http://localhost:8000"
+    )
     allowed_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
     allowed_origin_regex = str(settings.web_allowed_origin_regex or "").strip() or None
 
@@ -167,6 +177,7 @@ def create_app() -> FastAPI:
                 "Specify explicit origin URLs."
             )
         import warnings as _warnings
+
         _warnings.warn(
             "CORS: allow_origins=['*'] detected — this is unsafe for production.",
             stacklevel=2,
@@ -175,18 +186,22 @@ def create_app() -> FastAPI:
 
     # Trace ID — inject X-Trace-ID / X-Request-ID on every request
     from api.middleware.trace_id import TraceIDMiddleware
+
     application.add_middleware(TraceIDMiddleware)
 
     # Error handling — catches and formats all custom and unhandled exceptions
     from api.middleware.error_handler import ErrorHandlerMiddleware
+
     application.add_middleware(ErrorHandlerMiddleware)
 
     # Rate limiting — hard import: app must not start without this protection
     from api.middleware.rate_limiter import RateLimitMiddleware
+
     application.add_middleware(RateLimitMiddleware)
 
     # Security headers — applied to every response
     from api.middleware.security_headers import SecurityHeadersMiddleware
+
     application.add_middleware(SecurityHeadersMiddleware)
 
     # slowapi per-route limiter — must be on app.state before routes are hit
@@ -194,6 +209,7 @@ def create_app() -> FastAPI:
         from slowapi import _rate_limit_exceeded_handler
         from slowapi.errors import RateLimitExceeded
         from api.limiter import limiter
+
         application.state.limiter = limiter
         application.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     except ImportError:
@@ -228,8 +244,11 @@ def create_app() -> FastAPI:
     @application.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception):
         from core.logger import logger
+
         logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc)
-        return JSONResponse(status_code=500, content={"ok": False, "error": "internal_server_error"})
+        return JSONResponse(
+            status_code=500, content={"ok": False, "error": "internal_server_error"}
+        )
 
     # ── Prometheus request instrumentation ───────────────────────────────────
     import time
@@ -263,6 +282,7 @@ def create_app() -> FastAPI:
     # Automation router (canonical — wraps legacy api/automation_routes.py internally)
     try:
         from api.routers.automations import router as automation_router
+
         application.include_router(automation_router)
     except ImportError:
         pass
@@ -273,6 +293,7 @@ def create_app() -> FastAPI:
     from api.routers.sleep import router as sleep_router
     from api.routers.scenes import router as scenes_router
     from api.routers.profile import router as profile_router
+
     application.include_router(auth_router)
     application.include_router(alarms_router)
     application.include_router(sleep_router)
@@ -287,6 +308,7 @@ def create_app() -> FastAPI:
     from api.routers.admin import router as admin_router, public_router as admin_public_router
     from api.routers.reports import router as reports_router
     from api.routers.integrations import router as integrations_router
+
     application.include_router(devices_router)
     application.include_router(subscriptions_router)
     application.include_router(chat_router)
@@ -300,6 +322,7 @@ def create_app() -> FastAPI:
     from api.routers.pages import router as pages_router
     from api.routers.actions import router as actions_router
     from api.routers.mobile_features import router as mobile_features_router
+
     application.include_router(pages_router)
     application.include_router(actions_router)
     application.include_router(mobile_features_router)
@@ -307,36 +330,45 @@ def create_app() -> FastAPI:
     # Domains that previously only existed in master_api.py
     try:
         from dana.dana_api import router as dana_router
+
         application.include_router(dana_router)
     except ImportError as exc:
         from core.logger import logger
+
         logger.warning("dana_api unavailable (skipped): %s", exc)
 
     try:
         from guest_mode.guest_api import router as guest_router
+
         application.include_router(guest_router)
     except ImportError as exc:
         from core.logger import logger
+
         logger.warning("guest_api unavailable (skipped): %s", exc)
 
     try:
         from qr_code.qr_api import router as qr_router
+
         application.include_router(qr_router)
     except ImportError as exc:
         from core.logger import logger
+
         logger.warning("qr_api unavailable (skipped): %s", exc)
 
     # Monitoring / diagnostics router
     try:
         from api.monitoring import router as monitoring_router
+
         application.include_router(monitoring_router)
     except ImportError as exc:
         from core.logger import logger
+
         logger.warning("monitoring router unavailable (skipped): %s", exc)
 
     # OpenTelemetry FastAPI auto-instrumentation (after all routes are registered)
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
         FastAPIInstrumentor().instrument_app(application)
     except ImportError:
         pass

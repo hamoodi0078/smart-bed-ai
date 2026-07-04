@@ -1,4 +1,5 @@
 """Production environment configuration."""
+
 from __future__ import annotations
 
 import os
@@ -25,7 +26,9 @@ class ProductionConfig(BaseConfig):
 
     # Security
     SECRET_KEY = os.getenv("SECRET_KEY")  # Must be set
-    ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",") if os.getenv("ALLOWED_HOSTS") else ["*"]
+    ALLOWED_HOSTS = (
+        os.getenv("ALLOWED_HOSTS", "").split(",") if os.getenv("ALLOWED_HOSTS") else ["*"]
+    )
 
     # Disable Swagger in production for security
     ENABLE_SWAGGER = os.getenv("ENABLE_SWAGGER", "0") == "1"

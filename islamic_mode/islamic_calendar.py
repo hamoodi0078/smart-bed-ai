@@ -6,6 +6,7 @@ import requests
 
 try:
     from hijri_converter import convert as _hijri_convert
+
     _HIJRI_CONVERTER_AVAILABLE = True
 except ImportError:
     _hijri_convert = None  # type: ignore[assignment]
@@ -161,13 +162,13 @@ class IslamicCalendarService:
             hijri_year = int(current.get("hijri_year", 1447) or 1447)
 
         raw_events: dict[str, tuple[int, int, int]] = {
-            "Ramadan Start":            (hijri_year, 9,  1),
-            "Laylatul Qadr (27th)":     (hijri_year, 9,  27),
-            "Eid al-Fitr":              (hijri_year, 10, 1),
-            "Dhul Hijjah Start":        (hijri_year, 12, 1),
-            "Eid al-Adha":              (hijri_year, 12, 10),
-            "Islamic New Year":         (hijri_year, 1,  1),
-            "Prophet's Birthday":       (hijri_year, 3,  12),
+            "Ramadan Start": (hijri_year, 9, 1),
+            "Laylatul Qadr (27th)": (hijri_year, 9, 27),
+            "Eid al-Fitr": (hijri_year, 10, 1),
+            "Dhul Hijjah Start": (hijri_year, 12, 1),
+            "Eid al-Adha": (hijri_year, 12, 10),
+            "Islamic New Year": (hijri_year, 1, 1),
+            "Prophet's Birthday": (hijri_year, 3, 12),
         }
 
         result: dict[str, str] = {}

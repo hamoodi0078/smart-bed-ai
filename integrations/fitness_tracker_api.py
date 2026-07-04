@@ -19,11 +19,32 @@ def _utcnow() -> datetime:
 
 
 SUPPORTED_DEVICES = {
-    "garmin": {"name": "Garmin", "metrics": ["heart_rate", "hrv", "spo2", "steps", "calories", "sleep_score", "body_battery", "stress_level"]},
-    "apple_watch": {"name": "Apple Watch", "metrics": ["heart_rate", "hrv", "spo2", "steps", "calories"]},
-    "samsung_watch": {"name": "Samsung Galaxy Watch", "metrics": ["heart_rate", "spo2", "steps", "stress"]},
+    "garmin": {
+        "name": "Garmin",
+        "metrics": [
+            "heart_rate",
+            "hrv",
+            "spo2",
+            "steps",
+            "calories",
+            "sleep_score",
+            "body_battery",
+            "stress_level",
+        ],
+    },
+    "apple_watch": {
+        "name": "Apple Watch",
+        "metrics": ["heart_rate", "hrv", "spo2", "steps", "calories"],
+    },
+    "samsung_watch": {
+        "name": "Samsung Galaxy Watch",
+        "metrics": ["heart_rate", "spo2", "steps", "stress"],
+    },
     "fitbit": {"name": "Fitbit", "metrics": ["heart_rate", "spo2", "steps", "sleep_stages"]},
-    "oura_ring": {"name": "Oura Ring", "metrics": ["heart_rate", "hrv", "temperature", "sleep_stages"]},
+    "oura_ring": {
+        "name": "Oura Ring",
+        "metrics": ["heart_rate", "hrv", "temperature", "sleep_stages"],
+    },
     "whoop": {"name": "Whoop", "metrics": ["heart_rate", "hrv", "strain", "recovery"]},
     "generic": {"name": "Generic Tracker", "metrics": ["heart_rate", "steps"]},
 }
@@ -141,49 +162,59 @@ class FitnessTrackerAPI:
         hr = entry.get("heart_rate")
         if hr is not None and hr > 0:
             if hr > 100:
-                alerts.append({
-                    "type": "elevated_heart_rate",
-                    "value": hr,
-                    "message": f"Elevated resting heart rate: {hr} bpm. Consider relaxation.",
-                    "priority": "medium",
-                })
+                alerts.append(
+                    {
+                        "type": "elevated_heart_rate",
+                        "value": hr,
+                        "message": f"Elevated resting heart rate: {hr} bpm. Consider relaxation.",
+                        "priority": "medium",
+                    }
+                )
             elif hr < 45:
-                alerts.append({
-                    "type": "low_heart_rate",
-                    "value": hr,
-                    "message": f"Low heart rate: {hr} bpm. Monitor if unusual for you.",
-                    "priority": "high",
-                })
+                alerts.append(
+                    {
+                        "type": "low_heart_rate",
+                        "value": hr,
+                        "message": f"Low heart rate: {hr} bpm. Monitor if unusual for you.",
+                        "priority": "high",
+                    }
+                )
 
         spo2 = entry.get("spo2")
         if spo2 is not None and spo2 > 0:
             if spo2 < 92:
-                alerts.append({
-                    "type": "low_blood_oxygen",
-                    "value": spo2,
-                    "message": f"Low blood oxygen: {spo2}%. Seek medical attention if persistent.",
-                    "priority": "high",
-                })
+                alerts.append(
+                    {
+                        "type": "low_blood_oxygen",
+                        "value": spo2,
+                        "message": f"Low blood oxygen: {spo2}%. Seek medical attention if persistent.",
+                        "priority": "high",
+                    }
+                )
 
         hrv = entry.get("hrv")
         if hrv is not None and hrv > 0:
             if hrv < 20:
-                alerts.append({
-                    "type": "low_hrv",
-                    "value": hrv,
-                    "message": f"Low HRV ({hrv}ms). Prioritize sleep and recovery tonight.",
-                    "priority": "medium",
-                })
+                alerts.append(
+                    {
+                        "type": "low_hrv",
+                        "value": hrv,
+                        "message": f"Low HRV ({hrv}ms). Prioritize sleep and recovery tonight.",
+                        "priority": "medium",
+                    }
+                )
 
         temp = entry.get("temperature")
         if temp is not None and temp > 0:
             if temp > 38.0:
-                alerts.append({
-                    "type": "elevated_temperature",
-                    "value": temp,
-                    "message": f"Elevated body temperature: {temp}°C. Monitor for fever.",
-                    "priority": "high",
-                })
+                alerts.append(
+                    {
+                        "type": "elevated_temperature",
+                        "value": temp,
+                        "message": f"Elevated body temperature: {temp}°C. Monitor for fever.",
+                        "priority": "high",
+                    }
+                )
 
         return alerts
 
@@ -222,7 +253,9 @@ class FitnessTrackerAPI:
         if spo2_values:
             avg_spo2 = sum(spo2_values) / len(spo2_values)
             if avg_spo2 < 95:
-                insights.append("Blood oxygen slightly low. Consider sleep position and room ventilation.")
+                insights.append(
+                    "Blood oxygen slightly low. Consider sleep position and room ventilation."
+                )
 
         recovery_score = 0
         if hrv_values and hr_values:
@@ -285,6 +318,7 @@ class FitnessTrackerAPI:
 
         try:
             from integrations.fitbit_client import build_client_from_settings, _FITBIT_AVAILABLE
+
             if not _FITBIT_AVAILABLE:
                 return {"ingested": False, "reason": "fitbit library not installed"}
             client = build_client_from_settings(token, refresh_token)
@@ -294,7 +328,11 @@ class FitnessTrackerAPI:
 
         daily = client.fetch_daily(target_date)
         if not daily.get("available", False):
-            return {"ingested": False, "reason": daily.get("reason", "No data returned"), "raw": daily}
+            return {
+                "ingested": False,
+                "reason": daily.get("reason", "No data returned"),
+                "raw": daily,
+            }
 
         self.ensure_shape(profile)
         if not profile["fitness_tracker"].get("connected_device"):
@@ -333,6 +371,7 @@ class FitnessTrackerAPI:
         """
         try:
             from integrations.garmin_client import build_client_from_settings
+
             client = build_client_from_settings()
             if not client.available:
                 return {"ingested": False, "reason": "garminconnect not installed"}
@@ -344,7 +383,11 @@ class FitnessTrackerAPI:
 
         daily = client.fetch_daily(target_date)
         if not daily.get("available", False):
-            return {"ingested": False, "reason": daily.get("reason", "No data returned"), "raw": daily}
+            return {
+                "ingested": False,
+                "reason": daily.get("reason", "No data returned"),
+                "raw": daily,
+            }
 
         # Auto-connect device if not already set
         self.ensure_shape(profile)

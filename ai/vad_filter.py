@@ -13,6 +13,7 @@ from typing import Iterable, Iterator
 
 try:
     import webrtcvad as _webrtcvad
+
     VAD_AVAILABLE = True
 except ImportError:
     _webrtcvad = None  # type: ignore[assignment]
@@ -56,9 +57,7 @@ class VadFilter:
                 f"sample_rate must be one of {sorted(_VALID_SAMPLE_RATES)}, got {sample_rate}"
             )
         if frame_ms not in _VALID_FRAME_MS:
-            raise ValueError(
-                f"frame_ms must be one of {sorted(_VALID_FRAME_MS)}, got {frame_ms}"
-            )
+            raise ValueError(f"frame_ms must be one of {sorted(_VALID_FRAME_MS)}, got {frame_ms}")
 
         self._sample_rate = sample_rate
         self._frame_ms = frame_ms

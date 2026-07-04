@@ -230,7 +230,9 @@ class BillingService:
         reason: str = "Paused by user",
     ) -> dict[str, Any]:
         subscription = self.store.get_subscription(user_id)
-        provider_subscription_id = str(subscription.get("provider_subscription_id", "") or "").strip()
+        provider_subscription_id = str(
+            subscription.get("provider_subscription_id", "") or ""
+        ).strip()
         if not provider_subscription_id:
             raise BillingServiceError("No active PayPal subscription is linked to this account.")
         if not self.paypal_configured:
@@ -275,7 +277,9 @@ class BillingService:
         reason: str = "Cancelled by user",
     ) -> dict[str, Any]:
         subscription = self.store.get_subscription(user_id)
-        provider_subscription_id = str(subscription.get("provider_subscription_id", "") or "").strip()
+        provider_subscription_id = str(
+            subscription.get("provider_subscription_id", "") or ""
+        ).strip()
         if not provider_subscription_id:
             raise BillingServiceError("No active PayPal subscription is linked to this account.")
         if not self.paypal_configured:
@@ -334,7 +338,9 @@ class BillingService:
             transmission_id = self._header(headers, "paypal-transmission-id")
             transmission_time = self._header(headers, "paypal-transmission-time")
             self._assert_transmission_fresh(transmission_time)
-            replay_key = self._webhook_replay_key(transmission_id=transmission_id, event_id=event_id)
+            replay_key = self._webhook_replay_key(
+                transmission_id=transmission_id, event_id=event_id
+            )
             if replay_key:
                 replay_receipt = self.store.get_billing_webhook_replay(replay_key)
                 if isinstance(replay_receipt, dict):
@@ -343,7 +349,9 @@ class BillingService:
                     if isinstance(existing_receipt, dict):
                         return BillingWebhookResult(
                             user_id=str(existing_receipt.get("user_id", "") or "").strip(),
-                            event_type=str(existing_receipt.get("event_type", "") or event_type).strip(),
+                            event_type=str(
+                                existing_receipt.get("event_type", "") or event_type
+                            ).strip(),
                             verified=True,
                             checkout_session_id=str(
                                 existing_receipt.get("checkout_session_id", "") or ""
@@ -371,7 +379,9 @@ class BillingService:
                 user_id=str(existing_receipt.get("user_id", "") or "").strip(),
                 event_type=str(existing_receipt.get("event_type", "") or event_type).strip(),
                 verified=verified,
-                checkout_session_id=str(existing_receipt.get("checkout_session_id", "") or "").strip(),
+                checkout_session_id=str(
+                    existing_receipt.get("checkout_session_id", "") or ""
+                ).strip(),
                 duplicate=True,
                 replayed=replayed,
                 webhook_event_id=event_id,
@@ -619,8 +629,12 @@ class BillingService:
         checkout["provider_subscription_id"] = details.subscription_id
         checkout["provider_plan_id"] = details.plan_id
         checkout["provider_status"] = details.status
-        checkout["provider_environment"] = self.paypal_provider.environment if self.paypal_provider else ""
-        checkout["provider_currency"] = self.paypal_provider.currency_code if self.paypal_provider else ""
+        checkout["provider_environment"] = (
+            self.paypal_provider.environment if self.paypal_provider else ""
+        )
+        checkout["provider_currency"] = (
+            self.paypal_provider.currency_code if self.paypal_provider else ""
+        )
 
     def _subscription_key(
         self,
@@ -677,7 +691,9 @@ class BillingService:
     @staticmethod
     def _webhook_payload_hash(payload: Mapping[str, Any]) -> str:
         try:
-            encoded = json.dumps(dict(payload), sort_keys=True, separators=(",", ":")).encode("utf-8")
+            encoded = json.dumps(dict(payload), sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
         except Exception:
             encoded = str(dict(payload)).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
@@ -704,7 +720,9 @@ class BillingService:
             raise BillingServiceError("Invalid PayPal transmission timestamp.") from exc
         age_seconds = abs((utcnow() - transmitted_at).total_seconds())
         if age_seconds > self.paypal_webhook_max_age_seconds:
-            raise BillingServiceError("PayPal webhook transmission timestamp is outside the accepted window.")
+            raise BillingServiceError(
+                "PayPal webhook transmission timestamp is outside the accepted window."
+            )
 
     @staticmethod
     def _now_iso() -> str:

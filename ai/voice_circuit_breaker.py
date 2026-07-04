@@ -103,7 +103,9 @@ class VoiceCircuitBreaker:
         with self._lock:
             now = float(self._time_fn())
             if self._state == STATE_OPEN:
-                if isinstance(self._next_retry_time, (int, float)) and now >= float(self._next_retry_time):
+                if isinstance(self._next_retry_time, (int, float)) and now >= float(
+                    self._next_retry_time
+                ):
                     previous_state = self._state
                     self._state = STATE_HALF_OPEN
                     self._log_event(
@@ -166,7 +168,9 @@ class VoiceCircuitBreaker:
                     "state": self._state,
                     "failure_count": int(self._failure_count),
                     "failure_threshold": int(self.failure_threshold),
-                    "cooldown_seconds_remaining": float(snapshot.get("cooldown_seconds_remaining", 0.0) or 0.0),
+                    "cooldown_seconds_remaining": float(
+                        snapshot.get("cooldown_seconds_remaining", 0.0) or 0.0
+                    ),
                 },
             )
             if previous_state != self._state:

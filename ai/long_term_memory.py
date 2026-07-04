@@ -19,6 +19,7 @@ class LongTermMemoryStore:
         self.max_items = max(50, int(max_items))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         from ai.chroma_memory_index import ChromaMemoryIndex
+
         chroma_dir = self.path.parent / "chroma"
         self._chroma = ChromaMemoryIndex(persist_dir=chroma_dir)
 
@@ -33,6 +34,7 @@ class LongTermMemoryStore:
             bak = self.path.with_suffix(".bak")
             try:
                 import shutil
+
                 shutil.copy2(str(self.path), str(bak))
             except Exception:
                 pass
@@ -71,7 +73,7 @@ class LongTermMemoryStore:
 
     def inject_daily_events(self, events: list[dict | str], source: str = "manual") -> int:
         clean_items = []
-        for row in (events or []):
+        for row in events or []:
             item = self._normalize_daily_event(row, source=source)
             if item.get("title"):
                 clean_items.append(item)
@@ -131,7 +133,9 @@ class LongTermMemoryStore:
         events_line = self.latest_daily_events_summary()
         return f"{memory_line} {events_line}".strip()
 
-    def record_turn(self, user_text: str, assistant_text: str, emotion_state: str, personality: str):
+    def record_turn(
+        self, user_text: str, assistant_text: str, emotion_state: str, personality: str
+    ):
         user = str(user_text or "").strip()
         assistant = str(assistant_text or "").strip()
         if not user:
@@ -157,12 +161,20 @@ class LongTermMemoryStore:
         self._chroma.upsert(
             doc_id=doc_id,
             text=combined,
-            metadata={"emotion": str(emotion_state or "neutral"), "personality": str(personality or "guide"), "ts": ts},
+            metadata={
+                "emotion": str(emotion_state or "neutral"),
+                "personality": str(personality or "guide"),
+                "ts": ts,
+            },
         )
 
     @staticmethod
     def _tokenize(text: str) -> set[str]:
-        return {w for w in re.findall(r"[a-zA-Z0-9\u0600-\u06FF']+", str(text or "").lower()) if len(w) >= 3}
+        return {
+            w
+            for w in re.findall(r"[a-zA-Z0-9\u0600-\u06FF']+", str(text or "").lower())
+            if len(w) >= 3
+        }
 
     def retrieve_relevant(self, user_text: str, max_items: int = 2) -> list[dict]:
         payload = self._load()
@@ -178,7 +190,8 @@ class LongTermMemoryStore:
             if chroma_hits:
                 hit_docs = {h["document"][:100] for h in chroma_hits}
                 matched = [
-                    item for item in entries
+                    item
+                    for item in entries
                     if f"{item.get('user', '')} {item.get('assistant', '')}"[:100] in hit_docs
                 ]
                 if matched:
@@ -189,6 +202,7 @@ class LongTermMemoryStore:
         # In-memory semantic retrieval via sentence-transformers (preferred over token match)
         try:
             from ai.embedding_service import cosine_similarity, encode, is_available
+
             if is_available():
                 query_vec = encode(str(user_text or ""))
                 scored = []
@@ -290,7 +304,9 @@ class LongTermMemoryStore:
         buckets: dict[int, list[datetime]] = {}
         for ts in guide_hits:
             buckets.setdefault(ts.hour, []).append(ts)
-        dominant_hour, dominant_items = sorted(buckets.items(), key=lambda kv: len(kv[1]), reverse=True)[0]
+        dominant_hour, dominant_items = sorted(
+            buckets.items(), key=lambda kv: len(kv[1]), reverse=True
+        )[0]
         if len(dominant_items) < 3:
             return {}
 
@@ -344,11 +360,14 @@ class DBLongTermMemoryStore:
     # Write operations
     # ------------------------------------------------------------------
 
-    def record_turn(self, user_text: str, assistant_text: str, emotion_state: str, personality: str) -> None:
+    def record_turn(
+        self, user_text: str, assistant_text: str, emotion_state: str, personality: str
+    ) -> None:
         user = str(user_text or "").strip()
         if not user or not self._user_id:
             return
         from database.models import UserMemoryEntry
+
         try:
             with self._db.get_session() as session:
                 entry = UserMemoryEntry(
@@ -362,19 +381,24 @@ class DBLongTermMemoryStore:
                 session.add(entry)
                 # Prune oldest rows beyond MAX_ENTRIES to keep the table lean
                 from sqlalchemy import delete, select, func
+
                 count = session.execute(
-                    select(func.count()).select_from(UserMemoryEntry).where(
-                        UserMemoryEntry.user_id == self._user_id
-                    )
+                    select(func.count())
+                    .select_from(UserMemoryEntry)
+                    .where(UserMemoryEntry.user_id == self._user_id)
                 ).scalar_one()
                 if count > self.MAX_ENTRIES:
                     excess = count - self.MAX_ENTRIES
-                    oldest_ids = session.execute(
-                        select(UserMemoryEntry.id)
-                        .where(UserMemoryEntry.user_id == self._user_id)
-                        .order_by(UserMemoryEntry.ts.asc())
-                        .limit(excess)
-                    ).scalars().all()
+                    oldest_ids = (
+                        session.execute(
+                            select(UserMemoryEntry.id)
+                            .where(UserMemoryEntry.user_id == self._user_id)
+                            .order_by(UserMemoryEntry.ts.asc())
+                            .limit(excess)
+                        )
+                        .scalars()
+                        .all()
+                    )
                     if oldest_ids:
                         session.execute(
                             delete(UserMemoryEntry).where(UserMemoryEntry.id.in_(oldest_ids))
@@ -386,10 +410,11 @@ class DBLongTermMemoryStore:
         if not self._user_id:
             return 0
         from database.models import UserDailyEvent
+
         count = 0
         try:
             with self._db.get_session() as session:
-                for row in (events or []):
+                for row in events or []:
                     if isinstance(row, dict):
                         title = str(row.get("title", "") or "").strip()[:120]
                         summary = str(row.get("summary", "") or "").strip()[:220]
@@ -404,14 +429,16 @@ class DBLongTermMemoryStore:
                         continue
                     if stress not in {"low", "moderate", "high"}:
                         stress = ""
-                    session.add(UserDailyEvent(
-                        user_id=self._user_id,
-                        ts=self._utcnow(),
-                        title=title,
-                        summary=summary,
-                        stress_level=stress,
-                        source=src or "manual",
-                    ))
+                    session.add(
+                        UserDailyEvent(
+                            user_id=self._user_id,
+                            ts=self._utcnow(),
+                            title=title,
+                            summary=summary,
+                            stress_level=stress,
+                            source=src or "manual",
+                        )
+                    )
                     count += 1
         except Exception:
             _log.exception("DBLongTermMemoryStore.inject_daily_events failed")
@@ -424,14 +451,19 @@ class DBLongTermMemoryStore:
     def _recent_entries(self, limit: int = 5):
         from database.models import UserMemoryEntry
         from sqlalchemy import select
+
         try:
             with self._db.get_session() as session:
-                rows = session.execute(
-                    select(UserMemoryEntry)
-                    .where(UserMemoryEntry.user_id == self._user_id)
-                    .order_by(UserMemoryEntry.ts.desc())
-                    .limit(limit)
-                ).scalars().all()
+                rows = (
+                    session.execute(
+                        select(UserMemoryEntry)
+                        .where(UserMemoryEntry.user_id == self._user_id)
+                        .order_by(UserMemoryEntry.ts.desc())
+                        .limit(limit)
+                    )
+                    .scalars()
+                    .all()
+                )
                 return list(reversed(rows))
         except Exception:
             _log.exception("DBLongTermMemoryStore._recent_entries failed")
@@ -459,12 +491,16 @@ class DBLongTermMemoryStore:
 
         try:
             with self._db.get_session() as session:
-                rows = session.execute(
-                    select(UserMemoryEntry)
-                    .where(UserMemoryEntry.user_id == self._user_id)
-                    .order_by(UserMemoryEntry.ts.desc())
-                    .limit(50)
-                ).scalars().all()
+                rows = (
+                    session.execute(
+                        select(UserMemoryEntry)
+                        .where(UserMemoryEntry.user_id == self._user_id)
+                        .order_by(UserMemoryEntry.ts.desc())
+                        .limit(50)
+                    )
+                    .scalars()
+                    .all()
+                )
         except Exception:
             return ""
 
@@ -474,6 +510,7 @@ class DBLongTermMemoryStore:
         # Semantic scoring (preferred) \u2014 falls back to token-match if unavailable
         try:
             from ai.embedding_service import cosine_similarity, encode, is_available
+
             if is_available():
                 query_vec = encode(clean_query)
                 scored = []
@@ -484,21 +521,28 @@ class DBLongTermMemoryStore:
                 scored.sort(key=lambda p: p[0], reverse=True)
                 top = [r.user_text[:120] for _, r in scored[:2] if _ > 0.25 and r.user_text.strip()]
                 if top:
-                    return "Continuity memory: In prior sessions user mentioned -> " + " | ".join(top)
+                    return "Continuity memory: In prior sessions user mentioned -> " + " | ".join(
+                        top
+                    )
         except Exception as exc:
             _log.debug("Semantic memory_prompt_line unavailable: {}", exc)
 
         # Token-based fallback
         query_tokens = {
-            w for w in re.findall(r"[a-zA-Z0-9\u0600-\u06FF']+", clean_query.lower())
-            if len(w) >= 3
+            w for w in re.findall(r"[a-zA-Z0-9\u0600-\u06FF']+", clean_query.lower()) if len(w) >= 3
         }
         ranked = []
         for row in rows:
             combined = f"{row.user_text} {row.assistant_text}"
-            score = len(query_tokens.intersection(
-                {w for w in re.findall(r"[a-zA-Z0-9\u0600-\u06FF']+", combined.lower()) if len(w) >= 3}
-            ))
+            score = len(
+                query_tokens.intersection(
+                    {
+                        w
+                        for w in re.findall(r"[a-zA-Z0-9\u0600-\u06FF']+", combined.lower())
+                        if len(w) >= 3
+                    }
+                )
+            )
             if score > 0:
                 ranked.append((score, row))
         ranked.sort(key=lambda p: p[0], reverse=True)
@@ -510,18 +554,23 @@ class DBLongTermMemoryStore:
     def latest_daily_events_summary(self, hours: int = 24, max_items: int = 3) -> str:
         from database.models import UserDailyEvent
         from sqlalchemy import select
+
         cutoff = self._utcnow() - timedelta(hours=max(1, int(hours)))
         try:
             with self._db.get_session() as session:
-                rows = session.execute(
-                    select(UserDailyEvent)
-                    .where(
-                        UserDailyEvent.user_id == self._user_id,
-                        UserDailyEvent.ts >= cutoff,
+                rows = (
+                    session.execute(
+                        select(UserDailyEvent)
+                        .where(
+                            UserDailyEvent.user_id == self._user_id,
+                            UserDailyEvent.ts >= cutoff,
+                        )
+                        .order_by(UserDailyEvent.ts.desc())
+                        .limit(max_items)
                     )
-                    .order_by(UserDailyEvent.ts.desc())
-                    .limit(max_items)
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
         except Exception:
             return ""
         lines = []

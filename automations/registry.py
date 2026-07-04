@@ -88,7 +88,9 @@ class AutomationRegistry:
         self._state_path = self._confine_state_path(state_path)
         self._automations: list[Automation] = []
         self._state = self._load_state()
-        self._idempotency_store = IdempotencyStore(path=self._state_path.with_name("idempotency_store.json"))
+        self._idempotency_store = IdempotencyStore(
+            path=self._state_path.with_name("idempotency_store.json")
+        )
 
     @staticmethod
     def _confine_state_path(candidate: str | Path) -> Path:
@@ -98,7 +100,6 @@ class AutomationRegistry:
         constructor arguments (addresses SonarCloud python:S5144).
         """
         return confine_path(RUNTIME_DATA_DIR, candidate)
-
 
     def register(self, automation: Automation) -> None:
         normalized_cooldown = normalize_cooldown_minutes(automation.cooldown_minutes)
@@ -124,7 +125,9 @@ class AutomationRegistry:
         return list(self._automations)
 
     def run_automations(self, ctx: dict[str, Any]) -> list[Effect]:
-        now_utc = ensure_utc(ctx.get("now_utc") if isinstance(ctx.get("now_utc"), datetime) else utcnow())
+        now_utc = ensure_utc(
+            ctx.get("now_utc") if isinstance(ctx.get("now_utc"), datetime) else utcnow()
+        )
         timezone_name = str(ctx.get("timezone", "UTC") or "UTC").strip() or "UTC"
         try:
             now_local = now_utc.astimezone(ZoneInfo(timezone_name))
@@ -136,7 +139,9 @@ class AutomationRegistry:
         run_ctx["now_utc"] = now_utc
         run_ctx["now_local"] = now_local
         run_ctx["timezone"] = timezone_name
-        quiet_window = str(run_ctx.get("quiet_window", DEFAULT_QUIET_HOURS_WINDOW) or DEFAULT_QUIET_HOURS_WINDOW).strip()
+        quiet_window = str(
+            run_ctx.get("quiet_window", DEFAULT_QUIET_HOURS_WINDOW) or DEFAULT_QUIET_HOURS_WINDOW
+        ).strip()
         quiet_mode_active = bool(run_ctx.get("quiet_mode_active", False))
         override_active = is_quiet_hours_override_active(
             now_utc=now_utc,
@@ -195,6 +200,7 @@ class AutomationRegistry:
             last_ran = self._parse_optional_utc(record.get("last_ran_utc", ""))
             if automation.cron_expr:
                 from core.cron_utils import should_fire_now
+
                 if not should_fire_now(automation.cron_expr, now=now_utc, tolerance_seconds=60):
                     continue
             elif last_ran is not None:
@@ -206,7 +212,9 @@ class AutomationRegistry:
             if callable(automation.window_key):
                 resolved = automation.window_key(run_ctx)
                 current_window_key = str(resolved or "")
-                if current_window_key and current_window_key == str(record.get("last_window_key", "") or ""):
+                if current_window_key and current_window_key == str(
+                    record.get("last_window_key", "") or ""
+                ):
                     continue
 
             try:
@@ -304,6 +312,7 @@ class AutomationRegistry:
             next_run_in_minutes = 0
             if automation.cron_expr:
                 from core.cron_utils import next_fire, should_fire_now
+
                 nf = next_fire(automation.cron_expr, now=now)
                 if nf:
                     next_run_utc = to_iso(nf)

@@ -35,6 +35,7 @@ logger = logging.getLogger("integrations.mqtt_client")
 
 try:
     import paho.mqtt.client as mqtt  # type: ignore
+
     _PAHO_AVAILABLE = True
 except ImportError:
     mqtt = None  # type: ignore
@@ -45,24 +46,26 @@ except ImportError:
 # Topic constants
 # ---------------------------------------------------------------------------
 
+
 class Topics:
-    PRESSURE        = "danah/sensors/pressure"
-    MOTION          = "danah/sensors/motion"
-    TEMPERATURE     = "danah/sensors/temperature"
-    HUMIDITY        = "danah/sensors/humidity"
-    HEART_RATE      = "danah/sensors/heart_rate"
-    OCCUPANCY       = "danah/bed/occupancy"
-    BED_EVENTS      = "danah/bed/events"
-    LED_COMMAND     = "danah/commands/led"
-    LIGHTS_OUT      = "danah/commands/lights_out"
-    BEDTIME_MODE    = "danah/commands/bedtime_mode"
-    ZIGBEE_PREFIX   = "danah/zigbee"
-    SYSTEM_STATUS   = "danah/system/status"
+    PRESSURE = "danah/sensors/pressure"
+    MOTION = "danah/sensors/motion"
+    TEMPERATURE = "danah/sensors/temperature"
+    HUMIDITY = "danah/sensors/humidity"
+    HEART_RATE = "danah/sensors/heart_rate"
+    OCCUPANCY = "danah/bed/occupancy"
+    BED_EVENTS = "danah/bed/events"
+    LED_COMMAND = "danah/commands/led"
+    LIGHTS_OUT = "danah/commands/lights_out"
+    BEDTIME_MODE = "danah/commands/bedtime_mode"
+    ZIGBEE_PREFIX = "danah/zigbee"
+    SYSTEM_STATUS = "danah/system/status"
 
 
 # ---------------------------------------------------------------------------
 # Main client
 # ---------------------------------------------------------------------------
+
 
 class MQTTClient:
     """Thread-safe paho-mqtt wrapper with auto-reconnect and typed pub/sub."""
@@ -123,7 +126,9 @@ class MQTTClient:
                 self._client.connect(self._host, self._port, self._keepalive)
                 self._running = True
                 self._client.loop_start()
-                logger.info("MQTT connecting to %s:%d as '%s'", self._host, self._port, self._client_id)
+                logger.info(
+                    "MQTT connecting to %s:%d as '%s'", self._host, self._port, self._client_id
+                )
                 return True
             except Exception as exc:
                 logger.error("MQTT connect failed: %s", exc)
@@ -268,11 +273,12 @@ class MQTTClient:
 # Topic matching (supports + and # wildcards)
 # ---------------------------------------------------------------------------
 
+
 def _topic_matches(pattern: str, topic: str) -> bool:
     pat_parts = pattern.split("/")
     top_parts = topic.split("/")
     if pat_parts[-1] == "#":
-        return top_parts[:len(pat_parts) - 1] == pat_parts[:-1]
+        return top_parts[: len(pat_parts) - 1] == pat_parts[:-1]
     if len(pat_parts) != len(top_parts):
         return False
     return all(p == t or p == "+" for p, t in zip(pat_parts, top_parts))

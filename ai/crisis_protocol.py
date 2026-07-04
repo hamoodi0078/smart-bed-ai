@@ -39,18 +39,21 @@ ARABIC_TRIGGERS: tuple[str, ...] = (
     "هلع",
 )
 
-COMMAND_PHRASES: frozenset[str] = frozenset({
-    "start crisis protocol",
-    "panic mode",
-    "fast support mode",
-    "crisis mode",
-    "grounding exercise",
-})
+COMMAND_PHRASES: frozenset[str] = frozenset(
+    {
+        "start crisis protocol",
+        "panic mode",
+        "fast support mode",
+        "crisis mode",
+        "grounding exercise",
+    }
+)
 
 
 @dataclass
 class CrisisEvent:
     """Record of a crisis protocol activation (for analytics / follow-up)."""
+
     user_id: str = ""
     triggered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     trigger_phrase: str = ""

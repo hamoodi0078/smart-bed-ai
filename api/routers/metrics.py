@@ -3,6 +3,7 @@
 Secured: only accessible from localhost or IP allowlist via METRICS_ALLOWED_IPS.
 Set METRICS_ALLOWED_IPS=127.0.0.1,10.0.0.0/8 in .env to restrict access.
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -16,6 +17,7 @@ router = APIRouter(tags=["observability"])
 
 _METRICS_ALLOWED_NETS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
 
+
 def _load_allowed_nets() -> None:
     raw = os.getenv("METRICS_ALLOWED_IPS", "127.0.0.1,::1")
     for entry in raw.split(","):
@@ -26,6 +28,7 @@ def _load_allowed_nets() -> None:
             _METRICS_ALLOWED_NETS.append(ipaddress.ip_network(entry, strict=False))
         except ValueError:
             pass
+
 
 _load_allowed_nets()
 

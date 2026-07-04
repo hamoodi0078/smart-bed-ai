@@ -91,9 +91,7 @@ def _fetch_weather_context(lower_query: str, timeout_seconds: int) -> Optional[s
         city = "Kuwait City"
 
     try:
-        response = requests.get(
-            f"https://wttr.in/{city}?format=j1", timeout=timeout_seconds
-        )
+        response = requests.get(f"https://wttr.in/{city}?format=j1", timeout=timeout_seconds)
         response.raise_for_status()
         body = response.json()
         current = body.get("current_condition", [{}])[0]
@@ -102,10 +100,7 @@ def _fetch_weather_context(lower_query: str, timeout_seconds: int) -> Optional[s
         weather_desc = current.get("weatherDesc", [])
         if weather_desc:
             description = weather_desc[0].get("value", "")
-        return (
-            f"REALTIME_WEATHER: city={city.title()}, temp_c={temp_c}, "
-            f"description={description}"
-        )
+        return f"REALTIME_WEATHER: city={city.title()}, temp_c={temp_c}, description={description}"
     except Exception:
         return None
 

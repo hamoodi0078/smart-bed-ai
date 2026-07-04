@@ -20,7 +20,6 @@ def _feed(optimizer: WakeOptimizer, values: list[float]) -> None:
 
 
 class TestSignalComplexityAntropy(unittest.TestCase):
-
     def test_returns_unavailable_when_antropy_missing(self):
         with patch("sleep_tracking.wake_optimizer._ANTROPY_AVAILABLE", False):
             opt = WakeOptimizer()
@@ -60,6 +59,7 @@ class TestSignalComplexityAntropy(unittest.TestCase):
 
     def test_random_signal_has_high_complexity(self):
         import random
+
         rng = random.Random(42)
         opt = WakeOptimizer()
         values = [50.0 + rng.gauss(0, 5) for _ in range(300)]
@@ -92,6 +92,7 @@ class TestEntropyPenaltyApplied(unittest.TestCase):
 
     def test_high_entropy_penalty_reduces_score(self):
         import random
+
         rng = random.Random(7)
         opt = WakeOptimizer(
             restlessness_threshold_pct=1.0,  # make it very sensitive

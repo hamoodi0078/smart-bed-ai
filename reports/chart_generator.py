@@ -22,6 +22,7 @@ logger = logging.getLogger("reports.chart_generator")
 try:
     import plotly.graph_objects as go
     import plotly.express as px
+
     _PLOTLY_AVAILABLE = True
 except ImportError:
     _PLOTLY_AVAILABLE = False
@@ -53,6 +54,7 @@ def _check() -> None:
 # Sleep trend — line chart
 # ---------------------------------------------------------------------------
 
+
 def sleep_trend_chart(trend_data: list[dict[str, Any]]) -> dict[str, Any]:
     """Line chart: sleep hours and sleep score per night.
 
@@ -67,43 +69,55 @@ def sleep_trend_chart(trend_data: list[dict[str, Any]]) -> dict[str, Any]:
 
     fig = go.Figure()
 
-    fig.add_trace(go.Scatter(
-        x=dates, y=hours,
-        name="Hours slept",
-        mode="lines+markers",
-        line={"color": _TEAL, "width": 2},
-        marker={"size": 6, "color": _TEAL},
-        yaxis="y1",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=hours,
+            name="Hours slept",
+            mode="lines+markers",
+            line={"color": _TEAL, "width": 2},
+            marker={"size": 6, "color": _TEAL},
+            yaxis="y1",
+        )
+    )
 
-    fig.add_trace(go.Scatter(
-        x=dates, y=scores,
-        name="Sleep score",
-        mode="lines+markers",
-        line={"color": _ACCENT, "width": 2, "dash": "dot"},
-        marker={"size": 6, "color": _ACCENT},
-        yaxis="y2",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=scores,
+            name="Sleep score",
+            mode="lines+markers",
+            line={"color": _ACCENT, "width": 2, "dash": "dot"},
+            marker={"size": 6, "color": _ACCENT},
+            yaxis="y2",
+        )
+    )
 
     # 7-hour recommended minimum reference line
     fig.add_hline(
-        y=7, line_dash="dash", line_color=_GREY, opacity=0.5,
-        annotation_text="7h target", annotation_position="bottom right",
+        y=7,
+        line_dash="dash",
+        line_color=_GREY,
+        opacity=0.5,
+        annotation_text="7h target",
+        annotation_position="bottom right",
     )
 
     layout = dict(_LAYOUT_BASE)
-    layout.update({
-        "title": {"text": "Sleep Trend", "font": {"size": 16, "color": _DARK}},
-        "xaxis": {"title": "Date", "showgrid": False},
-        "yaxis": {"title": "Hours", "range": [0, 12], "gridcolor": "#E5E7EB"},
-        "yaxis2": {
-            "title": "Score",
-            "range": [0, 100],
-            "overlaying": "y",
-            "side": "right",
-            "showgrid": False,
-        },
-    })
+    layout.update(
+        {
+            "title": {"text": "Sleep Trend", "font": {"size": 16, "color": _DARK}},
+            "xaxis": {"title": "Date", "showgrid": False},
+            "yaxis": {"title": "Hours", "range": [0, 12], "gridcolor": "#E5E7EB"},
+            "yaxis2": {
+                "title": "Score",
+                "range": [0, 100],
+                "overlaying": "y",
+                "side": "right",
+                "showgrid": False,
+            },
+        }
+    )
     fig.update_layout(**layout)
     return fig.to_dict()
 
@@ -111,6 +125,7 @@ def sleep_trend_chart(trend_data: list[dict[str, Any]]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Daily activity — bar chart
 # ---------------------------------------------------------------------------
+
 
 def daily_activity_chart(daily_data: list[dict[str, Any]]) -> dict[str, Any]:
     """Bar chart: total events per day.
@@ -123,19 +138,24 @@ def daily_activity_chart(daily_data: list[dict[str, Any]]) -> dict[str, Any]:
     dates = [d.get("date", "") for d in daily_data]
     counts = [d.get("events", 0) for d in daily_data]
 
-    fig = go.Figure(go.Bar(
-        x=dates, y=counts,
-        marker_color=_TEAL,
-        name="Events",
-    ))
+    fig = go.Figure(
+        go.Bar(
+            x=dates,
+            y=counts,
+            marker_color=_TEAL,
+            name="Events",
+        )
+    )
 
     layout = dict(_LAYOUT_BASE)
-    layout.update({
-        "title": {"text": "Daily Activity", "font": {"size": 16, "color": _DARK}},
-        "xaxis": {"title": "Date", "showgrid": False},
-        "yaxis": {"title": "Events", "gridcolor": "#E5E7EB"},
-        "bargap": 0.3,
-    })
+    layout.update(
+        {
+            "title": {"text": "Daily Activity", "font": {"size": 16, "color": _DARK}},
+            "xaxis": {"title": "Date", "showgrid": False},
+            "yaxis": {"title": "Events", "gridcolor": "#E5E7EB"},
+            "bargap": 0.3,
+        }
+    )
     fig.update_layout(**layout)
     return fig.to_dict()
 
@@ -143,6 +163,7 @@ def daily_activity_chart(daily_data: list[dict[str, Any]]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Automation effectiveness — donut chart
 # ---------------------------------------------------------------------------
+
 
 def automation_effectiveness_chart(data: dict[str, Any]) -> dict[str, Any]:
     """Donut chart: automation accepted vs declined.
@@ -161,30 +182,35 @@ def automation_effectiveness_chart(data: dict[str, Any]) -> dict[str, Any]:
     values = [accepted, declined]
     colors = [_GREEN, _RED]
 
-    fig = go.Figure(go.Pie(
-        labels=labels,
-        values=values,
-        hole=0.55,
-        marker={"colors": colors},
-        textinfo="label+percent",
-        hovertemplate="%{label}: %{value}<extra></extra>",
-    ))
+    fig = go.Figure(
+        go.Pie(
+            labels=labels,
+            values=values,
+            hole=0.55,
+            marker={"colors": colors},
+            textinfo="label+percent",
+            hovertemplate="%{label}: %{value}<extra></extra>",
+        )
+    )
 
     fig.add_annotation(
         text=f"{rate:.0f}%<br>accepted",
-        x=0.5, y=0.5,
+        x=0.5,
+        y=0.5,
         font={"size": 14, "color": _DARK, "family": "Helvetica-Bold"},
         showarrow=False,
     )
 
     layout = dict(_LAYOUT_BASE)
-    layout.update({
-        "title": {
-            "text": f"Automation Effectiveness — last {period} days",
-            "font": {"size": 16, "color": _DARK},
-        },
-        "showlegend": True,
-    })
+    layout.update(
+        {
+            "title": {
+                "text": f"Automation Effectiveness — last {period} days",
+                "font": {"size": 16, "color": _DARK},
+            },
+            "showlegend": True,
+        }
+    )
     fig.update_layout(**layout)
     return fig.to_dict()
 
@@ -192,6 +218,7 @@ def automation_effectiveness_chart(data: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Feature adoption — horizontal bar chart
 # ---------------------------------------------------------------------------
+
 
 def feature_adoption_chart(adoption_data: dict[str, Any]) -> dict[str, Any]:
     """Horizontal bar chart: usage count per feature.
@@ -210,24 +237,29 @@ def feature_adoption_chart(adoption_data: dict[str, Any]) -> dict[str, Any]:
     counts = [v for _, v in sorted_features]
     bar_colors = [_TEAL if features_adopted.get(k, False) else _GREY for k, _ in sorted_features]
 
-    fig = go.Figure(go.Bar(
-        x=counts, y=labels,
-        orientation="h",
-        marker_color=bar_colors,
-        name="Usage",
-    ))
+    fig = go.Figure(
+        go.Bar(
+            x=counts,
+            y=labels,
+            orientation="h",
+            marker_color=bar_colors,
+            name="Usage",
+        )
+    )
 
     adoption_rate = float(adoption_data.get("adoption_rate", 0))
     layout = dict(_LAYOUT_BASE)
-    layout.update({
-        "title": {
-            "text": f"Feature Adoption — {adoption_rate:.0f}% of features used",
-            "font": {"size": 16, "color": _DARK},
-        },
-        "xaxis": {"title": "Total uses", "gridcolor": "#E5E7EB"},
-        "yaxis": {"showgrid": False},
-        "bargap": 0.25,
-        "height": max(300, len(labels) * 35 + 120),
-    })
+    layout.update(
+        {
+            "title": {
+                "text": f"Feature Adoption — {adoption_rate:.0f}% of features used",
+                "font": {"size": 16, "color": _DARK},
+            },
+            "xaxis": {"title": "Total uses", "gridcolor": "#E5E7EB"},
+            "yaxis": {"showgrid": False},
+            "bargap": 0.25,
+            "height": max(300, len(labels) * 35 + 120),
+        }
+    )
     fig.update_layout(**layout)
     return fig.to_dict()

@@ -39,11 +39,15 @@ class TestPiSensors(unittest.TestCase):
             )
 
         self.assertTrue(monitor.is_available())
-        self.assertEqual(monitor.snapshot(), SensorSnapshot(pressure_active=False, motion_active=False))
+        self.assertEqual(
+            monitor.snapshot(), SensorSnapshot(pressure_active=False, motion_active=False)
+        )
 
         devices[23].value = 0
         devices[24].value = 1
-        self.assertEqual(monitor.snapshot(), SensorSnapshot(pressure_active=True, motion_active=True))
+        self.assertEqual(
+            monitor.snapshot(), SensorSnapshot(pressure_active=True, motion_active=True)
+        )
         monitor.close()
 
     def test_monitor_emits_callback_when_input_changes(self):

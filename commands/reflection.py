@@ -29,9 +29,7 @@ _NEGATIVE_TOKENS = {
     "nothing",
 }
 
-_POSITIVE_PHRASES = (
-    "did well",
-)
+_POSITIVE_PHRASES = ("did well",)
 
 _POSITIVE_TOKENS = {
     "yes",
@@ -184,7 +182,10 @@ def process_reflection_turn(
         profile["reflection"] = _cleared_reflection_state(state)
         return "", False, True
 
-    if bool(state.get("active", False)) and str(state.get("step", "")).upper() == REFLECTION_STEP_ASKED:
+    if (
+        bool(state.get("active", False))
+        and str(state.get("step", "")).upper() == REFLECTION_STEP_ASKED
+    ):
         response = _NEGATIVE_MESSAGE if _is_negative_reply(user_text) else _POSITIVE_MESSAGE
         profile["reflection"] = _cleared_reflection_state(state)
         return response, True, True

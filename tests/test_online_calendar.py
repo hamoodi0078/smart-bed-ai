@@ -35,7 +35,9 @@ class TestOnlineCalendarRegression(unittest.TestCase):
 
     @patch("ai.online_calendar._find_eid_al_fitr_gregorian")
     @patch("ai.online_calendar.fetch_online_datetime")
-    def test_eid_query_next_year_returns_next_year_date(self, mock_fetch_online_datetime, mock_find_eid):
+    def test_eid_query_next_year_returns_next_year_date(
+        self, mock_fetch_online_datetime, mock_find_eid
+    ):
         mock_fetch_online_datetime.return_value = datetime(2026, 2, 20, 9, 0, 0)
 
         def _eid_for_year(year, timeout_seconds=10):
@@ -52,7 +54,9 @@ class TestOnlineCalendarRegression(unittest.TestCase):
 
     @patch("ai.online_calendar._find_eid_al_fitr_gregorian")
     @patch("ai.online_calendar.fetch_online_datetime")
-    def test_eid_query_two_years_from_now_returns_target_year(self, mock_fetch_online_datetime, mock_find_eid):
+    def test_eid_query_two_years_from_now_returns_target_year(
+        self, mock_fetch_online_datetime, mock_find_eid
+    ):
         mock_fetch_online_datetime.return_value = datetime(2026, 2, 20, 9, 0, 0)
 
         def _eid_for_year(year, timeout_seconds=10):
@@ -77,7 +81,9 @@ class TestOnlineCalendarRegression(unittest.TestCase):
         self.assertIn("January 01, 2027", answer)
 
     @patch("ai.online_calendar.fetch_online_datetime")
-    def test_new_year_query_two_years_from_now_returns_target_year(self, mock_fetch_online_datetime):
+    def test_new_year_query_two_years_from_now_returns_target_year(
+        self, mock_fetch_online_datetime
+    ):
         mock_fetch_online_datetime.return_value = datetime(2026, 2, 20, 9, 0, 0)
 
         answer = get_online_calendar_answer("when is new year after 2 years?")
@@ -122,7 +128,9 @@ class TestOnlineCalendarRegression(unittest.TestCase):
 
     @patch("ai.online_calendar._find_eid_al_adha_gregorian")
     @patch("ai.online_calendar.fetch_online_datetime")
-    def test_eid_ul_adha_query_returns_eid_al_adha(self, mock_fetch_online_datetime, mock_find_adha):
+    def test_eid_ul_adha_query_returns_eid_al_adha(
+        self, mock_fetch_online_datetime, mock_find_adha
+    ):
         mock_fetch_online_datetime.return_value = datetime(2026, 2, 20, 9, 0, 0)
 
         def _adha_for_year(year, timeout_seconds=10):

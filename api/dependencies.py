@@ -15,9 +15,11 @@ try:
         AsyncSleepSessionRepository,
         AsyncUserRepository,
     )
+
     _ASYNC_DB_AVAILABLE = True
 except ImportError as _async_db_import_error:
     import logging as _logging
+
     _logging.getLogger(__name__).warning(
         "Async database layer unavailable — routes that depend on it will fail at runtime. "
         "Import error: %s",
@@ -222,6 +224,7 @@ def get_fitness_tracker(registry: ServiceRegistry = Depends(get_service_registry
 # Async DB dependencies (asyncpg-backed)
 # ---------------------------------------------------------------------------
 
+
 async def get_async_db(request: Request) -> "AsyncDatabaseConnection":
     """Get the async PostgreSQL connection pool from app state."""
     return request.app.state.async_db
@@ -266,6 +269,7 @@ async def get_fcm_sender(request: Request) -> "Any":
 # ---------------------------------------------------------------------------
 # Authentication dependencies
 # ---------------------------------------------------------------------------
+
 
 async def get_db_session(request: Request):
     """Get async database session from app state."""

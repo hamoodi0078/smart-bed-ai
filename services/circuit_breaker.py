@@ -50,6 +50,7 @@ class CircuitState(str, Enum):
 
 # ── In-memory fallback (single-process) ──────────────────────────────────────
 
+
 class _InMemoryCircuit:
     def __init__(
         self,
@@ -96,9 +97,7 @@ class _InMemoryCircuit:
             if self._state == CircuitState.HALF or self._failures >= self._threshold:
                 self._state = CircuitState.OPEN
                 self._opened_at = time.monotonic()
-                logger.warning(
-                    "Circuit %s: OPEN after %d failures", self._name, self._failures
-                )
+                logger.warning("Circuit %s: OPEN after %d failures", self._name, self._failures)
 
     async def force_reset(self) -> None:
         async with self._lock:
@@ -108,6 +107,7 @@ class _InMemoryCircuit:
 
 
 # ── Redis-backed circuit ──────────────────────────────────────────────────────
+
 
 class _RedisCircuit:
     def __init__(
@@ -162,9 +162,7 @@ class _RedisCircuit:
             pipe.expire(self._key_state, self._recovery_timeout * 10)
             pipe.expire(self._key_opened_at, self._recovery_timeout * 10)
             await pipe.execute()
-            logger.warning(
-                "Circuit %s: OPEN after %d failures", self._name, failures
-            )
+            logger.warning("Circuit %s: OPEN after %d failures", self._name, failures)
 
     async def force_reset(self) -> None:
         pipe = self._redis.pipeline()
@@ -186,11 +184,13 @@ async def _get_redis():
     if _redis_client is not None:
         return _redis_client
     import os
+
     redis_url = os.getenv("REDIS_URL", "")
     if not redis_url:
         return None
     try:
         import redis.asyncio as aioredis
+
         client = aioredis.from_url(redis_url, encoding="utf-8", decode_responses=True)
         await client.ping()
         _redis_client = client

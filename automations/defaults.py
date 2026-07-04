@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from automations.base import AUTOMATION_CRITICALITY_CRITICAL, AUTOMATION_CRITICALITY_NON_CRITICAL, Automation
+from automations.base import (
+    AUTOMATION_CRITICALITY_CRITICAL,
+    AUTOMATION_CRITICALITY_NON_CRITICAL,
+    Automation,
+)
 from core.types import Effect
 
 
@@ -38,7 +42,9 @@ def build_default_automations() -> list[Automation]:
         now_local = ctx.get("now_local")
         if not isinstance(now_local, datetime):
             return False
-        return _in_window(now_local, 23, 0, 6, 0) and (not bool(ctx.get("sleep_mode_active", False)))
+        return _in_window(now_local, 23, 0, 6, 0) and (
+            not bool(ctx.get("sleep_mode_active", False))
+        )
 
     def sleep_action(ctx: dict[str, Any]) -> list[Effect]:
         text = (
@@ -126,7 +132,9 @@ def build_default_automations() -> list[Automation]:
         now_local = ctx.get("now_local")
         if not isinstance(now_local, datetime):
             return False
-        return _in_window(now_local, 23, 30, 1, 30) and (not bool(ctx.get("sleep_mode_active", False)))
+        return _in_window(now_local, 23, 30, 1, 30) and (
+            not bool(ctx.get("sleep_mode_active", False))
+        )
 
     def bedtime_drift_action(ctx: dict[str, Any]) -> list[Effect]:
         text = "You're up later than usual. Ready for your wind-down routine?"
@@ -146,7 +154,9 @@ def build_default_automations() -> list[Automation]:
         return _in_window(now_local, 20, 0, 21, 0)
 
     def hydration_action(ctx: dict[str, Any]) -> list[Effect]:
-        text = "Last chance for water before bed. Stay hydrated but avoid drinking too close to sleep."
+        text = (
+            "Last chance for water before bed. Stay hydrated but avoid drinking too close to sleep."
+        )
         return [Effect(kind="say", payload={"text": text})]
 
     def hydration_window_key(ctx: dict[str, Any]) -> str | None:
@@ -242,10 +252,15 @@ def build_default_automations() -> list[Automation]:
         temp = float(ctx.get("outdoor_temp_c", 32) or 32)
         return [
             Effect(kind="led", payload={"op": "cool_blue_scene"}),
-            Effect(kind="say", payload={"text": (
-                f"It's {temp:.0f}°C outside tonight. I've switched to cool blue lighting "
-                "to help you sleep comfortably."
-            )}),
+            Effect(
+                kind="say",
+                payload={
+                    "text": (
+                        f"It's {temp:.0f}°C outside tonight. I've switched to cool blue lighting "
+                        "to help you sleep comfortably."
+                    )
+                },
+            ),
         ]
 
     def hot_night_window_key(ctx: dict[str, Any]) -> str | None:
@@ -260,15 +275,22 @@ def build_default_automations() -> list[Automation]:
         if not isinstance(now_local, datetime):
             return False
         condition = str(ctx.get("weather_condition", "") or "").lower()
-        return condition in {"rain", "drizzle", "thunderstorm"} and _in_window(now_local, 20, 0, 23, 59)
+        return condition in {"rain", "drizzle", "thunderstorm"} and _in_window(
+            now_local, 20, 0, 23, 59
+        )
 
     def rainy_night_action(ctx: dict[str, Any]) -> list[Effect]:
         return [
             Effect(kind="led", payload={"op": "warm_cozy_scene"}),
-            Effect(kind="say", payload={"text": (
-                "It's raining tonight. I've activated warm cozy lighting "
-                "and cozy mode for the perfect sleep."
-            )}),
+            Effect(
+                kind="say",
+                payload={
+                    "text": (
+                        "It's raining tonight. I've activated warm cozy lighting "
+                        "and cozy mode for the perfect sleep."
+                    )
+                },
+            ),
         ]
 
     def rainy_night_window_key(ctx: dict[str, Any]) -> str | None:
@@ -287,7 +309,9 @@ def build_default_automations() -> list[Automation]:
     def weekly_report_action(ctx: dict[str, Any]) -> list[Effect]:
         return [
             Effect(kind="report", payload={"op": "generate_weekly_health_report"}),
-            Effect(kind="say", payload={"text": "Your weekly health report is ready. Check it out!"}),
+            Effect(
+                kind="say", payload={"text": "Your weekly health report is ready. Check it out!"}
+            ),
         ]
 
     def weekly_report_window_key(ctx: dict[str, Any]) -> str | None:

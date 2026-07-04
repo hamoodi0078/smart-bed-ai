@@ -113,7 +113,9 @@ def _extract_requested_year(lower: str, now_year: int) -> Optional[int]:
     return None
 
 
-def _find_hijri_for_gregorian_date(target_date: datetime, timeout_seconds: int = 10) -> tuple[Optional[int], Optional[int]]:
+def _find_hijri_for_gregorian_date(
+    target_date: datetime, timeout_seconds: int = 10
+) -> tuple[Optional[int], Optional[int]]:
     try:
         response = requests.get(
             f"https://api.aladhan.com/v1/gToHCalendar/{target_date.month}/{target_date.year}",
@@ -128,7 +130,9 @@ def _find_hijri_for_gregorian_date(target_date: datetime, timeout_seconds: int =
             if str(gregorian.get("date", "")).strip() != target_text:
                 continue
             hijri = item.get("hijri", {}) if isinstance(item, dict) else {}
-            month_number = ((hijri.get("month") or {}).get("number")) if isinstance(hijri, dict) else None
+            month_number = (
+                ((hijri.get("month") or {}).get("number")) if isinstance(hijri, dict) else None
+            )
             day_text = str(hijri.get("day", "")).strip() if isinstance(hijri, dict) else ""
             try:
                 day_number = int(day_text)
@@ -138,6 +142,7 @@ def _find_hijri_for_gregorian_date(target_date: datetime, timeout_seconds: int =
     except Exception:
         pass
     return None, None
+
 
 FALLBACK_UTC_OFFSETS = {
     "Asia/Karachi": 5,
@@ -237,7 +242,9 @@ def _find_hijri_month_day_gregorian(
             items = body.get("data", []) if isinstance(body, dict) else []
             for item in items:
                 hijri = item.get("hijri", {}) if isinstance(item, dict) else {}
-                h_month = ((hijri.get("month") or {}).get("number")) if isinstance(hijri, dict) else None
+                h_month = (
+                    ((hijri.get("month") or {}).get("number")) if isinstance(hijri, dict) else None
+                )
                 h_day = str(hijri.get("day", "")).strip() if isinstance(hijri, dict) else ""
                 if h_month == hijri_month_number and h_day == str(hijri_day_number):
                     gregorian = item.get("gregorian", {}) if isinstance(item, dict) else {}
@@ -263,7 +270,9 @@ def _find_eid_al_adha_gregorian(year: int, timeout_seconds: int = 10) -> Optiona
     return _find_hijri_month_day_gregorian(12, 10, year, timeout_seconds=timeout_seconds)
 
 
-def fetch_online_datetime(timezone: str = "Asia/Kuwait", timeout_seconds: int = 10) -> Optional[datetime]:
+def fetch_online_datetime(
+    timezone: str = "Asia/Kuwait", timeout_seconds: int = 10
+) -> Optional[datetime]:
     # Primary source: worldtimeapi
     try:
         response = requests.get(
@@ -324,7 +333,9 @@ def get_online_calendar_answer(
     timezone_for_query = timezone
     if _has_word(lower, "time"):
         location = _extract_location_from_time_query(lower)
-        resolved_timezone = _resolve_timezone_from_location(location, timeout_seconds=timeout_seconds)
+        resolved_timezone = _resolve_timezone_from_location(
+            location, timeout_seconds=timeout_seconds
+        )
         if resolved_timezone:
             timezone_for_query = resolved_timezone
 
@@ -362,10 +373,7 @@ def get_online_calendar_answer(
             next_new_year = datetime(now.year, 1, 1)
             if now.date() > next_new_year.date():
                 next_new_year = datetime(now.year + 1, 1, 1)
-        return (
-            f"New Year's Day is on {next_new_year.strftime('%A, %B %d, %Y')} "
-            f"({source})."
-        )
+        return f"New Year's Day is on {next_new_year.strftime('%A, %B %d, %Y')} ({source})."
 
     if _has_word(lower, "eid") or _is_eid_al_adha_query(lower):
         current_year = now.year
@@ -407,15 +415,21 @@ def get_online_calendar_answer(
     if _has_word(lower, "ramadan"):
         current_year = now.year
         if requested_year is None and _is_ramadan_day_query(lower):
-            month_number, day_number = _find_hijri_for_gregorian_date(now, timeout_seconds=timeout_seconds)
+            month_number, day_number = _find_hijri_for_gregorian_date(
+                now, timeout_seconds=timeout_seconds
+            )
             if month_number == 9 and day_number is not None:
                 return (
                     f"Today is Ramadan day {day_number} "
                     "(calendar may vary by moon sighting and local authority announcements)."
                 )
 
-            start_this_year = _find_ramadan_start_gregorian(current_year, timeout_seconds=timeout_seconds)
-            start_next_year = _find_ramadan_start_gregorian(current_year + 1, timeout_seconds=timeout_seconds)
+            start_this_year = _find_ramadan_start_gregorian(
+                current_year, timeout_seconds=timeout_seconds
+            )
+            start_next_year = _find_ramadan_start_gregorian(
+                current_year + 1, timeout_seconds=timeout_seconds
+            )
             candidates = [d for d in (start_this_year, start_next_year) if d is not None]
             upcoming = None
             if candidates:
@@ -443,8 +457,12 @@ def get_online_calendar_answer(
                 )
             return f"I could not fetch a reliable Ramadan start date for {requested_year} right now. Please try again in a moment."
 
-        start_this_year = _find_ramadan_start_gregorian(current_year, timeout_seconds=timeout_seconds)
-        start_next_year = _find_ramadan_start_gregorian(current_year + 1, timeout_seconds=timeout_seconds)
+        start_this_year = _find_ramadan_start_gregorian(
+            current_year, timeout_seconds=timeout_seconds
+        )
+        start_next_year = _find_ramadan_start_gregorian(
+            current_year + 1, timeout_seconds=timeout_seconds
+        )
 
         candidates = [d for d in (start_this_year, start_next_year) if d is not None]
         upcoming = None
@@ -487,7 +505,9 @@ def get_online_calendar_answer(
         )
     ):
         if requested_year is not None:
-            return f"On this date in {requested_year}, it was {reference_date.strftime('%Y-%m-%d')}."
+            return (
+                f"On this date in {requested_year}, it was {reference_date.strftime('%Y-%m-%d')}."
+            )
         return f"Today's date is {reference_date.strftime('%Y-%m-%d')}."
 
     if _has_word(lower, "calendar") and (

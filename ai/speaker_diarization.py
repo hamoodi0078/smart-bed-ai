@@ -20,6 +20,7 @@ from loguru import logger
 
 try:
     from pyannote.audio import Pipeline as _PyannotePipeline
+
     PYANNOTE_AVAILABLE = True
 except ImportError:
     _PyannotePipeline = None  # type: ignore[assignment,misc]
@@ -30,9 +31,9 @@ except ImportError:
 class DiarizedSegment:
     """One speaker turn returned by the diarization pipeline."""
 
-    start: float    # seconds from audio start
-    end: float      # seconds
-    speaker: str    # e.g. "SPEAKER_00"
+    start: float  # seconds from audio start
+    end: float  # seconds
+    speaker: str  # e.g. "SPEAKER_00"
 
     @property
     def duration_s(self) -> float:
@@ -87,6 +88,7 @@ class SpeakerDiarizer:
                 )
                 try:
                     import torch
+
                     pipeline.to(torch.device(self._device))
                 except Exception:
                     pass  # torch unavailable or device unsupported — run on CPU

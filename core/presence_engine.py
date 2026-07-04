@@ -170,11 +170,23 @@ class PresenceEngine:
         if self._bed_occupied and self._sleep_session_active:
             return ContextState.SLEEPING
 
-        if self._bed_occupied and is_bedtime_window and not self._lights_on and not self._music_playing:
+        if (
+            self._bed_occupied
+            and is_bedtime_window
+            and not self._lights_on
+            and not self._music_playing
+        ):
             return ContextState.SLEEPING
 
-        if self._bed_occupied and is_bedtime_window and self._lights_on and self._lights_brightness <= 0.3:
-            entry_duration = (now - self._bed_entry_time).total_seconds() / 60.0 if self._bed_entry_time else 0
+        if (
+            self._bed_occupied
+            and is_bedtime_window
+            and self._lights_on
+            and self._lights_brightness <= 0.3
+        ):
+            entry_duration = (
+                (now - self._bed_entry_time).total_seconds() / 60.0 if self._bed_entry_time else 0
+            )
             if entry_duration < 30:
                 return ContextState.WIND_DOWN
             return ContextState.SLEEPING
@@ -228,10 +240,14 @@ class PresenceEngine:
 
     def should_suppress_notifications(self) -> bool:
         """Return True if current context means notifications should be silenced."""
-        return self._current_context in (
-            ContextState.SLEEPING,
-            ContextState.GUEST_MODE,
-        ) or self._quiet_hours_active
+        return (
+            self._current_context
+            in (
+                ContextState.SLEEPING,
+                ContextState.GUEST_MODE,
+            )
+            or self._quiet_hours_active
+        )
 
     def should_auto_start_sleep_session(self) -> bool:
         """Return True if conditions indicate sleep session should start automatically."""

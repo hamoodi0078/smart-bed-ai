@@ -121,7 +121,9 @@ class PayPalProvider:
     def get_subscription_details(self, subscription_id: str) -> PayPalSubscriptionDetails:
         subscription_key = str(subscription_id or "").strip()
         if not subscription_key:
-            raise PayPalProviderError("subscription_id is required to fetch PayPal subscription details.")
+            raise PayPalProviderError(
+                "subscription_id is required to fetch PayPal subscription details."
+            )
 
         data = self._request_json(
             "GET",
@@ -151,7 +153,9 @@ class PayPalProvider:
             headers={"PayPal-Request-Id": f"suspend-{subscription_key}"},
         )
 
-    def cancel_subscription(self, subscription_id: str, *, reason: str = "Cancelled by user") -> None:
+    def cancel_subscription(
+        self, subscription_id: str, *, reason: str = "Cancelled by user"
+    ) -> None:
         subscription_key = str(subscription_id or "").strip()
         if not subscription_key:
             raise PayPalProviderError("subscription_id is required to cancel a subscription.")

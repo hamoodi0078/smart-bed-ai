@@ -35,14 +35,20 @@ _REFRESH_BEFORE_EXPIRY_SECONDS = 300  # refresh if token expires within 5 minute
 
 try:
     import fitbit as _fitbit_lib
+
     _FITBIT_AVAILABLE = True
 except ImportError:
     _fitbit_lib = None  # type: ignore[assignment]
     _FITBIT_AVAILABLE = False
 
 _FITBIT_SCOPES = [
-    "activity", "heartrate", "sleep", "oxygen_saturation",
-    "respiratory_rate", "profile", "settings",
+    "activity",
+    "heartrate",
+    "sleep",
+    "oxygen_saturation",
+    "respiratory_rate",
+    "profile",
+    "settings",
 ]
 _TOKEN_URL = "https://api.fitbit.com/oauth2/token"
 _AUTH_URL = "https://www.fitbit.com/oauth2/authorize"
@@ -148,7 +154,9 @@ class FitbitClient:
         """Return True if the access token is expired or expires within the buffer window."""
         if self._expires_at is None:
             return False
-        return datetime.now(timezone.utc) >= self._expires_at - timedelta(seconds=_REFRESH_BEFORE_EXPIRY_SECONDS)
+        return datetime.now(timezone.utc) >= self._expires_at - timedelta(
+            seconds=_REFRESH_BEFORE_EXPIRY_SECONDS
+        )
 
     def refresh_tokens(self) -> bool:
         """Explicitly refresh the access token using the refresh token.
@@ -165,6 +173,7 @@ class FitbitClient:
 
         try:
             import requests as _requests
+
             credentials = base64.b64encode(
                 f"{self._client_id}:{self._client_secret}".encode()
             ).decode()
@@ -244,10 +253,14 @@ class FitbitClient:
                 "steps": int(summary.get("steps", 0) or 0),
                 "calories": int(summary.get("caloriesOut", 0) or 0),
                 "active_minutes": int(summary.get("fairlyActiveMinutes", 0) or 0)
-                                 + int(summary.get("veryActiveMinutes", 0) or 0),
+                + int(summary.get("veryActiveMinutes", 0) or 0),
                 "distance_km": float(
                     next(
-                        (d["distance"] for d in summary.get("distances", []) if d.get("activity") == "total"),
+                        (
+                            d["distance"]
+                            for d in summary.get("distances", [])
+                            if d.get("activity") == "total"
+                        ),
                         0,
                     )
                 ),
@@ -274,7 +287,9 @@ class FitbitClient:
             activities_heart = raw.get("activities-heart", [])
             resting_hr = 0
             if activities_heart:
-                resting_hr = int(activities_heart[0].get("value", {}).get("restingHeartRate", 0) or 0)
+                resting_hr = int(
+                    activities_heart[0].get("value", {}).get("restingHeartRate", 0) or 0
+                )
 
             return {
                 "available": True,
@@ -375,10 +390,7 @@ class FitbitClient:
         return {
             "date": ds,
             "source": "fitbit",
-            "available": any(
-                d.get("available", False)
-                for d in [activity, hr, sleep, spo2, hrv]
-            ),
+            "available": any(d.get("available", False) for d in [activity, hr, sleep, spo2, hrv]),
             # FitnessTrackerAPI-compatible keys
             "heart_rate": hr.get("resting_heart_rate") or activity.get("resting_heart_rate"),
             "hrv": hrv.get("hrv_daily_rmssd"),
@@ -407,6 +419,7 @@ def build_client_from_settings(
 ) -> FitbitClient:
     """Construct a FitbitClient from project settings + user tokens."""
     from config.settings import settings
+
     return FitbitClient(
         client_id=settings.fitbit_client_id,
         client_secret=settings.fitbit_client_secret,

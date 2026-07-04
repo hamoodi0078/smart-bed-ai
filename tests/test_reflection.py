@@ -30,7 +30,10 @@ def test_negative_followup_clears_state_and_returns_message():
         "reflection": {
             "active": True,
             "step": "ASKED",
-            "started_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "started_at_utc": datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
         },
         "runtime_flags": {},
     }
@@ -51,7 +54,10 @@ def test_positive_followup_clears_state_and_returns_message():
         "reflection": {
             "active": True,
             "step": "ASKED",
-            "started_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "started_at_utc": datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
         },
         "runtime_flags": {},
     }

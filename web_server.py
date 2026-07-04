@@ -96,6 +96,8 @@ def _profile_rw():
     """
     with _PROFILE_RW_LOCK:
         yield
+
+
 _DB_CONNECTION: Any | None = None
 _DB_CONNECTION_URL = ""
 _DB_USER_REPOSITORY: Any | None = None
@@ -114,33 +116,47 @@ _DB_INIT_LOCK = threading.Lock()
 _SLEEP_ENGINE = SleepIntelligenceEngine()
 
 _SENSITIVE_EXACT_KEYS = {
-    "access_token", "refresh_token", "password_hash", "password",
-    "api_key", "secret", "client_secret", "private_key", "otp_code",
-    "authorization", "x-api-key", "token", "id_token", "session_token",
-    "stripe_secret", "paypal_secret", "sendgrid_api_key", "deepgram_api_key",
+    "access_token",
+    "refresh_token",
+    "password_hash",
+    "password",
+    "api_key",
+    "secret",
+    "client_secret",
+    "private_key",
+    "otp_code",
+    "authorization",
+    "x-api-key",
+    "token",
+    "id_token",
+    "session_token",
+    "stripe_secret",
+    "paypal_secret",
+    "sendgrid_api_key",
+    "deepgram_api_key",
 }
 _SENSITIVE_PARTIAL_KEYS = ("secret", "password", "token", "api_key", "private_key", "credential")
 _MAX_CHAT_ENGINES = 200
 _DEVICE_STALE_WINDOW_SECONDS = 180
 _TRACE_ID_HEADER = "X-Trace-Id"
 SCENE_PREVIEW_SECONDS = 3.0
-_cors_origins_raw = settings.web_allowed_origins_raw or "http://127.0.0.1:8000,http://localhost:8000"
+_cors_origins_raw = (
+    settings.web_allowed_origins_raw or "http://127.0.0.1:8000,http://localhost:8000"
+)
 ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 ALLOWED_ORIGIN_REGEX = str(settings.web_allowed_origin_regex or "").strip() or None
 # Authoritative server hostname used by _enforce_same_origin to avoid trusting the client Host header.
 # Set SERVER_HOSTNAME in .env for production (e.g. "api.danah.io").
 _SERVER_HOSTNAME = (os.getenv("SERVER_HOSTNAME", "") or "").strip().lower() or None
 from core.logger import logger, setup_logging
+
 setup_logging()
 
 
 def _sentry_scrub_event(event: Any, hint: Any) -> Any:
     """Strip sensitive keys from Sentry events before they leave the process."""
     for frame in (
-        event.get("exception", {})
-        .get("values", [{}])[0]
-        .get("stacktrace", {})
-        .get("frames", [])
+        event.get("exception", {}).get("values", [{}])[0].get("stacktrace", {}).get("frames", [])
     ):
         frame.get("vars", {}).pop("password", None)
         frame.get("vars", {}).pop("access_token", None)
@@ -174,8 +190,8 @@ try:
                 FastApiIntegration(),
                 SqlalchemyIntegration(),
                 LoggingIntegration(
-                    level=_logging.WARNING,       # breadcrumbs from WARNING+
-                    event_level=_logging.ERROR,   # send events for ERROR+
+                    level=_logging.WARNING,  # breadcrumbs from WARNING+
+                    event_level=_logging.ERROR,  # send events for ERROR+
                 ),
             ],
             # Never forward secrets to Sentry
@@ -210,6 +226,7 @@ TELEMETRY = {
     "same_origin_denied": 0,
 }
 
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     logger.info(
@@ -219,11 +236,13 @@ async def _lifespan(app: FastAPI):
     )
     try:
         from api.service_registry import initialize_services
+
         initialize_services(app)
     except Exception as exc:
         logger.warning("Automation service init error (non-fatal): %s", exc)
     try:
         from database import AsyncDatabaseConnection
+
         _async_db = AsyncDatabaseConnection()
         await _async_db.initialize()
         app.state.async_db = _async_db
@@ -232,6 +251,7 @@ async def _lifespan(app: FastAPI):
         app.state.async_db = None
     try:
         from ai.pgvector_memory_index import PgVectorMemoryIndex
+
         if app.state.async_db is not None:
             app.state.pgvector_index = PgVectorMemoryIndex(app.state.async_db)
         else:
@@ -242,6 +262,7 @@ async def _lifespan(app: FastAPI):
     try:
         from arq import create_pool
         from arq.connections import RedisSettings
+
         _arq_settings = RedisSettings.from_dsn(settings.arq_redis_url)
         app.state.arq = await create_pool(_arq_settings)
     except Exception as exc:
@@ -249,6 +270,7 @@ async def _lifespan(app: FastAPI):
         app.state.arq = None
     try:
         from notifications.fcm_sender import FcmSender, initialize_firebase
+
         firebase_ok = initialize_firebase(
             credentials_path=settings.firebase_credentials_path,
             credentials_json=settings.firebase_credentials_json,
@@ -275,9 +297,11 @@ async def _lifespan(app: FastAPI):
 app = FastAPI(title="Danah Smart Bed API", version="1.0.0", lifespan=_lifespan)
 
 from api.automation_routes import router as automation_router
+
 app.include_router(automation_router)
 
 from api.middleware.rate_limiter import RateLimitMiddleware
+
 app.add_middleware(RateLimitMiddleware)
 
 _cors_credentials = bool(ALLOWED_ORIGINS) and "*" not in ALLOWED_ORIGINS
@@ -296,7 +320,6 @@ async def bed_error_handler(request: Request, exc: BedError) -> JSONResponse:
     trace_id = getattr(request.state, "trace_id", "")
     logger.warning("[BedError] %s: %s (trace=%s)", type(exc).__name__, exc.message, trace_id)
     return bed_error_to_response(exc, trace_id=trace_id)
-
 
 
 @app.middleware("http")
@@ -321,7 +344,9 @@ async def trace_id_middleware(request: Request, call_next):
     except Exception:
         reason = "UNKNOWN"
     elapsed_ms = int(round(elapsed * 1000.0))
-    logger.info("[TRACE: %s] %s %s - %d %s - %dms", trace_id, method, path, status_code, reason, elapsed_ms)
+    logger.info(
+        "[TRACE: %s] %s %s - %d %s - %dms", trace_id, method, path, status_code, reason, elapsed_ms
+    )
     _event(
         "info",
         "http_request",
@@ -682,7 +707,11 @@ def _sleep_readiness_score(now_utc: datetime) -> int:
     score = 70
     sessions = _sleep_history_sessions()
     last_session = sessions[-1] if sessions else {}
-    last_bedtime = _parse_optional_utc_datetime(last_session.get("bedtime", "")) if isinstance(last_session, dict) else None
+    last_bedtime = (
+        _parse_optional_utc_datetime(last_session.get("bedtime", ""))
+        if isinstance(last_session, dict)
+        else None
+    )
     bedtime_hour = int(last_bedtime.hour) if isinstance(last_bedtime, datetime) else -1
 
     if 21 <= bedtime_hour < 23:
@@ -758,7 +787,11 @@ def _sleep_quick_actions(now_utc: datetime) -> list[dict[str, str]]:
 
 def _latest_emotion_state(profile: dict[str, Any]) -> str:
     runtime = profile.get("personality_runtime", {}) if isinstance(profile, dict) else {}
-    history = runtime.get("emotion_history", []) if isinstance(runtime.get("emotion_history", []), list) else []
+    history = (
+        runtime.get("emotion_history", [])
+        if isinstance(runtime.get("emotion_history", []), list)
+        else []
+    )
     if not history:
         return "neutral"
     last = history[-1] if isinstance(history[-1], dict) else {}
@@ -785,9 +818,17 @@ def _last_memory_context() -> str:
 
 def _biometric_summary(profile: dict[str, Any]) -> dict[str, Any]:
     sleep = profile.get("sleep", {}) if isinstance(profile, dict) else {}
-    bedtime_history = sleep.get("bedtime_history", []) if isinstance(sleep.get("bedtime_history", []), list) else []
-    wake_history = sleep.get("wake_history", []) if isinstance(sleep.get("wake_history", []), list) else []
-    partner_mode = sleep.get("partner_mode", {}) if isinstance(sleep.get("partner_mode", {}), dict) else {}
+    bedtime_history = (
+        sleep.get("bedtime_history", [])
+        if isinstance(sleep.get("bedtime_history", []), list)
+        else []
+    )
+    wake_history = (
+        sleep.get("wake_history", []) if isinstance(sleep.get("wake_history", []), list) else []
+    )
+    partner_mode = (
+        sleep.get("partner_mode", {}) if isinstance(sleep.get("partner_mode", {}), dict) else {}
+    )
 
     return {
         "recovery_mode": bool(sleep.get("recovery_mode", False)),
@@ -809,6 +850,7 @@ def _device_health_status(profile: dict[str, Any]) -> dict[str, Any]:
         from database.connection import DatabaseConnection
         from database.models import SpotifyToken
         from sqlalchemy import func, select
+
         with DatabaseConnection().get_session() as _s:
             _spotify_count = _s.scalar(select(func.count()).select_from(SpotifyToken)) or 0
     except Exception:
@@ -926,7 +968,9 @@ def _normalize_user_settings(payload: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def _profile_user_settings(profile: dict[str, Any], user: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
+def _profile_user_settings(
+    profile: dict[str, Any], user: dict[str, Any], defaults: dict[str, Any]
+) -> dict[str, Any]:
     if not isinstance(profile, dict):
         return defaults
     settings_map = profile.get("web_settings", {})
@@ -946,7 +990,9 @@ def _profile_user_settings(profile: dict[str, Any], user: dict[str, Any], defaul
 
 
 def _resolved_user_settings(profile: dict[str, Any], user: dict[str, Any]) -> dict[str, Any]:
-    prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+    prefs = (
+        profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+    )
     sleep = profile.get("sleep", {}) if isinstance(profile.get("sleep", {}), dict) else {}
     try:
         quiet_override_limit = int(
@@ -1173,20 +1219,28 @@ def _mobile_prayer_service_for_user(
         {
             **profile_prefs,
             "timezone": str(
-                ((prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}).get("timezone", "")
+                (
+                    (prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}
+                ).get("timezone", "")
                 or location.get("timezone", "")
                 or "Asia/Kuwait"
             ).strip(),
             "city": str(
-                ((prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}).get("city", "")
+                (
+                    (prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}
+                ).get("city", "")
                 or location.get("city", "")
             ).strip(),
             "country_code": str(location.get("country_code", "") or "").strip().upper(),
-            "latitude": ((prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}).get(
+            "latitude": (
+                (prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}
+            ).get(
                 "latitude",
                 latitude,
             ),
-            "longitude": ((prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}).get(
+            "longitude": (
+                (prayer_bundle.get("location") or {}) if isinstance(prayer_bundle, dict) else {}
+            ).get(
                 "longitude",
                 longitude,
             ),
@@ -1196,7 +1250,9 @@ def _mobile_prayer_service_for_user(
     return service, prayer_bundle, resolved_location, profile_prefs
 
 
-def _mobile_islamic_overview_payload(user: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+def _mobile_islamic_overview_payload(
+    user: dict[str, Any], profile: dict[str, Any]
+) -> dict[str, Any]:
     from islamic_mode.hadith_daily import HadithService
     from islamic_mode.islamic_calendar import IslamicCalendarService
     from islamic_mode.sunnah_tips import SunnahSleepTips
@@ -1316,7 +1372,9 @@ def _mobile_http_json_request(
     request_body = None
     merged_headers = {str(k): str(v) for k, v in (headers or {}).items() if str(k).strip()}
     if isinstance(form_data, dict):
-        request_body = urlencode({k: "" if v is None else str(v) for k, v in form_data.items()}).encode("utf-8")
+        request_body = urlencode(
+            {k: "" if v is None else str(v) for k, v in form_data.items()}
+        ).encode("utf-8")
         merged_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
     elif isinstance(json_body, dict):
         request_body = json.dumps(json_body, ensure_ascii=True).encode("utf-8")
@@ -1338,7 +1396,9 @@ def _mobile_http_json_request(
             return payload if isinstance(payload, dict) else {"data": payload}
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
-        raise HTTPException(status_code=502, detail=f"{error_prefix} HTTP error: {exc.code} {detail[:180]}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"{error_prefix} HTTP error: {exc.code} {detail[:180]}"
+        ) from exc
     except URLError as exc:
         raise HTTPException(status_code=502, detail=f"{error_prefix} is unreachable") from exc
 
@@ -1421,7 +1481,9 @@ def _mobile_send_otp_via_twilio(phone_number: str, otp_code: str) -> dict[str, A
     }
 
 
-def _mobile_send_otp_via_webhook(phone_number: str, otp_code: str, request_id: str) -> dict[str, Any]:
+def _mobile_send_otp_via_webhook(
+    phone_number: str, otp_code: str, request_id: str
+) -> dict[str, Any]:
     webhook_url = str(os.getenv("MOBILE_OTP_WEBHOOK_URL", "") or "").strip()
     if not webhook_url:
         raise HTTPException(status_code=500, detail="OTP webhook delivery is not configured")
@@ -1528,7 +1590,10 @@ def _verify_google_social_identity(*, access_token: str = "", id_token: str = ""
     token = str(access_token or "").strip()
     identity_token = str(id_token or "").strip()
     if not token and not identity_token:
-        raise HTTPException(status_code=422, detail="Google login requires provider_access_token or provider_id_token")
+        raise HTTPException(
+            status_code=422,
+            detail="Google login requires provider_access_token or provider_id_token",
+        )
 
     google_client_id = str(os.getenv("MOBILE_SOCIAL_GOOGLE_CLIENT_ID", "") or "").strip()
     provider_payload: dict[str, Any] = {}
@@ -1566,7 +1631,9 @@ def _verify_google_social_identity(*, access_token: str = "", id_token: str = ""
         timeout_seconds=_mobile_social_timeout_seconds(),
         error_prefix="Google access token",
     )
-    provider_user_id = str(provider_payload.get("sub", "") or provider_payload.get("id", "") or "").strip()
+    provider_user_id = str(
+        provider_payload.get("sub", "") or provider_payload.get("id", "") or ""
+    ).strip()
     if not provider_user_id:
         raise HTTPException(status_code=401, detail="Google access token is invalid")
     return {
@@ -1587,7 +1654,9 @@ def _verify_facebook_social_identity(*, access_token: str = "") -> dict[str, Any
     app_id = str(os.getenv("MOBILE_SOCIAL_FACEBOOK_APP_ID", "") or "").strip()
     appsecret_proof = ""
     if app_secret:
-        appsecret_proof = hmac.new(app_secret.encode("utf-8"), token.encode("utf-8"), hashlib.sha256).hexdigest()
+        appsecret_proof = hmac.new(
+            app_secret.encode("utf-8"), token.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
 
     params = {
         "fields": "id,name,email",
@@ -1617,7 +1686,9 @@ def _verify_facebook_social_identity(*, access_token: str = "") -> dict[str, Any
             timeout_seconds=_mobile_social_timeout_seconds(),
             error_prefix="Facebook debug token",
         )
-        debug_data = debug_payload.get("data", {}) if isinstance(debug_payload.get("data", {}), dict) else {}
+        debug_data = (
+            debug_payload.get("data", {}) if isinstance(debug_payload.get("data", {}), dict) else {}
+        )
         if not bool(debug_data.get("is_valid", False)):
             raise HTTPException(status_code=401, detail="Facebook access token is invalid")
         token_app_id = str(debug_data.get("app_id", "") or "").strip()
@@ -1740,18 +1811,24 @@ def _verify_mobile_social_identity(payload: MobileSocialLoginRequest) -> dict[st
     except HTTPException as exc:
         detail = str(exc.detail or "")
         if exc.status_code == 502 and ("HTTP error: 400" in detail or "HTTP error: 401" in detail):
-            raise HTTPException(status_code=401, detail="Social token is invalid or expired") from exc
+            raise HTTPException(
+                status_code=401, detail="Social token is invalid or expired"
+            ) from exc
         raise
 
     verified_user_id_raw = str(verified.get("provider_user_id", "") or "").strip()
-    provider_user_id = _sanitize_identity_value(verified_user_id_raw, max_len=72) if verified_user_id_raw else ""
+    provider_user_id = (
+        _sanitize_identity_value(verified_user_id_raw, max_len=72) if verified_user_id_raw else ""
+    )
     if not provider_user_id:
         if legacy_user_id and _mobile_social_allow_unverified():
             provider_user_id = legacy_user_id
             verified["verification_method"] = "legacy_unverified"
             verified["email_verified"] = False
         else:
-            raise HTTPException(status_code=401, detail="Social provider identity could not be verified")
+            raise HTTPException(
+                status_code=401, detail="Social provider identity could not be verified"
+            )
 
     verified["provider_user_id"] = provider_user_id
     verified["email"] = str(verified.get("email", "") or "").strip().lower()
@@ -1775,10 +1852,14 @@ def _mobile_user_payload_by_id(user_id: str, *, client_name: str = "") -> dict[s
     return payload
 
 
-def _ensure_external_identity_user(*, email: str, name: str, password_hash: str = "mobile_shadow_managed") -> dict[str, Any]:
+def _ensure_external_identity_user(
+    *, email: str, name: str, password_hash: str = "mobile_shadow_managed"
+) -> dict[str, Any]:
     normalized_email = str(email or "").strip().lower()
     if "@" not in normalized_email:
-        normalized_email = f"{_sanitize_identity_value(normalized_email or 'user', max_len=40)}@shadow.local"
+        normalized_email = (
+            f"{_sanitize_identity_value(normalized_email or 'user', max_len=40)}@shadow.local"
+        )
     normalized_name = str(name or "").strip()
 
     repo = _db_user_repository()
@@ -1798,9 +1879,13 @@ def _ensure_external_identity_user(*, email: str, name: str, password_hash: str 
 
     if normalized_name and not str(getattr(db_user, "full_name", "") or "").strip():
         try:
-            db_user = repo.update_user(str(getattr(db_user, "id", "") or ""), full_name=normalized_name)
+            db_user = repo.update_user(
+                str(getattr(db_user, "id", "") or ""), full_name=normalized_name
+            )
         except Exception as _exc:
-            logger.warning("update_user full_name failed user_id=%s err=%s", getattr(db_user, "id", "?"), _exc)
+            logger.warning(
+                "update_user full_name failed user_id=%s err=%s", getattr(db_user, "id", "?"), _exc
+            )
 
     payload = _db_user_to_mobile_user_payload(db_user)
     _ensure_legacy_store_user_shadow(
@@ -2020,7 +2105,8 @@ def _normalize_mobile_alarm(
         "label": label,
         "sound": sound,
         "vibrate": bool(data.get("vibrate", True)),
-        "created_at": str(data.get("created_at", "") or "").strip() or (str(now_iso or "").strip() or _now_utc_iso()),
+        "created_at": str(data.get("created_at", "") or "").strip()
+        or (str(now_iso or "").strip() or _now_utc_iso()),
         "updated_at": str(now_iso or "").strip() or _now_utc_iso(),
     }
 
@@ -2083,9 +2169,7 @@ def _safe_user_file_path(base_dir: Path, filename: str) -> Path:
 
     # Step 4: verify the resolved path is still inside the allowed directory
     if not str(target).startswith(str(base) + os.sep) and target != base:
-        raise ValueError(
-            f"Path traversal blocked: {target} is outside allowed directory {base}"
-        )
+        raise ValueError(f"Path traversal blocked: {target} is outside allowed directory {base}")
 
     return target
 
@@ -2105,7 +2189,9 @@ def _chat_engine_for_user(user_key: str) -> ConversationEngine:
     safe_key = _sanitize_user_key(user_key)
     api_key = str(settings.deepgram_api_key or "").strip()
     model = str(settings.deepgram_voice_agent_model or "voice-agent-conversational").strip()
-    voice_agent_url = str(settings.deepgram_voice_agent_url or "https://agent.deepgram.com/v1/agent/converse").strip()
+    voice_agent_url = str(
+        settings.deepgram_voice_agent_url or "https://agent.deepgram.com/v1/agent/converse"
+    ).strip()
 
     with _CHAT_ENGINE_LOCK:
         existing = _CHAT_ENGINES.get(safe_key)
@@ -2131,7 +2217,11 @@ def _chat_engine_for_user(user_key: str) -> ConversationEngine:
 
 
 def _chat_personality_from_settings(settings_payload: dict[str, Any]) -> str:
-    style = str((settings_payload or {}).get("response_style", "balanced") or "balanced").strip().lower()
+    style = (
+        str((settings_payload or {}).get("response_style", "balanced") or "balanced")
+        .strip()
+        .lower()
+    )
     if style == "coaching":
         return "coach"
     if style == "calm":
@@ -2140,7 +2230,9 @@ def _chat_personality_from_settings(settings_payload: dict[str, Any]) -> str:
 
 
 def _chat_cognitive_load_mode(settings_payload: dict[str, Any]) -> str:
-    engagement = str((settings_payload or {}).get("engagement_level", "high") or "high").strip().lower()
+    engagement = (
+        str((settings_payload or {}).get("engagement_level", "high") or "high").strip().lower()
+    )
     if engagement == "low":
         return "exhausted"
     if engagement == "medium":
@@ -2193,7 +2285,9 @@ def _chat_scoped_controls_for_user(profile: dict[str, Any], user: dict[str, Any]
     key = _user_profile_key(user)
     section = _get_scoped_profile_section(profile, "web_device_controls")
     scoped = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
-    defaults = _normalize_device_controls({"lights_on": False, "audio_on": False, "alarm_on": True, "light_level": 65})
+    defaults = _normalize_device_controls(
+        {"lights_on": False, "audio_on": False, "alarm_on": True, "light_level": 65}
+    )
     return _normalize_device_controls({**defaults, **scoped})
 
 
@@ -2320,7 +2414,11 @@ def _restore_scene_store_snapshot(previous_state: Any) -> bool:
     normalize_scene: Any = getattr(scene_store, "_normalize_scene", None)
     save_state = getattr(scene_store, "_save_state", None)
     current_state = getattr(scene_store, "_state", None)
-    if not callable(normalize_scene) or not callable(save_state) or not isinstance(current_state, dict):
+    if (
+        not callable(normalize_scene)
+        or not callable(save_state)
+        or not isinstance(current_state, dict)
+    ):
         return False
 
     restored_scenes: list[dict[str, Any]] = []
@@ -2347,7 +2445,9 @@ def _undo_seconds_remaining(action: dict[str, Any]) -> int | None:
     return int(math.ceil(remaining_seconds))
 
 
-def _scene_preview_controls(current_controls: dict[str, Any], scene_entry: dict[str, Any]) -> dict[str, Any]:
+def _scene_preview_controls(
+    current_controls: dict[str, Any], scene_entry: dict[str, Any]
+) -> dict[str, Any]:
     try:
         brightness = float(scene_entry.get("brightness", 0.4) or 0.4)
     except Exception:
@@ -2423,21 +2523,32 @@ def _run_scene_preview(
 
 
 def _effective_quiet_window(profile: dict[str, Any]) -> str:
-    prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+    prefs = (
+        profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+    )
     return str(
-        prefs.get("quiet_window", settings.quiet_hours_default_window) or settings.quiet_hours_default_window or DEFAULT_QUIET_HOURS_WINDOW
+        prefs.get("quiet_window", settings.quiet_hours_default_window)
+        or settings.quiet_hours_default_window
+        or DEFAULT_QUIET_HOURS_WINDOW
     ).strip()
 
 
 def _quiet_override_until_utc(profile: dict[str, Any]) -> str:
-    prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+    prefs = (
+        profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+    )
     return str(prefs.get("quiet_hours_override_until_utc", "") or "").strip()
 
 
-def _user_local_now(profile: dict[str, Any], user: dict[str, Any], now_utc: datetime | None = None) -> datetime:
+def _user_local_now(
+    profile: dict[str, Any], user: dict[str, Any], now_utc: datetime | None = None
+) -> datetime:
     now = now_utc if isinstance(now_utc, datetime) else utcnow()
     now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
-    timezone_name = str(_chat_profile_prefs_for_user(profile, user).get("timezone", "UTC") or "UTC").strip() or "UTC"
+    timezone_name = (
+        str(_chat_profile_prefs_for_user(profile, user).get("timezone", "UTC") or "UTC").strip()
+        or "UTC"
+    )
     try:
         return now.astimezone(ZoneInfo(timezone_name))
     except Exception:
@@ -2462,7 +2573,9 @@ def _quiet_window_end_local(now_local: datetime, quiet_window: str) -> datetime:
     return end_local
 
 
-def _compute_quiet_hours_override_until_utc(profile: dict[str, Any], user: dict[str, Any], now_utc: datetime | None = None) -> str:
+def _compute_quiet_hours_override_until_utc(
+    profile: dict[str, Any], user: dict[str, Any], now_utc: datetime | None = None
+) -> str:
     now = now_utc if isinstance(now_utc, datetime) else utcnow()
     now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
     resolved_settings = _resolved_user_settings(profile, user)
@@ -2488,7 +2601,9 @@ def _compute_quiet_hours_override_until_utc(profile: dict[str, Any], user: dict[
     return to_iso(override_until)
 
 
-def _quiet_hours_status_timeline_item(profile: dict[str, Any], user: dict[str, Any], now_utc: datetime | None = None) -> dict[str, Any] | None:
+def _quiet_hours_status_timeline_item(
+    profile: dict[str, Any], user: dict[str, Any], now_utc: datetime | None = None
+) -> dict[str, Any] | None:
     now = now_utc if isinstance(now_utc, datetime) else utcnow()
     now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
     quiet_window = _effective_quiet_window(profile)
@@ -2499,16 +2614,20 @@ def _quiet_hours_status_timeline_item(profile: dict[str, Any], user: dict[str, A
         now_local=now_local,
         quiet_window=quiet_window,
         quiet_mode_active=bool(
-            (profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}).get(
-                "quiet_mode_active", False
-            )
+            (
+                profile.get("preferences", {})
+                if isinstance(profile.get("preferences", {}), dict)
+                else {}
+            ).get("quiet_mode_active", False)
         ),
     )
 
     if override_active:
         try:
             until_dt = from_iso(override_until)
-            remaining_minutes = max(0, int((ensure_utc(until_dt) - ensure_utc(now)).total_seconds() / 60.0))
+            remaining_minutes = max(
+                0, int((ensure_utc(until_dt) - ensure_utc(now)).total_seconds() / 60.0)
+            )
         except Exception:
             remaining_minutes = 0
         return {
@@ -2812,7 +2931,9 @@ def _mobile_timeline_items_from_db(user_id: str, limit: int = 20) -> list[dict[s
     return _normalize_timeline_items(out)[:safe_limit]
 
 
-def _persist_mobile_timeline_snapshot(user_id: str, items: list[dict[str, Any]] | None, trace_id: str = "") -> None:
+def _persist_mobile_timeline_snapshot(
+    user_id: str, items: list[dict[str, Any]] | None, trace_id: str = ""
+) -> None:
     user_key = str(user_id or "").strip()
     if not user_key:
         return
@@ -2829,17 +2950,23 @@ def _mobile_timeline_items_db_first(
 ) -> list[dict[str, Any]]:
     user_key = str(user_id or "").strip()
     safe_limit = max(1, min(int(limit or 20), 60))
-    normalized_profile = _normalize_timeline_items(profile_items if isinstance(profile_items, list) else [])[:safe_limit]
+    normalized_profile = _normalize_timeline_items(
+        profile_items if isinstance(profile_items, list) else []
+    )[:safe_limit]
     if not user_key:
         return normalized_profile
 
-    db_items = _strip_runtime_status_rows(_mobile_timeline_items_from_db(user_key, limit=safe_limit))
+    db_items = _strip_runtime_status_rows(
+        _mobile_timeline_items_from_db(user_key, limit=safe_limit)
+    )
     if db_items:
         return _merge_timeline_items(db_items, normalized_profile, limit=safe_limit)
 
     if normalized_profile:
         _persist_mobile_timeline_snapshot(user_key, normalized_profile, trace_id=trace_id)
-        refreshed_db_items = _strip_runtime_status_rows(_mobile_timeline_items_from_db(user_key, limit=safe_limit))
+        refreshed_db_items = _strip_runtime_status_rows(
+            _mobile_timeline_items_from_db(user_key, limit=safe_limit)
+        )
         if refreshed_db_items:
             return _merge_timeline_items(refreshed_db_items, normalized_profile, limit=safe_limit)
     return normalized_profile
@@ -3021,7 +3148,9 @@ def _last_command_result_from_profile(profile: dict[str, Any], key: str) -> dict
     return _normalize_last_command_result(row)
 
 
-def _store_last_command_result(profile: dict[str, Any], key: str, result: dict[str, Any]) -> dict[str, Any]:
+def _store_last_command_result(
+    profile: dict[str, Any], key: str, result: dict[str, Any]
+) -> dict[str, Any]:
     normalized = _normalize_last_command_result(result)
     section = _get_scoped_profile_section(profile, "web_last_command_result")
     section[key] = normalized
@@ -3052,9 +3181,13 @@ def _progress_command_state(command: dict[str, Any], now: datetime) -> tuple[dic
     return cmd, changed
 
 
-def _progress_user_commands(profile: dict[str, Any], key: str, user_id: str = "") -> tuple[list[dict[str, Any]], bool]:
+def _progress_user_commands(
+    profile: dict[str, Any], key: str, user_id: str = ""
+) -> tuple[list[dict[str, Any]], bool]:
     commands_section = _get_scoped_profile_section(profile, "web_device_commands")
-    raw_rows = commands_section.get(key, []) if isinstance(commands_section.get(key, []), list) else []
+    raw_rows = (
+        commands_section.get(key, []) if isinstance(commands_section.get(key, []), list) else []
+    )
     now = utcnow()
     out: list[dict[str, Any]] = []
     changed_any = False
@@ -3231,9 +3364,7 @@ def _weekly_insight_payload(
         if str(row.get("status", "queued") or "queued").strip().lower() == "completed"
     )
     wind_down_rows = [
-        row
-        for row in recent
-        if str(row.get("action", "") or "").strip().lower() == "winddown"
+        row for row in recent if str(row.get("action", "") or "").strip().lower() == "winddown"
     ]
     wind_down_sessions = len(wind_down_rows)
     wind_down_completed = sum(
@@ -3250,7 +3381,9 @@ def _weekly_insight_payload(
         for row in recent
         if str(row.get("action", "") or "").strip().lower() == "quiet_hours_override"
     )
-    completion_rate_pct = int(round((completed_count / action_count) * 100.0)) if action_count > 0 else 0
+    completion_rate_pct = (
+        int(round((completed_count / action_count) * 100.0)) if action_count > 0 else 0
+    )
     nightly_feedback_row = nightly_feedback if isinstance(nightly_feedback, dict) else {}
     command_feedback_row = command_feedback if isinstance(command_feedback, dict) else {}
     nightly_votes = max(0, int(nightly_feedback_row.get("total_votes", 0) or 0))
@@ -3261,10 +3394,7 @@ def _weekly_insight_payload(
     feedback_helpful_pct = (
         int(
             round(
-                (
-                    (nightly_helpful_pct * nightly_votes)
-                    + (command_helpful_pct * command_votes)
-                )
+                ((nightly_helpful_pct * nightly_votes) + (command_helpful_pct * command_votes))
                 / feedback_total_votes
             )
         )
@@ -3290,11 +3420,7 @@ def _weekly_insight_payload(
             f"Start wind-down tonight and aim for {int(wind_down_minutes)} minutes "
             "to begin your consistency streak."
         )
-    elif (
-        completion_rate_pct >= 80
-        and feedback_total_votes >= 3
-        and feedback_helpful_pct >= 75
-    ):
+    elif completion_rate_pct >= 80 and feedback_total_votes >= 3 and feedback_helpful_pct >= 75:
         trend = "up"
         headline = "Feedback trend confirms your nightly loop is working"
         summary = (
@@ -3375,7 +3501,9 @@ def _nightly_summary_payload(
         "sleep_quality_line": quality_line,
         "consistency_line": consistency_line,
         "recovery_plan_line": recovery_plan_line,
-        "generated_at_utc": to_iso(ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())),
+        "generated_at_utc": to_iso(
+            ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
+        ),
     }
 
 
@@ -3589,7 +3717,9 @@ def _normalize_nightly_summary_feedback(row: dict[str, Any] | None) -> dict[str,
         "not_helpful_count": not_helpful_count,
         "last_vote": last_vote,
         "last_vote_at_utc": str(data.get("last_vote_at_utc", "") or "").strip(),
-        "last_summary_generated_at_utc": str(data.get("last_summary_generated_at_utc", "") or "").strip(),
+        "last_summary_generated_at_utc": str(
+            data.get("last_summary_generated_at_utc", "") or ""
+        ).strip(),
     }
 
 
@@ -3654,7 +3784,9 @@ def _record_nightly_summary_feedback(
             summary_generated_at_utc=summary_marker,
             now_utc=now,
         )
-        return _nightly_summary_feedback_payload(_normalize_nightly_summary_feedback(state)), changed
+        return _nightly_summary_feedback_payload(
+            _normalize_nightly_summary_feedback(state)
+        ), changed
     except Exception as exc:
         emit_json_log(
             logger,
@@ -3724,7 +3856,9 @@ def _command_feedback_payload(row: dict[str, Any]) -> dict[str, Any]:
     elif helpful_pct >= 40:
         status_line = "Automation feedback is mixed. Keep tuning timing and scene choice."
     else:
-        status_line = "Automation feedback needs attention. Focus on reliability before adding features."
+        status_line = (
+            "Automation feedback needs attention. Focus on reliability before adding features."
+        )
     return {
         "helpful_count": helpful_count,
         "not_helpful_count": not_helpful_count,
@@ -3882,7 +4016,9 @@ def _beta_metrics_payload(
 ) -> dict[str, Any]:
     now = ensure_utc(now_utc if isinstance(now_utc, datetime) else utcnow())
     week_start = now - timedelta(days=7)
-    normalized_commands = [_normalize_command_item(row if isinstance(row, dict) else {}) for row in commands]
+    normalized_commands = [
+        _normalize_command_item(row if isinstance(row, dict) else {}) for row in commands
+    ]
 
     recent_commands: list[dict[str, Any]] = []
     for row in normalized_commands:
@@ -3904,14 +4040,25 @@ def _beta_metrics_payload(
     db_wind_down_sessions = _winddown_sessions_7d_from_db(user_id, now) if user_id else None
     if isinstance(db_wind_down_sessions, int):
         wind_down_sessions_7d = max(0, db_wind_down_sessions)
-    command_completion_rate_pct = int(round((completed_commands_7d / command_total_7d) * 100.0)) if command_total_7d > 0 else 0
+    command_completion_rate_pct = (
+        int(round((completed_commands_7d / command_total_7d) * 100.0))
+        if command_total_7d > 0
+        else 0
+    )
     db_command_metrics = _command_metrics_7d_from_db(user_id, now) if user_id else None
     if isinstance(db_command_metrics, dict):
         command_total_7d = max(0, int(db_command_metrics.get("total", command_total_7d) or 0))
-        completed_commands_7d = max(0, int(db_command_metrics.get("completed", completed_commands_7d) or 0))
+        completed_commands_7d = max(
+            0, int(db_command_metrics.get("completed", completed_commands_7d) or 0)
+        )
         command_completion_rate_pct = max(
             0,
-            min(100, int(db_command_metrics.get("completion_rate_pct", command_completion_rate_pct) or 0)),
+            min(
+                100,
+                int(
+                    db_command_metrics.get("completion_rate_pct", command_completion_rate_pct) or 0
+                ),
+            ),
         )
 
     checklist_progress = max(0, min(100, int(checklist.get("progress_pct", 0) or 0)))
@@ -4025,7 +4172,9 @@ def _beta_acceptance_cohort_report(
         try:
             checklist_state = beta_repo.get_first_three_nights_state(user_id)
             checklist = _first_3_nights_payload(
-                _normalize_first_3_nights_state(checklist_state if isinstance(checklist_state, dict) else {})
+                _normalize_first_3_nights_state(
+                    checklist_state if isinstance(checklist_state, dict) else {}
+                )
             )
         except Exception:
             checklist = _first_3_nights_payload(_normalize_first_3_nights_state({}))
@@ -4043,7 +4192,9 @@ def _beta_acceptance_cohort_report(
                 feedback_state = beta_repo.get_nightly_summary_feedback(user_id)
             except Exception:
                 feedback_state = {}
-            feedback = _nightly_summary_feedback_payload(feedback_state if isinstance(feedback_state, dict) else {})
+            feedback = _nightly_summary_feedback_payload(
+                feedback_state if isinstance(feedback_state, dict) else {}
+            )
             metrics_raw = _beta_metrics_payload(
                 checklist=checklist,
                 commands=[],
@@ -4053,9 +4204,13 @@ def _beta_acceptance_cohort_report(
             )
 
         command_total_7d = max(0, int(metrics_raw.get("command_total_7d", 0) or 0))
-        command_completion_rate_pct = max(0, min(100, int(metrics_raw.get("command_completion_rate_pct", 0) or 0)))
+        command_completion_rate_pct = max(
+            0, min(100, int(metrics_raw.get("command_completion_rate_pct", 0) or 0))
+        )
         wind_down_sessions_7d = max(0, int(metrics_raw.get("wind_down_sessions_7d", 0) or 0))
-        activation_progress_pct = max(0, min(100, int(metrics_raw.get("activation_progress_pct", 0) or 0)))
+        activation_progress_pct = max(
+            0, min(100, int(metrics_raw.get("activation_progress_pct", 0) or 0))
+        )
         first_3_nights_completed = max(0, int(checklist.get("completed_steps", 0) or 0))
         first_3_nights_total = max(1, int(checklist.get("total_steps", 5) or 5))
         milestone_complete = bool(checklist.get("is_complete", False))
@@ -4087,7 +4242,9 @@ def _beta_acceptance_cohort_report(
 
     def _tester_sort_key(row: dict[str, Any]) -> tuple[int, int, int, int, int, float]:
         generated_at = _parse_iso_timestamp(str(row.get("generated_at_utc", "") or ""))
-        generated_ts = ensure_utc(generated_at).timestamp() if isinstance(generated_at, datetime) else 0.0
+        generated_ts = (
+            ensure_utc(generated_at).timestamp() if isinstance(generated_at, datetime) else 0.0
+        )
         return (
             int(bool(row.get("exit_gate_ready", False))),
             int(bool(row.get("milestone_complete", False))),
@@ -4101,8 +4258,12 @@ def _beta_acceptance_cohort_report(
     in_scope = testers[:safe_max]
 
     testers_in_scope = len(in_scope)
-    milestone_complete_testers = sum(1 for row in in_scope if bool(row.get("milestone_complete", False)))
-    scripted_flow_success_testers = sum(1 for row in in_scope if bool(row.get("scripted_flow_success", False)))
+    milestone_complete_testers = sum(
+        1 for row in in_scope if bool(row.get("milestone_complete", False))
+    )
+    scripted_flow_success_testers = sum(
+        1 for row in in_scope if bool(row.get("scripted_flow_success", False))
+    )
     exit_gate_ready_testers = sum(1 for row in in_scope if bool(row.get("exit_gate_ready", False)))
     scripted_flow_success_pct = (
         int(round((scripted_flow_success_testers / testers_in_scope) * 100.0))
@@ -4112,7 +4273,9 @@ def _beta_acceptance_cohort_report(
 
     blockers: list[str] = []
     if testers_in_scope < safe_min:
-        blockers.append(f"Need at least {safe_min} beta testers in scope; found {testers_in_scope}.")
+        blockers.append(
+            f"Need at least {safe_min} beta testers in scope; found {testers_in_scope}."
+        )
     if milestone_complete_testers < safe_min:
         blockers.append(
             f"First 3 Nights is fully completed for {milestone_complete_testers}/{safe_min} required testers."
@@ -4220,7 +4383,9 @@ def _beta_cohort_progress_report(
 
         checklist_state = beta_repo.get_first_three_nights_state(user_id)
         checklist = _first_3_nights_payload(
-            _normalize_first_3_nights_state(checklist_state if isinstance(checklist_state, dict) else {})
+            _normalize_first_3_nights_state(
+                checklist_state if isinstance(checklist_state, dict) else {}
+            )
         )
         first_3_nights_complete = bool(checklist.get("is_complete", False))
 
@@ -4233,7 +4398,9 @@ def _beta_cohort_progress_report(
             min(100, int(metrics.get("command_completion_rate_pct", 0) or 0)),
         )
         wind_down_sessions_7d = max(0, int(metrics.get("wind_down_sessions_7d", 0) or 0))
-        activation_progress_pct = max(0, min(100, int(metrics.get("activation_progress_pct", 0) or 0)))
+        activation_progress_pct = max(
+            0, min(100, int(metrics.get("activation_progress_pct", 0) or 0))
+        )
         generated_at_utc = str(metrics.get("generated_at_utc", "") or "").strip()
         nightly_feedback_total = max(0, int(metrics.get("nightly_feedback_total", 0) or 0))
         automation_feedback_total = max(0, int(metrics.get("automation_feedback_total", 0) or 0))
@@ -4273,7 +4440,9 @@ def _beta_cohort_progress_report(
 
     def _sort_key(row: dict[str, Any]) -> tuple[int, int, int, int, float]:
         generated_at = _parse_iso_timestamp(str(row.get("metrics_generated_at_utc", "") or ""))
-        generated_ts = ensure_utc(generated_at).timestamp() if isinstance(generated_at, datetime) else 0.0
+        generated_ts = (
+            ensure_utc(generated_at).timestamp() if isinstance(generated_at, datetime) else 0.0
+        )
         return (
             int(bool(row.get("active_7d", False))),
             int(bool(row.get("first_3_nights_complete", False))),
@@ -4286,14 +4455,26 @@ def _beta_cohort_progress_report(
 
     enrolled_testers = len(testers)
     active_testers_7d = sum(1 for row in testers if bool(row.get("active_7d", False)))
-    active_rate_pct = int(round((active_testers_7d / enrolled_testers) * 100.0)) if enrolled_testers > 0 else 0
-    first_3_nights_complete_testers = sum(1 for row in testers if bool(row.get("first_3_nights_complete", False)))
-    scripted_flow_success_testers = sum(1 for row in testers if bool(row.get("scripted_flow_success", False)))
-    scripted_flow_success_pct = int(round((scripted_flow_success_testers / enrolled_testers) * 100.0)) if enrolled_testers > 0 else 0
+    active_rate_pct = (
+        int(round((active_testers_7d / enrolled_testers) * 100.0)) if enrolled_testers > 0 else 0
+    )
+    first_3_nights_complete_testers = sum(
+        1 for row in testers if bool(row.get("first_3_nights_complete", False))
+    )
+    scripted_flow_success_testers = sum(
+        1 for row in testers if bool(row.get("scripted_flow_success", False))
+    )
+    scripted_flow_success_pct = (
+        int(round((scripted_flow_success_testers / enrolled_testers) * 100.0))
+        if enrolled_testers > 0
+        else 0
+    )
 
     remaining_to_target_min = max(0, safe_target_min - active_testers_7d)
     over_target_by = max(0, active_testers_7d - safe_target_max)
-    target_band_hit = bool(active_testers_7d >= safe_target_min and active_testers_7d <= safe_target_max)
+    target_band_hit = bool(
+        active_testers_7d >= safe_target_min and active_testers_7d <= safe_target_max
+    )
 
     blockers: list[str] = []
     if active_testers_7d < safe_target_min:
@@ -4306,11 +4487,15 @@ def _beta_cohort_progress_report(
         )
 
     if target_band_hit:
-        status_line = "Kuwait beta cohort is within target band and ready for Month 2 polish cycles."
+        status_line = (
+            "Kuwait beta cohort is within target band and ready for Month 2 polish cycles."
+        )
     elif active_testers_7d < safe_target_min:
         status_line = "Kuwait beta cohort needs more active testers before scaling."
     else:
-        status_line = "Kuwait beta cohort is above target band. Stabilize reliability before expanding."
+        status_line = (
+            "Kuwait beta cohort is above target band. Stabilize reliability before expanding."
+        )
 
     return {
         "cohort_key": normalized_cohort,
@@ -4353,13 +4538,17 @@ def _bedtime_drift_timeline_item(
     }, should_mark
 
 
-def _apply_command_status_to_timeline(items: list[dict[str, Any]], commands: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+def _apply_command_status_to_timeline(
+    items: list[dict[str, Any]], commands: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in items:
         next_row = dict(row)
         command_id = str(next_row.get("command_id", "") or "")
         if command_id and command_id in commands:
-            next_row["status"] = str(commands[command_id].get("status", next_row.get("status", "active")))
+            next_row["status"] = str(
+                commands[command_id].get("status", next_row.get("status", "active"))
+            )
         out.append(next_row)
     return out
 
@@ -4378,7 +4567,9 @@ def _spotify_env_config(request: Request | None = None) -> dict[str, str]:
     }
 
 
-def _spotify_missing_config_fields(config: dict[str, str], require_redirect_uri: bool = True) -> list[str]:
+def _spotify_missing_config_fields(
+    config: dict[str, str], require_redirect_uri: bool = True
+) -> list[str]:
     missing: list[str] = []
     if not str(config.get("client_id", "")).strip():
         missing.append("SPOTIFY_CLIENT_ID")
@@ -4428,8 +4619,12 @@ def _spotify_create_oauth_state(
     return state
 
 
-def _spotify_http_post(url: str, form_data: dict[str, Any], headers: dict[str, str] | None = None) -> dict[str, Any]:
-    encoded = urlencode({k: "" if v is None else str(v) for k, v in form_data.items()}).encode("utf-8")
+def _spotify_http_post(
+    url: str, form_data: dict[str, Any], headers: dict[str, str] | None = None
+) -> dict[str, Any]:
+    encoded = urlencode({k: "" if v is None else str(v) for k, v in form_data.items()}).encode(
+        "utf-8"
+    )
     request = UrlRequest(url, data=encoded, method="POST")
     for k, v in (headers or {}).items():
         request.add_header(k, v)
@@ -4439,7 +4634,9 @@ def _spotify_http_post(url: str, form_data: dict[str, Any], headers: dict[str, s
             return json.loads(raw) if raw else {}
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
-        raise HTTPException(status_code=502, detail=f"Spotify HTTP error: {exc.code} {detail[:180]}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Spotify HTTP error: {exc.code} {detail[:180]}"
+        ) from exc
     except URLError as exc:
         raise HTTPException(status_code=502, detail="Spotify service unreachable") from exc
 
@@ -4454,13 +4651,17 @@ def _spotify_http_get(url: str, headers: dict[str, str] | None = None) -> dict[s
             return json.loads(raw) if raw else {}
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
-        raise HTTPException(status_code=502, detail=f"Spotify HTTP error: {exc.code} {detail[:180]}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Spotify HTTP error: {exc.code} {detail[:180]}"
+        ) from exc
     except URLError as exc:
         raise HTTPException(status_code=502, detail="Spotify service unreachable") from exc
 
 
 def _spotify_exchange_code(config: dict[str, str], code: str) -> dict[str, Any]:
-    basic = base64.b64encode(f"{config.get('client_id', '')}:{config.get('client_secret', '')}".encode("utf-8")).decode("ascii")
+    basic = base64.b64encode(
+        f"{config.get('client_id', '')}:{config.get('client_secret', '')}".encode("utf-8")
+    ).decode("ascii")
     payload = {
         "grant_type": "authorization_code",
         "code": code,
@@ -4477,7 +4678,9 @@ def _spotify_exchange_code(config: dict[str, str], code: str) -> dict[str, Any]:
 
 
 def _spotify_refresh_access_token(config: dict[str, str], refresh_token: str) -> dict[str, Any]:
-    basic = base64.b64encode(f"{config.get('client_id', '')}:{config.get('client_secret', '')}".encode("utf-8")).decode("ascii")
+    basic = base64.b64encode(
+        f"{config.get('client_id', '')}:{config.get('client_secret', '')}".encode("utf-8")
+    ).decode("ascii")
     payload = {
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
@@ -4500,7 +4703,9 @@ def _spotify_expires_at(expires_in: Any) -> str:
     return to_iso(utcnow() + timedelta(seconds=ttl - 30))
 
 
-def _spotify_api_request(method: str, url: str, access_token: str, json_body: dict[str, Any] | None = None) -> dict[str, Any]:
+def _spotify_api_request(
+    method: str, url: str, access_token: str, json_body: dict[str, Any] | None = None
+) -> dict[str, Any]:
     body = None
     if json_body is not None:
         body = json.dumps(json_body, ensure_ascii=True).encode("utf-8")
@@ -4517,13 +4722,16 @@ def _spotify_api_request(method: str, url: str, access_token: str, json_body: di
         detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
         if exc.code == 204:
             return {}
-        raise HTTPException(status_code=502, detail=f"Spotify API error: {exc.code} {detail[:180]}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Spotify API error: {exc.code} {detail[:180]}"
+        ) from exc
     except URLError as exc:
         raise HTTPException(status_code=502, detail="Spotify API unreachable") from exc
 
 
 def _spotify_user_token(user_key: str, user_email: str = "") -> dict[str, Any]:
     from database import SpotifyTokenRepository
+
     repo = SpotifyTokenRepository()
     token = repo.get(user_key)
     if token:
@@ -4536,6 +4744,7 @@ def _spotify_user_token(user_key: str, user_email: str = "") -> dict[str, Any]:
 
 def _spotify_refresh_user_token_if_needed(user_key: str, user_email: str = "") -> dict[str, Any]:
     from database import SpotifyTokenRepository
+
     repo = SpotifyTokenRepository()
     token = _spotify_user_token(user_key, user_email=user_email)
     if not token:
@@ -4608,7 +4817,9 @@ def _status_error_code(status_code: int) -> str:
     return VALIDATION_ERROR
 
 
-def _error_envelope(*, trace_id: str, code: str, message: str, retry_after: int | None = None) -> dict[str, Any]:
+def _error_envelope(
+    *, trace_id: str, code: str, message: str, retry_after: int | None = None
+) -> dict[str, Any]:
     return {
         "ok": False,
         "error": {
@@ -4632,7 +4843,11 @@ async def api_error_handler(request: Request, exc: APIError):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     trace_id = _request_trace_id(request)
-    message = str(exc.detail) if isinstance(exc.detail, str) and str(exc.detail).strip() else "Request failed"
+    message = (
+        str(exc.detail)
+        if isinstance(exc.detail, str) and str(exc.detail).strip()
+        else "Request failed"
+    )
     code = _status_error_code(exc.status_code)
     retry_after: int | None = None
     if isinstance(exc.headers, dict):
@@ -4731,7 +4946,9 @@ def _bed_capabilities(snapshot: dict[str, Any]) -> list[str]:
         capabilities.append("voice")
     if int(device_health.get("spotify_connected_users", 0) or 0) > 0:
         capabilities.append("spotify_playback")
-    if bool(device_health.get("sensor_pressure_active", False)) or bool(device_health.get("sensor_motion_active", False)):
+    if bool(device_health.get("sensor_pressure_active", False)) or bool(
+        device_health.get("sensor_motion_active", False)
+    ):
         capabilities.append("presence_sensing")
     return capabilities
 
@@ -4757,9 +4974,9 @@ def _bed_state_freshness_meta() -> tuple[str, bool, bool, str]:
         if seen_at is not None and (latest_seen is None or seen_at > latest_seen):
             latest_seen = seen_at
 
-        cached_at = _parse_iso_timestamp(str(row.get("linked_at", "") or "")) or _parse_iso_timestamp(
-            str(row.get("created_at", "") or "")
-        )
+        cached_at = _parse_iso_timestamp(
+            str(row.get("linked_at", "") or "")
+        ) or _parse_iso_timestamp(str(row.get("created_at", "") or ""))
         if cached_at is not None and (latest_cached is None or cached_at > latest_cached):
             latest_cached = cached_at
 
@@ -4778,7 +4995,16 @@ def _bed_state_freshness_meta() -> tuple[str, bool, bool, str]:
 def _generate_actor_reply(actor: dict[str, Any], message: str) -> tuple[str, bool]:
     actor_key = _user_profile_key(actor)
     if not actor_key:
-        actor_key = str(actor.get("user_id", "") or actor.get("admin_id", "") or actor.get("email", "") or "session").strip().lower()
+        actor_key = (
+            str(
+                actor.get("user_id", "")
+                or actor.get("admin_id", "")
+                or actor.get("email", "")
+                or "session"
+            )
+            .strip()
+            .lower()
+        )
 
     profile = _safe_profile()
     if not isinstance(profile, dict):
@@ -4829,7 +5055,12 @@ def _generate_actor_reply(actor: dict[str, Any], message: str) -> tuple[str, boo
             reply = _chat_local_fallback(message)
     except Exception as exc:
         used_fallback = True
-        _event("warning", "chat_engine_failure", user_id=str(actor.get("user_id", "")), error=str(exc)[:180])
+        _event(
+            "warning",
+            "chat_engine_failure",
+            user_id=str(actor.get("user_id", "")),
+            error=str(exc)[:180],
+        )
         reply = _chat_local_fallback(message)
 
     try:
@@ -4840,7 +5071,11 @@ def _generate_actor_reply(actor: dict[str, Any], message: str) -> tuple[str, boo
             personality=personality,
         )
     except Exception as _mem_exc:
-        logger.warning("memory_store.record_turn failed user_id=%s err=%s", str(actor.get("user_id", "")), _mem_exc)
+        logger.warning(
+            "memory_store.record_turn failed user_id=%s err=%s",
+            str(actor.get("user_id", "")),
+            _mem_exc,
+        )
 
     _event(
         "info",
@@ -4889,7 +5124,14 @@ def _enforce_same_origin(request: Request):
     origin_host = (parsed.netloc or "").strip().lower()
     if not origin_host:
         _bump("same_origin_denied")
-        _event("warning", "same_origin_block", path=request.url.path, origin=origin, host=host, reason="missing_origin_host")
+        _event(
+            "warning",
+            "same_origin_block",
+            path=request.url.path,
+            origin=origin,
+            host=host,
+            reason="missing_origin_host",
+        )
         raise HTTPException(status_code=403, detail="Cross-site request blocked")
     if origin_host == host:
         return
@@ -4925,7 +5167,9 @@ def _cookie_user(request: Request) -> dict[str, Any] | None:
             "email": str(getattr(db_user, "email", "") or ""),
             "name": str(getattr(db_user, "full_name", "") or ""),
         }
-        _ensure_legacy_store_user_shadow(payload, password_hash=str(getattr(db_user, "password_hash", "") or ""))
+        _ensure_legacy_store_user_shadow(
+            payload, password_hash=str(getattr(db_user, "password_hash", "") or "")
+        )
         return payload
 
     _ensure_db_user_shadow(user)
@@ -5120,6 +5364,7 @@ def _db_update_repository():
     global _DB_UPDATE_REPOSITORY
     if _DB_UPDATE_REPOSITORY is None:
         from database import UpdateRepository
+
         _DB_UPDATE_REPOSITORY = UpdateRepository(db=_database_connection())
     return _DB_UPDATE_REPOSITORY
 
@@ -5128,6 +5373,7 @@ def _db_feature_flag_repository():
     global _DB_FEATURE_FLAG_REPOSITORY
     if _DB_FEATURE_FLAG_REPOSITORY is None:
         from database import FeatureFlagRepository
+
         _DB_FEATURE_FLAG_REPOSITORY = FeatureFlagRepository(db=_database_connection())
     return _DB_FEATURE_FLAG_REPOSITORY
 
@@ -5213,7 +5459,11 @@ def _ensure_db_user_shadow(user: dict[str, Any] | None) -> None:
         if full_name and full_name != existing_name:
             updates["full_name"] = full_name
         existing_password_hash = str(getattr(existing, "password_hash", "") or "").strip()
-        if password_hash and (existing_password_hash in {"", "mobile_shadow_managed"}) and (password_hash != existing_password_hash):
+        if (
+            password_hash
+            and (existing_password_hash in {"", "mobile_shadow_managed"})
+            and (password_hash != existing_password_hash)
+        ):
             updates["password_hash"] = password_hash
         existing_email = str(getattr(existing, "email", "") or "").strip().lower()
         if existing_email != email:
@@ -5358,6 +5608,7 @@ def healthz_detailed() -> dict[str, Any]:
 
     try:
         from database.connection import DatabaseConnection
+
         db_conn = DatabaseConnection()
         checks["database"] = {"ok": db_conn.health_check(), "version": db_conn.schema_version()}
     except Exception as exc:
@@ -5365,10 +5616,11 @@ def healthz_detailed() -> dict[str, Any]:
 
     try:
         import shutil
+
         disk = shutil.disk_usage("/")
         checks["disk"] = {
-            "total_gb": round(disk.total / (1024 ** 3), 2),
-            "free_gb": round(disk.free / (1024 ** 3), 2),
+            "total_gb": round(disk.total / (1024**3), 2),
+            "free_gb": round(disk.free / (1024**3), 2),
             "used_pct": round((disk.used / disk.total) * 100, 1),
         }
     except Exception:
@@ -5600,6 +5852,7 @@ def auth_register(payload: RegisterRequest, response: Response, request: Request
     password = payload.password or ""
     name = (payload.name or "").strip()
     import re as _re
+
     if not email or "@" not in email or "." not in email.split("@")[-1]:
         raise HTTPException(status_code=400, detail="Valid email address is required")
     if len(email) > 254:
@@ -5607,7 +5860,9 @@ def auth_register(payload: RegisterRequest, response: Response, request: Request
     if len(password) < 10:
         raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
     if not _re.search(r"[A-Z]", password):
-        raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter")
+        raise HTTPException(
+            status_code=400, detail="Password must contain at least one uppercase letter"
+        )
     if not _re.search(r"[0-9]", password):
         raise HTTPException(status_code=400, detail="Password must contain at least one number")
     if len(password) > 128:
@@ -5628,7 +5883,11 @@ def auth_register(payload: RegisterRequest, response: Response, request: Request
     _event("info", "register_success", user_id=user.get("user_id", ""), email=email)
     return {
         "ok": True,
-        "user": {"user_id": user.get("user_id", ""), "email": user.get("email", ""), "name": user.get("name", "")},
+        "user": {
+            "user_id": user.get("user_id", ""),
+            "email": user.get("email", ""),
+            "name": user.get("name", ""),
+        },
         "expires_at": session.get("expires_at", ""),
     }
 
@@ -5640,7 +5899,10 @@ def auth_login(payload: LoginRequest, response: Response, request: Request) -> d
     if _is_account_locked(email):
         _bump("auth_user_login_failure")
         _event("warning", "user_login_locked", email=email)
-        raise HTTPException(status_code=429, detail="Account temporarily locked due to too many failed attempts. Try again in 15 minutes.")
+        raise HTTPException(
+            status_code=429,
+            detail="Account temporarily locked due to too many failed attempts. Try again in 15 minutes.",
+        )
     user = _login_mobile_user_db_first(email=email, password=payload.password or "")
     if not user:
         _record_login_failure(email)
@@ -5652,10 +5914,16 @@ def auth_login(payload: LoginRequest, response: Response, request: Request) -> d
     session = store.issue_user_token(user_id=user.get("user_id", ""))
     _set_session_cookie(response, "sb_user_token", session["access_token"], 7 * 24 * 3600, request)
     _bump("auth_user_login_success")
-    _event("info", "user_login_success", user_id=user.get("user_id", ""), email=user.get("email", ""))
+    _event(
+        "info", "user_login_success", user_id=user.get("user_id", ""), email=user.get("email", "")
+    )
     return {
         "ok": True,
-        "user": {"user_id": user.get("user_id", ""), "email": user.get("email", ""), "name": user.get("name", "")},
+        "user": {
+            "user_id": user.get("user_id", ""),
+            "email": user.get("email", ""),
+            "name": user.get("name", ""),
+        },
         "expires_at": session.get("expires_at", ""),
     }
 
@@ -5667,7 +5935,10 @@ def admin_auth_login(payload: LoginRequest, response: Response, request: Request
     if _is_account_locked(email):
         _bump("auth_admin_login_failure")
         _event("warning", "admin_login_locked", email=email)
-        raise HTTPException(status_code=429, detail="Account temporarily locked due to too many failed attempts. Try again in 15 minutes.")
+        raise HTTPException(
+            status_code=429,
+            detail="Account temporarily locked due to too many failed attempts. Try again in 15 minutes.",
+        )
     user = _login_mobile_user_db_first(email=email, password=payload.password or "")
     if not user:
         _record_login_failure(email)
@@ -5683,7 +5954,12 @@ def admin_auth_login(payload: LoginRequest, response: Response, request: Request
     role = (admin_user.get("role") or "viewer").strip().lower()
     if role == "viewer":
         _bump("auth_admin_login_failure")
-        _event("warning", "admin_login_failed", email=user.get("email", ""), reason="viewer_role_blocked")
+        _event(
+            "warning",
+            "admin_login_failed",
+            email=user.get("email", ""),
+            reason="viewer_role_blocked",
+        )
         raise HTTPException(status_code=403, detail="Viewer admin role cannot access admin panel")
 
     _clear_login_failures(email)
@@ -5728,7 +6004,9 @@ def auth_revoke_all_sessions(response: Response, request: Request) -> dict[str, 
     user = _require_user(request)
     user_id = str(user.get("user_id", "") or "").strip()
     if not user_id:
-        raise HTTPException(status_code=400, detail="Unable to identify user for session revocation")
+        raise HTTPException(
+            status_code=400, detail="Unable to identify user for session revocation"
+        )
 
     legacy_revoked = store.revoke_all_sessions_for_user(user_id)
     try:
@@ -5871,7 +6149,9 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
             profile["web_device_commands"] = cmd_section
             profile_dirty = True
     first_3_nights_checklist = _first_3_nights_payload(_normalize_first_3_nights_state({}))
-    nightly_summary_feedback = _nightly_summary_feedback_payload(_normalize_nightly_summary_feedback({}))
+    nightly_summary_feedback = _nightly_summary_feedback_payload(
+        _normalize_nightly_summary_feedback({})
+    )
     command_feedback_loop = _command_feedback_payload(_normalize_command_feedback_summary({}))
     if key:
         first_3_nights_checklist, _ = _sync_first_3_nights_state(
@@ -5882,9 +6162,7 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
         nightly_summary_feedback = _nightly_summary_feedback_payload(
             _nightly_summary_feedback_for_user(profile, key)
         )
-        command_feedback_loop = _command_feedback_payload(
-            _command_feedback_for_user(profile, key)
-        )
+        command_feedback_loop = _command_feedback_payload(_command_feedback_for_user(profile, key))
     if profile_dirty:
         _save_profile(profile)
     weekly_insight = _weekly_insight_payload(
@@ -5922,6 +6200,7 @@ def mobile_dashboard(request: Request) -> dict[str, Any]:
         "automation_feedback_loop": command_feedback_loop,
     }
 
+
 @app.get("/v1/mobile/sensors/live")
 async def sensors_live():
     """Stub endpoint — returns empty sensor data until hardware is connected."""
@@ -5930,8 +6209,9 @@ async def sensors_live():
         "humidity": None,
         "pressure": None,
         "connected": False,
-        "message": "Sensor hardware not connected"
+        "message": "Sensor hardware not connected",
     }
+
 
 @app.get("/v1/mobile/scenes", response_model=None)
 def mobile_scenes(request: Request) -> dict[str, Any]:
@@ -5962,6 +6242,7 @@ def scene_templates(request: Request, premium_only: bool = False) -> dict[str, A
 @app.get("/v1/sleep/overview", response_model=None)
 async def sleep_overview(request: Request) -> dict[str, Any]:
     import asyncio
+
     _require_user(request)
     now_utc = utcnow().replace(microsecond=0)
     readiness_score = await asyncio.to_thread(_sleep_readiness_score, now_utc)
@@ -6045,8 +6326,12 @@ def compose_scene(payload: SceneComposeRequest, request: Request) -> dict[str, A
         "ok": True,
         "scene": scene,
         "applied_state": {
-            "light": dict(scene.get("light", {})) if isinstance(scene.get("light", {}), dict) else {},
-            "audio": dict(scene.get("audio", {})) if isinstance(scene.get("audio", {}), dict) else {},
+            "light": dict(scene.get("light", {}))
+            if isinstance(scene.get("light", {}), dict)
+            else {},
+            "audio": dict(scene.get("audio", {}))
+            if isinstance(scene.get("audio", {}), dict)
+            else {},
             "activated_at": to_iso(utcnow().replace(microsecond=0)),
         },
     }
@@ -6062,14 +6347,14 @@ def undo_last_action(payload: UndoActionRequest, request: Request):
     action = undo_manager.pop_undo(user_id)
     if not isinstance(action, dict):
         return JSONResponse(
-                status_code=404,
-                content=_error_envelope(
-                    trace_id=trace_id,
-                    code=NOTHING_TO_UNDO,
-                    message="No undo action found for this user.",
-                ),
-                headers={_TRACE_ID_HEADER: trace_id},
-            )
+            status_code=404,
+            content=_error_envelope(
+                trace_id=trace_id,
+                code=NOTHING_TO_UNDO,
+                message="No undo action found for this user.",
+            ),
+            headers={_TRACE_ID_HEADER: trace_id},
+        )
 
     action_type = str(action.get("action_type", "") or "").strip()
     previous_state = action.get("previous_state")
@@ -6358,8 +6643,11 @@ def _capture_mobile_checkout(
 @app.get("/v1/mobile/subscription/status", response_model=None)
 async def mobile_subscription_status(request: Request) -> dict[str, Any]:
     import asyncio
+
     user = _require_user(request)
-    return await asyncio.to_thread(_mobile_subscription_status_response, str(user.get("user_id", "") or ""))
+    return await asyncio.to_thread(
+        _mobile_subscription_status_response, str(user.get("user_id", "") or "")
+    )
 
 
 @app.get("/v1/mobile/plan", response_model=None)
@@ -6478,7 +6766,9 @@ def mobile_subscription_pause(
     try:
         _db_user_repository().update_subscription(user_id=user_id, status="premium")
     except Exception as _exc:
-        logger.warning("update_subscription premium (pause) failed user_id=%s err=%s", user_id, _exc)
+        logger.warning(
+            "update_subscription premium (pause) failed user_id=%s err=%s", user_id, _exc
+        )
     return {
         **_mobile_subscription_status_response(user_id),
         "message": "Subscription paused.",
@@ -6612,7 +6902,11 @@ async def billing_paypal_webhook(request: Request) -> dict[str, Any]:
             try:
                 _db_user_repository().update_subscription(user_id=result.user_id, status="premium")
             except Exception as _exc:
-                logger.warning("webhook update_subscription premium failed user_id=%s err=%s", result.user_id, _exc)
+                logger.warning(
+                    "webhook update_subscription premium failed user_id=%s err=%s",
+                    result.user_id,
+                    _exc,
+                )
         elif normalized_event in {
             "billing.subscription.cancelled",
             "billing.subscription.expired",
@@ -6622,7 +6916,11 @@ async def billing_paypal_webhook(request: Request) -> dict[str, Any]:
             try:
                 _db_user_repository().update_subscription(user_id=result.user_id, status="free")
             except Exception as _exc:
-                logger.warning("webhook update_subscription free failed user_id=%s err=%s", result.user_id, _exc)
+                logger.warning(
+                    "webhook update_subscription free failed user_id=%s err=%s",
+                    result.user_id,
+                    _exc,
+                )
     return {
         **_mobile_subscription_status_response(result.user_id),
         "verified": result.verified,
@@ -6639,6 +6937,7 @@ async def billing_paypal_webhook(request: Request) -> dict[str, Any]:
 @app.get("/v1/mobile/settings", response_model=None)
 async def mobile_settings(request: Request) -> dict[str, Any]:
     import asyncio
+
     user = _require_user(request)
     profile = await asyncio.to_thread(_safe_profile)
     if not isinstance(profile, dict):
@@ -6689,7 +6988,9 @@ def _mobile_auth_response(user: dict[str, Any], tokens: dict[str, Any]) -> dict[
     }
 
 
-def _issue_mobile_auth_tokens_for_user(user: dict[str, Any], *, client_name: str = "flutter_app") -> dict[str, Any]:
+def _issue_mobile_auth_tokens_for_user(
+    user: dict[str, Any], *, client_name: str = "flutter_app"
+) -> dict[str, Any]:
     tokens = _db_mobile_auth_repository().issue_tokens(
         user_id=str(user.get("user_id", "") or ""),
         client_name=str(client_name or "flutter_app").strip() or "flutter_app",
@@ -6781,7 +7082,11 @@ def _ensure_legacy_store_user_shadow(user: dict[str, Any], *, password_hash: str
         subscriptions = []
         store.db["subscriptions"] = subscriptions
         changed = True
-    has_subscription = any(str(row.get("user_id", "") or "").strip() == user_id for row in subscriptions if isinstance(row, dict))
+    has_subscription = any(
+        str(row.get("user_id", "") or "").strip() == user_id
+        for row in subscriptions
+        if isinstance(row, dict)
+    )
     if not has_subscription:
         subscriptions.append(
             {
@@ -6827,9 +7132,9 @@ def _register_mobile_user_db_first(email: str, password: str, name: str) -> dict
 # per-account lockout so a distributed attack against one account is blocked
 # even if each attacker IP stays under the IP rate limit.
 
-_LOGIN_MAX_FAILURES = 5        # failures before lockout
-_LOGIN_LOCKOUT_SECONDS = 900   # 15-minute lockout window
-_LOGIN_WINDOW_SECONDS = 900    # rolling window to count failures
+_LOGIN_MAX_FAILURES = 5  # failures before lockout
+_LOGIN_LOCKOUT_SECONDS = 900  # 15-minute lockout window
+_LOGIN_WINDOW_SECONDS = 900  # rolling window to count failures
 
 _redis_lockout_client = None
 _redis_lockout_lock = threading.Lock()
@@ -6848,6 +7153,7 @@ def _get_lockout_redis():
             return None
         try:
             import redis as _redis_lib
+
             client = _redis_lib.from_url(redis_url, decode_responses=True, socket_timeout=1.0)
             client.ping()
             _redis_lockout_client = client
@@ -6858,6 +7164,7 @@ def _get_lockout_redis():
 
 def _lockout_key(email: str) -> str:
     import hashlib
+
     return "login_fail:" + hashlib.sha256(email.encode()).hexdigest()[:32]
 
 
@@ -6917,7 +7224,9 @@ def _login_mobile_user_db_first(email: str, password: str) -> dict[str, Any] | N
         return None
 
     _ensure_db_user_shadow(legacy_user)
-    synced = repo.get_user_by_id(str(legacy_user.get("user_id", "") or "").strip()) or repo.get_user_by_email(email)
+    synced = repo.get_user_by_id(
+        str(legacy_user.get("user_id", "") or "").strip()
+    ) or repo.get_user_by_email(email)
     if synced is not None:
         payload = _db_user_to_mobile_user_payload(synced)
     else:
@@ -6927,7 +7236,9 @@ def _login_mobile_user_db_first(email: str, password: str) -> dict[str, Any] | N
             "name": str(legacy_user.get("name", "") or ""),
             "client_name": "",
         }
-    _ensure_legacy_store_user_shadow(payload, password_hash=str(legacy_user.get("password_hash", "") or ""))
+    _ensure_legacy_store_user_shadow(
+        payload, password_hash=str(legacy_user.get("password_hash", "") or "")
+    )
     return payload
 
 
@@ -6938,6 +7249,7 @@ def mobile_auth_register(payload: MobileRegisterRequest, request: Request) -> di
     name = (payload.name or "").strip()
     client_name = str(payload.client_name or "flutter_app").strip() or "flutter_app"
     import re as _re
+
     if not email or "@" not in email or "." not in email.split("@")[-1]:
         raise HTTPException(status_code=422, detail="A valid email address is required")
     if len(email) > 254:
@@ -6945,7 +7257,9 @@ def mobile_auth_register(payload: MobileRegisterRequest, request: Request) -> di
     if len(password) < 10:
         raise HTTPException(status_code=422, detail="Password must be at least 10 characters")
     if not _re.search(r"[A-Z]", password):
-        raise HTTPException(status_code=422, detail="Password must contain at least one uppercase letter")
+        raise HTTPException(
+            status_code=422, detail="Password must contain at least one uppercase letter"
+        )
     if not _re.search(r"[0-9]", password):
         raise HTTPException(status_code=422, detail="Password must contain at least one number")
     if len(password) > 128:
@@ -6958,7 +7272,13 @@ def mobile_auth_register(payload: MobileRegisterRequest, request: Request) -> di
         user_id=str(user.get("user_id", "") or ""),
         client_name=client_name,
     )
-    _event("info", "mobile_register_success", user_id=str(user.get("user_id", "")), email=email, client_name=client_name)
+    _event(
+        "info",
+        "mobile_register_success",
+        user_id=str(user.get("user_id", "")),
+        email=email,
+        client_name=client_name,
+    )
     return _mobile_auth_response(user, tokens)
 
 
@@ -6967,7 +7287,10 @@ def mobile_auth_login(payload: MobileLoginRequest, request: Request) -> dict[str
     email = str(payload.email or "").strip().lower()
     if _is_account_locked(email):
         _event("warning", "mobile_login_locked", email=email)
-        raise HTTPException(status_code=429, detail="Account temporarily locked due to too many failed attempts. Try again in 15 minutes.")
+        raise HTTPException(
+            status_code=429,
+            detail="Account temporarily locked due to too many failed attempts. Try again in 15 minutes.",
+        )
     user = _login_mobile_user_db_first(email=email, password=payload.password or "")
     if not user:
         failures = _record_login_failure(email)
@@ -6979,7 +7302,13 @@ def mobile_auth_login(payload: MobileLoginRequest, request: Request) -> dict[str
         user_id=str(user.get("user_id", "") or ""),
         client_name=client_name,
     )
-    _event("info", "mobile_login_success", user_id=str(user.get("user_id", "")), email=user.get("email", ""), client_name=client_name)
+    _event(
+        "info",
+        "mobile_login_success",
+        user_id=str(user.get("user_id", "")),
+        email=user.get("email", ""),
+        client_name=client_name,
+    )
     return _mobile_auth_response(user, tokens)
 
 
@@ -6997,6 +7326,7 @@ def mobile_auth_request_otp(payload: MobileOtpRequestRequest, request: Request) 
     request_id = f"otp_{secrets.token_hex(10)}"
 
     from database import OtpRepository
+
     otp_repo = OtpRepository()
     otp_repo.cleanup_expired()
 
@@ -7054,6 +7384,7 @@ def mobile_auth_verify_otp(payload: MobileOtpVerifyRequest, request: Request) ->
         raise HTTPException(status_code=422, detail="otp_code must be at least 4 digits")
 
     from database import OtpRepository
+
     otp_repo = OtpRepository()
 
     row = otp_repo.get(request_id)
@@ -7135,7 +7466,9 @@ def mobile_auth_social_login(payload: MobileSocialLoginRequest, request: Request
     verified_identity = _verify_mobile_social_identity(payload)
     provider_user_id = str(verified_identity.get("provider_user_id", "") or "").strip()
     if not provider_user_id:
-        raise HTTPException(status_code=401, detail="Social provider identity could not be verified")
+        raise HTTPException(
+            status_code=401, detail="Social provider identity could not be verified"
+        )
     verification_method = str(verified_identity.get("verification_method", "") or "").strip()
 
     provided_email = str(payload.email or "").strip().lower()
@@ -7159,7 +7492,12 @@ def mobile_auth_social_login(payload: MobileSocialLoginRequest, request: Request
 
     user = _mobile_user_payload_by_id(mapped_user_id) if mapped_user_id else None
     if user is None:
-        email_candidate = verified_email or provided_email or mapped_email or _social_shadow_email(provider, provider_user_id)
+        email_candidate = (
+            verified_email
+            or provided_email
+            or mapped_email
+            or _social_shadow_email(provider, provider_user_id)
+        )
         user = _ensure_external_identity_user(
             email=email_candidate,
             name=str(payload.name or "").strip() or verified_name or provider.title(),
@@ -7212,7 +7550,12 @@ def mobile_auth_refresh(payload: MobileRefreshRequest, request: Request) -> dict
     if not isinstance(user, dict):
         raise HTTPException(status_code=401, detail="Unable to restore mobile session")
     _ensure_db_user_shadow(user)
-    _event("info", "mobile_token_refreshed", user_id=str(user.get("user_id", "")), client_name=str(tokens.get("client_name", "") or ""))
+    _event(
+        "info",
+        "mobile_token_refreshed",
+        user_id=str(user.get("user_id", "")),
+        client_name=str(tokens.get("client_name", "") or ""),
+    )
     return _mobile_auth_response(user, tokens)
 
 
@@ -7220,8 +7563,12 @@ def mobile_auth_refresh(payload: MobileRefreshRequest, request: Request) -> dict
 def mobile_auth_logout(payload: MobileLogoutRequest, request: Request) -> dict[str, Any]:
     access_token = _bearer_token(request)
     refresh_token = str(payload.refresh_token or "").strip()
-    revoked_db = _db_mobile_auth_repository().revoke_tokens(access_token=access_token, refresh_token=refresh_token)
-    revoked_legacy = store.revoke_mobile_tokens(access_token=access_token, refresh_token=refresh_token)
+    revoked_db = _db_mobile_auth_repository().revoke_tokens(
+        access_token=access_token, refresh_token=refresh_token
+    )
+    revoked_legacy = store.revoke_mobile_tokens(
+        access_token=access_token, refresh_token=refresh_token
+    )
     return {"ok": True, "revoked": bool(revoked_db or revoked_legacy)}
 
 
@@ -7244,6 +7591,7 @@ def mobile_auth_me(request: Request) -> dict[str, Any]:
 @app.get("/v1/mobile/routine", response_model=None)
 async def mobile_routine(request: Request) -> dict[str, Any]:
     import asyncio
+
     user = _require_user(request)
     profile = await asyncio.to_thread(_safe_profile)
     defaults = _normalize_user_routine({"bedtime": "22:30", "wake": "07:00", "weekends": True})
@@ -7268,6 +7616,7 @@ def register_push_token(payload: RegisterPushTokenRequest, request: Request) -> 
     try:
         from database.models import UserPushToken
         from sqlalchemy import select
+
         conn = _database_connection()
         with conn.get_session() as session:
             existing = session.execute(
@@ -7284,6 +7633,7 @@ def register_push_token(payload: RegisterPushTokenRequest, request: Request) -> 
     # Also persist in the JSON file used by ExpoPushSender (for backwards compat)
     try:
         from notifications.expo_sender import ExpoPushSender
+
         ExpoPushSender().register_token(user_id=user_id, expo_token=token, platform=platform)
     except Exception as exc:
         logger.warning("push-token JSON write failed: %s", exc)
@@ -7317,18 +7667,21 @@ def upsert_mobile_routine(payload: UserRoutineRequest, request: Request) -> dict
 @app.get("/v1/mobile/profile", response_model=None)
 async def mobile_profile(request: Request) -> dict[str, Any]:
     import asyncio
+
     user = _require_user(request)
     profile = await asyncio.to_thread(_safe_profile)
-    defaults = _normalize_user_profile_prefs({
-        "display_name": "",
-        "timezone": "Asia/Kuwait",
-        "push_enabled": True,
-        "email_enabled": False,
-        "location_mode": "auto",
-        "country_code": "KW",
-        "city": "",
-        "theme_mode": "system",
-    })
+    defaults = _normalize_user_profile_prefs(
+        {
+            "display_name": "",
+            "timezone": "Asia/Kuwait",
+            "push_enabled": True,
+            "email_enabled": False,
+            "location_mode": "auto",
+            "country_code": "KW",
+            "city": "",
+            "theme_mode": "system",
+        }
+    )
     key = _user_profile_key(user)
     section = _get_scoped_profile_section(profile, "web_profile_prefs")
     scoped = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
@@ -7357,7 +7710,11 @@ def upsert_mobile_profile(payload: UserProfilePrefsRequest, request: Request) ->
         normalized = _normalize_user_profile_prefs(payload.model_dump())
         section[key] = normalized
         profile["web_profile_prefs"] = section
-        prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+        prefs = (
+            profile.get("preferences", {})
+            if isinstance(profile.get("preferences", {}), dict)
+            else {}
+        )
         prefs["timezone"] = str(normalized.get("timezone", "UTC") or "UTC").strip() or "UTC"
         profile["preferences"] = prefs
         _save_profile(profile)
@@ -7410,12 +7767,14 @@ def mobile_islamic_next_prayer(request: Request) -> dict[str, Any]:
 def mobile_device_controls(request: Request) -> dict[str, Any]:
     user = _require_user(request)
     profile = _safe_profile()
-    defaults = _normalize_device_controls({
-        "lights_on": False,
-        "audio_on": False,
-        "alarm_on": True,
-        "light_level": 65,
-    })
+    defaults = _normalize_device_controls(
+        {
+            "lights_on": False,
+            "audio_on": False,
+            "alarm_on": True,
+            "light_level": 65,
+        }
+    )
     key = _user_profile_key(user)
     section = _get_scoped_profile_section(profile, "web_device_controls")
     scoped = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}
@@ -7453,17 +7812,15 @@ def mobile_bed_pairing_status(request: Request) -> dict[str, Any]:
 
     return {
         "ok": True,
-        "paired": bool(status_payload.get("success", False) and status_payload.get("paired", False)),
+        "paired": bool(
+            status_payload.get("success", False) and status_payload.get("paired", False)
+        ),
         "device_id": device_id,
         "bed_location": str(
-            status_payload.get("bed_location", "")
-            or link_row.get("bed_location", "")
-            or ""
+            status_payload.get("bed_location", "") or link_row.get("bed_location", "") or ""
         ),
         "paired_at": str(
-            status_payload.get("paired_at", "")
-            or link_row.get("paired_at", "")
-            or ""
+            status_payload.get("paired_at", "") or link_row.get("paired_at", "") or ""
         ),
         "provisioning_verified": bool(link_row.get("provisioning_verified", False)),
     }
@@ -7482,7 +7839,9 @@ def mobile_bed_pair(payload: MobileBedPairRequest, request: Request) -> dict[str
         fallback_device_id=payload.device_id,
     )
     if not device_id:
-        raise HTTPException(status_code=422, detail="device_id is required in qr_payload or device_id")
+        raise HTTPException(
+            status_code=422, detail="device_id is required in qr_payload or device_id"
+        )
     claim_token = _extract_claim_token_from_qr_payload(
         payload.qr_payload,
         fallback_claim_token=payload.claim_token,
@@ -7500,13 +7859,20 @@ def mobile_bed_pair(payload: MobileBedPairRequest, request: Request) -> dict[str
     except Exception as exc:
         raise HTTPException(status_code=500, detail="QR pairing service unavailable") from exc
 
-    if not isinstance(registered_device, dict) or not str(registered_device.get("device_id", "")).strip():
+    if (
+        not isinstance(registered_device, dict)
+        or not str(registered_device.get("device_id", "")).strip()
+    ):
         raise HTTPException(status_code=404, detail="Device is not provisioned for pairing")
     if not _pairing_claim_matches_device(registered_device, claim_token):
         raise HTTPException(status_code=401, detail="Pairing claim token is invalid or missing")
 
     user_id = str(user.get("user_id", "") or "").strip()
-    user_name = str(user.get("name", "") or "").strip() or _email_local_part(str(user.get("email", "") or "")) or "Mobile User"
+    user_name = (
+        str(user.get("name", "") or "").strip()
+        or _email_local_part(str(user.get("email", "") or ""))
+        or "Mobile User"
+    )
     pair_result = pair_device(
         device_id=device_id,
         user_id=user_id,
@@ -7516,7 +7882,9 @@ def mobile_bed_pair(payload: MobileBedPairRequest, request: Request) -> dict[str
         status_payload = get_device_status(device_id)
         current_owner = str(status_payload.get("user_id", "") or "").strip()
         if not current_owner or current_owner != user_id:
-            raise HTTPException(status_code=409, detail=str(pair_result.get("message", "Unable to pair bed"))[:180])
+            raise HTTPException(
+                status_code=409, detail=str(pair_result.get("message", "Unable to pair bed"))[:180]
+            )
 
     status_payload = get_device_status(device_id)
     if not bool(status_payload.get("success", False)):
@@ -7557,7 +7925,8 @@ def mobile_bed_unpair(payload: MobileBedUnpairRequest, request: Request) -> dict
     link_row = links.get(key, {}) if key and isinstance(links.get(key, {}), dict) else {}
     device_id = _extract_device_id_from_qr_payload(
         "",
-        fallback_device_id=str(payload.device_id or "").strip() or str(link_row.get("device_id", "") or ""),
+        fallback_device_id=str(payload.device_id or "").strip()
+        or str(link_row.get("device_id", "") or ""),
     )
     if not device_id:
         raise HTTPException(status_code=422, detail="No paired device found")
@@ -7571,11 +7940,15 @@ def mobile_bed_unpair(payload: MobileBedUnpairRequest, request: Request) -> dict
     if bool(status_payload.get("success", False)):
         owner_id = str(status_payload.get("user_id", "") or "").strip()
         if owner_id and owner_id != str(user.get("user_id", "") or "").strip():
-            raise HTTPException(status_code=403, detail="Cannot unpair a bed linked to another account")
+            raise HTTPException(
+                status_code=403, detail="Cannot unpair a bed linked to another account"
+            )
 
     result = unpair_device(device_id)
     if not bool(result.get("success", False)):
-        raise HTTPException(status_code=404, detail=str(result.get("message", "Device not found"))[:180])
+        raise HTTPException(
+            status_code=404, detail=str(result.get("message", "Device not found"))[:180]
+        )
 
     links.pop(key, None)
     profile["mobile_bed_links"] = links
@@ -7593,7 +7966,9 @@ def mobile_alarms(request: Request) -> dict[str, Any]:
     key = _user_profile_key(user)
     section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
     rows = section.get(key, []) if key and isinstance(section.get(key, []), list) else []
-    timezone_name = str(_chat_profile_prefs_for_user(profile, user).get("timezone", "Asia/Kuwait") or "Asia/Kuwait")
+    timezone_name = str(
+        _chat_profile_prefs_for_user(profile, user).get("timezone", "Asia/Kuwait") or "Asia/Kuwait"
+    )
     alarms = _serialize_mobile_alarm_rows(rows, timezone_name=timezone_name)
     return {"ok": True, "alarms": alarms}
 
@@ -7623,7 +7998,9 @@ def mobile_upsert_alarm(payload: MobileAlarmUpsertRequest, request: Request) -> 
     next_rows: list[dict[str, Any]] = []
     for row in normalized_existing:
         if str(row.get("alarm_id", "") or "") == str(normalized_alarm.get("alarm_id", "") or ""):
-            normalized_alarm["created_at"] = str(row.get("created_at", "") or normalized_alarm.get("created_at", ""))
+            normalized_alarm["created_at"] = str(
+                row.get("created_at", "") or normalized_alarm.get("created_at", "")
+            )
             next_rows.append(normalized_alarm)
             replaced = True
         else:
@@ -7631,24 +8008,34 @@ def mobile_upsert_alarm(payload: MobileAlarmUpsertRequest, request: Request) -> 
 
     if not replaced:
         if len(next_rows) >= _MOBILE_ALARM_MAX_ITEMS:
-            raise HTTPException(status_code=409, detail=f"Alarm limit reached ({_MOBILE_ALARM_MAX_ITEMS})")
+            raise HTTPException(
+                status_code=409, detail=f"Alarm limit reached ({_MOBILE_ALARM_MAX_ITEMS})"
+            )
         next_rows.append(normalized_alarm)
 
     section[key] = next_rows
     profile["mobile_alarm_schedules"] = section
     _save_profile(profile)
 
-    timezone_name = str(_chat_profile_prefs_for_user(profile, user).get("timezone", "Asia/Kuwait") or "Asia/Kuwait")
+    timezone_name = str(
+        _chat_profile_prefs_for_user(profile, user).get("timezone", "Asia/Kuwait") or "Asia/Kuwait"
+    )
     alarms = _serialize_mobile_alarm_rows(next_rows, timezone_name=timezone_name)
     target = next(
-        (row for row in alarms if str(row.get("alarm_id", "") or "") == str(normalized_alarm.get("alarm_id", "") or "")),
+        (
+            row
+            for row in alarms
+            if str(row.get("alarm_id", "") or "") == str(normalized_alarm.get("alarm_id", "") or "")
+        ),
         normalized_alarm,
     )
     return {"ok": True, "alarm": target, "alarms": alarms}
 
 
 @app.post("/v1/mobile/alarms/{alarm_id}/toggle", response_model=None)
-def mobile_toggle_alarm(alarm_id: str, payload: MobileAlarmToggleRequest, request: Request) -> dict[str, Any]:
+def mobile_toggle_alarm(
+    alarm_id: str, payload: MobileAlarmToggleRequest, request: Request
+) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
     key = _user_profile_key(user)
@@ -7719,7 +8106,9 @@ def mobile_spotify_auth_url(request: Request, done_uri: str = "") -> dict[str, A
     config = _spotify_env_config(request)
     if not _spotify_is_configured(config, require_redirect_uri=True):
         missing = _spotify_missing_config_fields(config, require_redirect_uri=True)
-        raise HTTPException(status_code=503, detail=f"Spotify OAuth is not configured: {', '.join(missing)}")
+        raise HTTPException(
+            status_code=503, detail=f"Spotify OAuth is not configured: {', '.join(missing)}"
+        )
 
     key = _user_profile_key(user)
     if not key:
@@ -7749,7 +8138,9 @@ def mobile_spotify_connect(request: Request):
     if not isinstance(user, dict):
         if done_uri:
             return RedirectResponse(
-                url=_append_query_params(done_uri, {"spotify": "error", "reason": "unauthenticated"}),
+                url=_append_query_params(
+                    done_uri, {"spotify": "error", "reason": "unauthenticated"}
+                ),
                 status_code=302,
             )
         return RedirectResponse(url="/login?role=user&next=/user-dashboard", status_code=302)
@@ -7757,11 +8148,16 @@ def mobile_spotify_connect(request: Request):
     config = _spotify_env_config(request)
     if not _spotify_is_configured(config, require_redirect_uri=True):
         missing = ",".join(_spotify_missing_config_fields(config, require_redirect_uri=True))
-        return RedirectResponse(url=f"{safe_error_redirect}&reason=oauth_not_configured&missing={missing}", status_code=302)
+        return RedirectResponse(
+            url=f"{safe_error_redirect}&reason=oauth_not_configured&missing={missing}",
+            status_code=302,
+        )
 
     key = _user_profile_key(user)
     if not key:
-        return RedirectResponse(url=f"{safe_error_redirect}&reason=missing_user_key", status_code=302)
+        return RedirectResponse(
+            url=f"{safe_error_redirect}&reason=missing_user_key", status_code=302
+        )
 
     profile = _safe_profile()
     if not isinstance(profile, dict):
@@ -7773,7 +8169,9 @@ def mobile_spotify_connect(request: Request):
         done_uri=done_uri,
     )
     if not state:
-        return RedirectResponse(url=f"{safe_error_redirect}&reason=state_init_failed", status_code=302)
+        return RedirectResponse(
+            url=f"{safe_error_redirect}&reason=state_init_failed", status_code=302
+        )
 
     return RedirectResponse(url=_spotify_auth_url(config, state), status_code=302)
 
@@ -7782,7 +8180,9 @@ def mobile_spotify_connect(request: Request):
 def mobile_spotify_callback(request: Request, code: str = "", state: str = ""):
     default_error_redirect = "/user-dashboard?spotify=error"
     if not code or not state:
-        return RedirectResponse(url=f"{default_error_redirect}&reason=missing_code_or_state", status_code=302)
+        return RedirectResponse(
+            url=f"{default_error_redirect}&reason=missing_code_or_state", status_code=302
+        )
 
     profile = _safe_profile()
     if not isinstance(profile, dict):
@@ -7809,13 +8209,18 @@ def mobile_spotify_callback(request: Request, code: str = "", state: str = ""):
     config = _spotify_env_config(request)
     if not _spotify_is_configured(config, require_redirect_uri=True):
         missing = ",".join(_spotify_missing_config_fields(config, require_redirect_uri=True))
-        return RedirectResponse(url=f"{safe_error_redirect}&reason=oauth_not_configured&missing={missing}", status_code=302)
+        return RedirectResponse(
+            url=f"{safe_error_redirect}&reason=oauth_not_configured&missing={missing}",
+            status_code=302,
+        )
 
     try:
         token_payload = _spotify_exchange_code(config, code)
         access_token = str(token_payload.get("access_token", "") or "")
         if not access_token:
-            return RedirectResponse(url=f"{safe_error_redirect}&reason=token_exchange_failed", status_code=302)
+            return RedirectResponse(
+                url=f"{safe_error_redirect}&reason=token_exchange_failed", status_code=302
+            )
 
         spotify_profile = _spotify_http_get(
             "https://api.spotify.com/v1/me",
@@ -7832,12 +8237,15 @@ def mobile_spotify_callback(request: Request, code: str = "", state: str = ""):
         )
         if done_uri:
             return RedirectResponse(
-                url=_append_query_params(done_uri, {"spotify": "error", "reason": "exchange_failed"}),
+                url=_append_query_params(
+                    done_uri, {"spotify": "error", "reason": "exchange_failed"}
+                ),
                 status_code=302,
             )
         return RedirectResponse(url=f"/user-dashboard?{redirect_qs}", status_code=302)
 
     from database import SpotifyTokenRepository
+
     SpotifyTokenRepository().upsert(
         matched_key,
         access_token=access_token,
@@ -7886,6 +8294,7 @@ def mobile_spotify_disconnect(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Unable to identify user Spotify key")
 
     from database import SpotifyTokenRepository
+
     SpotifyTokenRepository().delete(key)
     return {"ok": True}
 
@@ -7911,7 +8320,13 @@ def mobile_spotify_playback_status(request: Request) -> dict[str, Any]:
         "connected": True,
         "is_playing": bool(payload.get("is_playing", False)),
         "track_name": str(item.get("name", "") or ""),
-        "artist": ", ".join([str(a.get("name", "") or "") for a in (item.get("artists", []) or []) if isinstance(a, dict)]),
+        "artist": ", ".join(
+            [
+                str(a.get("name", "") or "")
+                for a in (item.get("artists", []) or [])
+                if isinstance(a, dict)
+            ]
+        ),
         "device_name": str(device.get("name", "") or ""),
     }
 
@@ -7931,7 +8346,9 @@ def mobile_spotify_playback(payload: SpotifyPlaybackRequest, request: Request) -
         raise HTTPException(status_code=400, detail="Spotify is not connected")
 
     action = str(payload.action or "").strip().lower()
-    device_id = str(payload.device_id or "").strip() or str(settings.spotify_device_id or "").strip()
+    device_id = (
+        str(payload.device_id or "").strip() or str(settings.spotify_device_id or "").strip()
+    )
     query = f"?device_id={device_id}" if device_id else ""
 
     try:
@@ -7940,19 +8357,27 @@ def mobile_spotify_playback(payload: SpotifyPlaybackRequest, request: Request) -
             playlist_uri = str(payload.playlist_uri or "").strip()
             if playlist_uri:
                 body = {"context_uri": playlist_uri}
-            _spotify_api_request("PUT", f"https://api.spotify.com/v1/me/player/play{query}", access_token, body)
+            _spotify_api_request(
+                "PUT", f"https://api.spotify.com/v1/me/player/play{query}", access_token, body
+            )
             return {"ok": True, "message": "Playback started."}
 
         if action == "pause":
-            _spotify_api_request("PUT", f"https://api.spotify.com/v1/me/player/pause{query}", access_token)
+            _spotify_api_request(
+                "PUT", f"https://api.spotify.com/v1/me/player/pause{query}", access_token
+            )
             return {"ok": True, "message": "Playback paused."}
 
         if action == "next":
-            _spotify_api_request("POST", f"https://api.spotify.com/v1/me/player/next{query}", access_token)
+            _spotify_api_request(
+                "POST", f"https://api.spotify.com/v1/me/player/next{query}", access_token
+            )
             return {"ok": True, "message": "Skipped to next track."}
 
         if action == "previous":
-            _spotify_api_request("POST", f"https://api.spotify.com/v1/me/player/previous{query}", access_token)
+            _spotify_api_request(
+                "POST", f"https://api.spotify.com/v1/me/player/previous{query}", access_token
+            )
             return {"ok": True, "message": "Moved to previous track."}
 
         if action == "set_volume":
@@ -7968,16 +8393,24 @@ def mobile_spotify_playback(payload: SpotifyPlaybackRequest, request: Request) -
         detail = str(getattr(exc, "detail", "") or "").strip()
         lower = detail.lower()
         if "premium" in lower or " 403" in lower or "error: 403" in lower:
-            raise HTTPException(status_code=400, detail="Spotify Premium is required for playback controls on this account.") from exc
+            raise HTTPException(
+                status_code=400,
+                detail="Spotify Premium is required for playback controls on this account.",
+            ) from exc
         if "no active device" in lower or " 404" in lower or "error: 404" in lower:
-            raise HTTPException(status_code=400, detail="No active Spotify device found. Open Spotify on your phone and start any song, then retry.") from exc
+            raise HTTPException(
+                status_code=400,
+                detail="No active Spotify device found. Open Spotify on your phone and start any song, then retry.",
+            ) from exc
         raise
 
     raise HTTPException(status_code=400, detail="Unsupported Spotify playback action")
 
 
 @app.post("/v1/mobile/device-controls", response_model=None)
-def upsert_mobile_device_controls(payload: UserDeviceControlRequest, request: Request) -> dict[str, Any]:
+def upsert_mobile_device_controls(
+    payload: UserDeviceControlRequest, request: Request
+) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
     key = _user_profile_key(user)
@@ -8027,7 +8460,9 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
         command_map = {str(c.get("id", "")): c for c in commands if str(c.get("id", ""))}
         items = _apply_command_status_to_timeline(items, command_map)
         if changed and commands:
-            _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
+            _store_last_command_result(
+                profile, key, _build_last_command_result_from_command(commands[0])
+            )
             profile_dirty = True
         if changed:
             cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
@@ -8038,9 +8473,7 @@ def mobile_timeline(request: Request) -> dict[str, Any]:
     resolved_settings = _resolved_user_settings(profile, user)
     drift_enabled = bool(resolved_settings.get("bedtime_drift_automation_enabled", True))
     drift_row, drift_marked = (
-        _bedtime_drift_timeline_item(profile, now_utc=now)
-        if drift_enabled
-        else (None, False)
+        _bedtime_drift_timeline_item(profile, now_utc=now) if drift_enabled else (None, False)
     )
     quiet_row = _quiet_hours_status_timeline_item(profile, user, now_utc=now)
     cooldown_rows = _automation_cooldown_timeline_items(now_utc=now)
@@ -8084,7 +8517,9 @@ def mobile_first_3_nights(request: Request) -> dict[str, Any]:
             cmd_section[key] = commands
             profile["web_device_commands"] = cmd_section
             if commands:
-                _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
+                _store_last_command_result(
+                    profile, key, _build_last_command_result_from_command(commands[0])
+                )
             _save_profile(profile)
 
         checklist, _ = _sync_first_3_nights_state(profile, user, commands=commands)
@@ -8093,7 +8528,9 @@ def mobile_first_3_nights(request: Request) -> dict[str, Any]:
 
 
 @app.post("/v1/mobile/first-3-nights/complete", response_model=None)
-def mobile_first_3_nights_complete(payload: FirstThreeNightsStepRequest, request: Request) -> dict[str, Any]:
+def mobile_first_3_nights_complete(
+    payload: FirstThreeNightsStepRequest, request: Request
+) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
     profile = _safe_profile()
@@ -8117,7 +8554,9 @@ def mobile_first_3_nights_complete(payload: FirstThreeNightsStepRequest, request
 
 
 @app.post("/v1/mobile/nightly-summary/feedback", response_model=None)
-def mobile_nightly_summary_feedback(payload: NightlySummaryFeedbackRequest, request: Request) -> dict[str, Any]:
+def mobile_nightly_summary_feedback(
+    payload: NightlySummaryFeedbackRequest, request: Request
+) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
     profile = _safe_profile()
@@ -8171,7 +8610,9 @@ def mobile_device_command_feedback(
         cmd_section[key] = commands
         profile["web_device_commands"] = cmd_section
         if commands:
-            _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
+            _store_last_command_result(
+                profile, key, _build_last_command_result_from_command(commands[0])
+            )
         profile_dirty = True
 
     target = next((row for row in commands if str(row.get("id", "") or "") == command_key), None)
@@ -8184,7 +8625,8 @@ def mobile_device_command_feedback(
             (
                 _normalize_command_item(row if isinstance(row, dict) else {})
                 for row in db_rows
-                if str((row if isinstance(row, dict) else {}).get("command_id", "") or "") == command_key
+                if str((row if isinstance(row, dict) else {}).get("command_id", "") or "")
+                == command_key
             ),
             None,
         )
@@ -8238,7 +8680,9 @@ def mobile_beta_metrics(request: Request) -> dict[str, Any]:
         cmd_section[key] = commands
         profile["web_device_commands"] = cmd_section
         if commands:
-            _store_last_command_result(profile, key, _build_last_command_result_from_command(commands[0]))
+            _store_last_command_result(
+                profile, key, _build_last_command_result_from_command(commands[0])
+            )
         profile_dirty = True
 
     checklist, _ = _sync_first_3_nights_state(profile, user, commands=commands)
@@ -8439,7 +8883,9 @@ def mobile_scene_save_tonight(payload: SceneSelectionRequest, request: Request) 
 
 
 @app.post("/v1/mobile/device-commands", response_model=None)
-def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Request) -> dict[str, Any]:
+def create_mobile_device_command(
+    payload: UserDeviceCommandRequest, request: Request
+) -> dict[str, Any]:
     _enforce_same_origin(request)
     user = _require_user(request)
     profile = _safe_profile()
@@ -8500,10 +8946,16 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
         profile["web_device_controls"] = controls_section
 
     if action_key == "quiet_hours_override":
-        prefs = profile.get("preferences", {}) if isinstance(profile.get("preferences", {}), dict) else {}
+        prefs = (
+            profile.get("preferences", {})
+            if isinstance(profile.get("preferences", {}), dict)
+            else {}
+        )
         profile["preferences"] = prefs
         now_iso = _now_utc_iso()
-        override_until_utc = _compute_quiet_hours_override_until_utc(profile, user, now_utc=utcnow())
+        override_until_utc = _compute_quiet_hours_override_until_utc(
+            profile, user, now_utc=utcnow()
+        )
         prefs["quiet_hours_override_until_utc"] = override_until_utc
 
         section = _get_scoped_profile_section(profile, "web_timeline")
@@ -8581,7 +9033,9 @@ def create_mobile_device_command(payload: UserDeviceCommandRequest, request: Req
 
     cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
     cmd_rows = cmd_section.get(key, []) if isinstance(cmd_section.get(key, []), list) else []
-    normalized_cmd_rows = [_normalize_command_item(r if isinstance(r, dict) else {}) for r in cmd_rows]
+    normalized_cmd_rows = [
+        _normalize_command_item(r if isinstance(r, dict) else {}) for r in cmd_rows
+    ]
     normalized_cmd_rows.insert(0, command)
     cmd_section[key] = normalized_cmd_rows[:60]
     profile["web_device_commands"] = cmd_section
@@ -8715,7 +9169,9 @@ def mobile_devices(request: Request) -> dict[str, Any]:
     bed_links = _get_scoped_profile_section(profile, "mobile_bed_links")
     link_row = bed_links.get(key, {}) if key and isinstance(bed_links.get(key, {}), dict) else {}
     alarms_section = _get_scoped_profile_section(profile, "mobile_alarm_schedules")
-    alarms = alarms_section.get(key, []) if key and isinstance(alarms_section.get(key, []), list) else []
+    alarms = (
+        alarms_section.get(key, []) if key and isinstance(alarms_section.get(key, []), list) else []
+    )
     alarm_count = sum(1 for row in alarms if isinstance(row, dict))
 
     return {
@@ -8799,7 +9255,8 @@ def admin_runtime(request: Request) -> dict[str, Any]:
     webhook_success_rate = round(max(88.0, 100.0 - ((failed_events / total_events) * 100.0)), 1)
 
     return {
-        "guard_denied": int(TELEMETRY.get("guard_admin_denied", 0)) + int(TELEMETRY.get("guard_user_denied", 0)),
+        "guard_denied": int(TELEMETRY.get("guard_admin_denied", 0))
+        + int(TELEMETRY.get("guard_user_denied", 0)),
         "chat_requests": int(TELEMETRY.get("chat_requests", 0)),
         "same_origin_denied": int(TELEMETRY.get("same_origin_denied", 0)),
         "tier_mix": "Free 39% | Standard 44% | Pro 17%",
@@ -8828,10 +9285,30 @@ def admin_fleet(request: Request) -> dict[str, Any]:
     if total == 0:
         return {
             "items": [
-                {"label": "Fleet enrollment", "value": "0 devices", "status": "warn", "note": "No devices synced yet"},
-                {"label": "Activation coverage", "value": "0%", "status": "warn", "note": "Awaiting first links"},
-                {"label": "Replaced devices", "value": "0", "status": "good", "note": "No swaps recorded"},
-                {"label": "Stale devices", "value": "0", "status": "good", "note": "No stale records"},
+                {
+                    "label": "Fleet enrollment",
+                    "value": "0 devices",
+                    "status": "warn",
+                    "note": "No devices synced yet",
+                },
+                {
+                    "label": "Activation coverage",
+                    "value": "0%",
+                    "status": "warn",
+                    "note": "Awaiting first links",
+                },
+                {
+                    "label": "Replaced devices",
+                    "value": "0",
+                    "status": "good",
+                    "note": "No swaps recorded",
+                },
+                {
+                    "label": "Stale devices",
+                    "value": "0",
+                    "status": "good",
+                    "note": "No stale records",
+                },
             ]
         }
 
@@ -8941,12 +9418,30 @@ def admin_user_dashboard(request: Request) -> dict[str, Any]:
     if not isinstance(profile, dict):
         profile = {}
 
-    settings_map = profile.get("web_settings", {}) if isinstance(profile.get("web_settings", {}), dict) else {}
-    routines_map = profile.get("web_routines", {}) if isinstance(profile.get("web_routines", {}), dict) else {}
-    prefs_map = profile.get("web_profile_prefs", {}) if isinstance(profile.get("web_profile_prefs", {}), dict) else {}
-    controls_map = profile.get("web_device_controls", {}) if isinstance(profile.get("web_device_controls", {}), dict) else {}
-    timeline_map = profile.get("web_timeline", {}) if isinstance(profile.get("web_timeline", {}), dict) else {}
-    commands_map = profile.get("web_device_commands", {}) if isinstance(profile.get("web_device_commands", {}), dict) else {}
+    settings_map = (
+        profile.get("web_settings", {}) if isinstance(profile.get("web_settings", {}), dict) else {}
+    )
+    routines_map = (
+        profile.get("web_routines", {}) if isinstance(profile.get("web_routines", {}), dict) else {}
+    )
+    prefs_map = (
+        profile.get("web_profile_prefs", {})
+        if isinstance(profile.get("web_profile_prefs", {}), dict)
+        else {}
+    )
+    controls_map = (
+        profile.get("web_device_controls", {})
+        if isinstance(profile.get("web_device_controls", {}), dict)
+        else {}
+    )
+    timeline_map = (
+        profile.get("web_timeline", {}) if isinstance(profile.get("web_timeline", {}), dict) else {}
+    )
+    commands_map = (
+        profile.get("web_device_commands", {})
+        if isinstance(profile.get("web_device_commands", {}), dict)
+        else {}
+    )
 
     command_rows: list[dict[str, Any]] = []
     pending_commands = 0
@@ -8976,7 +9471,10 @@ def admin_user_dashboard(request: Request) -> dict[str, Any]:
             )
 
     command_rows.sort(
-        key=lambda x: _parse_iso_timestamp(str(x.get("updated_at", ""))) or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda x: (
+            _parse_iso_timestamp(str(x.get("updated_at", "")))
+            or datetime.min.replace(tzinfo=timezone.utc)
+        ),
         reverse=True,
     )
 
@@ -9044,7 +9542,9 @@ def admin_mobile_beta_cohort(
 
 
 @app.post("/v1/admin/mobile/beta-cohort/enroll", response_model=None)
-def admin_mobile_beta_cohort_enroll(payload: BetaCohortEnrollRequest, request: Request) -> dict[str, Any]:
+def admin_mobile_beta_cohort_enroll(
+    payload: BetaCohortEnrollRequest, request: Request
+) -> dict[str, Any]:
     _enforce_same_origin(request)
     admin = _require_admin(request)
 
@@ -9060,7 +9560,9 @@ def admin_mobile_beta_cohort_enroll(payload: BetaCohortEnrollRequest, request: R
 
     resolved_user_id = str(getattr(user, "id", "") or "").strip()
     if not resolved_user_id:
-        raise HTTPException(status_code=400, detail="Unable to resolve user id for cohort enrollment")
+        raise HTTPException(
+            status_code=400, detail="Unable to resolve user id for cohort enrollment"
+        )
 
     member = _db_beta_progress_repository().upsert_cohort_member(
         user_id=resolved_user_id,
@@ -9143,7 +9645,9 @@ def admin_voice_circuit_breaker_reset(request: Request) -> dict[str, Any]:
     admin = _require_admin(request)
 
     source = f"admin_panel:{str(admin.get('user_id', '') or 'unknown')}"
-    payload = write_voice_circuit_reset_signal(settings.voice_circuit_reset_signal_path, source=source)
+    payload = write_voice_circuit_reset_signal(
+        settings.voice_circuit_reset_signal_path, source=source
+    )
 
     store.add_admin_audit_log(
         actor_user_id=str(admin.get("user_id", "")),
@@ -9162,6 +9666,7 @@ def admin_voice_circuit_breaker_reset(request: Request) -> dict[str, Any]:
 
 # ── Update Manager routes ──────────────────────────────────────────────────────
 
+
 @app.get("/v1/admin/versions", response_model=None)
 def admin_list_versions(request: Request) -> dict[str, Any]:
     _require_admin(request)
@@ -9171,7 +9676,9 @@ def admin_list_versions(request: Request) -> dict[str, Any]:
 
 
 @app.post("/v1/admin/versions/app", response_model=None)
-def admin_publish_app_version(payload: PublishAppVersionRequest, request: Request) -> dict[str, Any]:
+def admin_publish_app_version(
+    payload: PublishAppVersionRequest, request: Request
+) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
     if role == "viewer":
@@ -9199,7 +9706,9 @@ def admin_publish_app_version(payload: PublishAppVersionRequest, request: Reques
 
 
 @app.post("/v1/admin/versions/firmware", response_model=None)
-def admin_publish_firmware_version(payload: PublishFirmwareVersionRequest, request: Request) -> dict[str, Any]:
+def admin_publish_firmware_version(
+    payload: PublishFirmwareVersionRequest, request: Request
+) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
     if role == "viewer":
@@ -9224,7 +9733,9 @@ def admin_publish_firmware_version(payload: PublishFirmwareVersionRequest, reque
 
 
 @app.patch("/v1/admin/versions/{version_id}", response_model=None)
-def admin_patch_version(version_id: str, payload: PatchVersionRequest, request: Request) -> dict[str, Any]:
+def admin_patch_version(
+    version_id: str, payload: PatchVersionRequest, request: Request
+) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
     if role == "viewer":
@@ -9255,6 +9766,7 @@ def admin_patch_version(version_id: str, payload: PatchVersionRequest, request: 
 
 # ── Feature Flag routes ────────────────────────────────────────────────────────
 
+
 @app.get("/v1/admin/feature-flags", response_model=None)
 def admin_list_feature_flags(request: Request) -> dict[str, Any]:
     _require_admin(request)
@@ -9263,7 +9775,9 @@ def admin_list_feature_flags(request: Request) -> dict[str, Any]:
 
 
 @app.post("/v1/admin/feature-flags", response_model=None)
-def admin_upsert_feature_flag(payload: UpsertFeatureFlagRequest, request: Request) -> dict[str, Any]:
+def admin_upsert_feature_flag(
+    payload: UpsertFeatureFlagRequest, request: Request
+) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
     if role == "viewer":
@@ -9282,13 +9796,18 @@ def admin_upsert_feature_flag(payload: UpsertFeatureFlagRequest, request: Reques
         actor_role=role,
         action="upsert_feature_flag",
         resource=f"flag:{payload.flag_key}",
-        details={"enabled_globally": payload.enabled_globally, "rollout_percent": payload.rollout_percent},
+        details={
+            "enabled_globally": payload.enabled_globally,
+            "rollout_percent": payload.rollout_percent,
+        },
     )
     return {"ok": True, "flag": result}
 
 
 @app.patch("/v1/admin/feature-flags/{flag_key}", response_model=None)
-def admin_patch_feature_flag(flag_key: str, payload: PatchFeatureFlagRequest, request: Request) -> dict[str, Any]:
+def admin_patch_feature_flag(
+    flag_key: str, payload: PatchFeatureFlagRequest, request: Request
+) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
     if role == "viewer":
@@ -9300,9 +9819,15 @@ def admin_patch_feature_flag(flag_key: str, payload: PatchFeatureFlagRequest, re
         flag_key=flag_key,
         display_name=existing["display_name"],
         description=existing["description"],
-        enabled_globally=payload.enabled_globally if payload.enabled_globally is not None else existing["enabled_globally"],
-        enabled_for_plans=payload.enabled_for_plans if payload.enabled_for_plans is not None else existing["enabled_for_plans"],
-        rollout_percent=payload.rollout_percent if payload.rollout_percent is not None else existing["rollout_percent"],
+        enabled_globally=payload.enabled_globally
+        if payload.enabled_globally is not None
+        else existing["enabled_globally"],
+        enabled_for_plans=payload.enabled_for_plans
+        if payload.enabled_for_plans is not None
+        else existing["enabled_for_plans"],
+        rollout_percent=payload.rollout_percent
+        if payload.rollout_percent is not None
+        else existing["rollout_percent"],
         updated_by=str(admin.get("email", "") or admin.get("user_id", "")),
     )
     store.add_admin_audit_log(
@@ -9317,11 +9842,14 @@ def admin_patch_feature_flag(flag_key: str, payload: PatchFeatureFlagRequest, re
 
 # ── User feature override routes ───────────────────────────────────────────────
 
+
 @app.get("/v1/admin/users/{user_id}/features", response_model=None)
 def admin_get_user_features(user_id: str, request: Request) -> dict[str, Any]:
     _require_admin(request)
     flags = _db_feature_flag_repository().list_flags()
-    overrides = {o["flag_key"]: o for o in _db_feature_flag_repository().list_user_overrides(user_id)}
+    overrides = {
+        o["flag_key"]: o for o in _db_feature_flag_repository().list_user_overrides(user_id)
+    }
     merged = []
     for f in flags:
         key = f["flag_key"]
@@ -9331,7 +9859,9 @@ def admin_get_user_features(user_id: str, request: Request) -> dict[str, Any]:
 
 
 @app.post("/v1/admin/users/{user_id}/features", response_model=None)
-def admin_set_user_feature(user_id: str, payload: SetUserFeatureOverrideRequest, request: Request) -> dict[str, Any]:
+def admin_set_user_feature(
+    user_id: str, payload: SetUserFeatureOverrideRequest, request: Request
+) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
     if role == "viewer":
@@ -9365,6 +9895,7 @@ def admin_delete_user_feature(user_id: str, flag_key: str, request: Request) -> 
 
 # ── Admin user management routes ───────────────────────────────────────────────
 
+
 @app.get("/v1/admin/users", response_model=None)
 def admin_list_users(
     request: Request,
@@ -9384,7 +9915,9 @@ def admin_list_users(
         if not isinstance(u, dict):
             continue
         if search_lower:
-            haystack = (str(u.get("email", "")) + " " + str(u.get("name", "") or u.get("full_name", ""))).lower()
+            haystack = (
+                str(u.get("email", "")) + " " + str(u.get("name", "") or u.get("full_name", ""))
+            ).lower()
             if search_lower not in haystack:
                 continue
         if status_lower:
@@ -9393,18 +9926,20 @@ def admin_list_users(
         filtered.append(u)
     total = len(filtered)
     start = (safe_page - 1) * safe_limit
-    page_items = filtered[start: start + safe_limit]
+    page_items = filtered[start : start + safe_limit]
     items = []
     for u in page_items:
         uid = str(u.get("user_id", "") or u.get("id", "") or "")
-        items.append({
-            "user_id": uid,
-            "email": str(u.get("email", "") or ""),
-            "name": str(u.get("name", "") or u.get("full_name", "") or ""),
-            "subscription_status": str(u.get("subscription_status", "free") or "free"),
-            "created_at": str(u.get("created_at", "") or ""),
-            "trial_end_date": str(u.get("trial_end_date", "") or ""),
-        })
+        items.append(
+            {
+                "user_id": uid,
+                "email": str(u.get("email", "") or ""),
+                "name": str(u.get("name", "") or u.get("full_name", "") or ""),
+                "subscription_status": str(u.get("subscription_status", "free") or "free"),
+                "created_at": str(u.get("created_at", "") or ""),
+                "trial_end_date": str(u.get("trial_end_date", "") or ""),
+            }
+        )
     return {
         "ok": True,
         "total": total,
@@ -9440,7 +9975,9 @@ def admin_get_user_detail(user_id: str, request: Request) -> dict[str, Any]:
 
 
 @app.patch("/v1/admin/users/{user_id}", response_model=None)
-def admin_patch_user(user_id: str, payload: PatchAdminUserRequest, request: Request) -> dict[str, Any]:
+def admin_patch_user(
+    user_id: str, payload: PatchAdminUserRequest, request: Request
+) -> dict[str, Any]:
     admin = _require_admin(request)
     role = str(admin.get("role", "viewer") or "viewer")
     if role == "viewer":
@@ -9453,7 +9990,10 @@ def admin_patch_user(user_id: str, payload: PatchAdminUserRequest, request: Requ
         valid_statuses = {"free", "trial", "active", "cancelled", "past_due"}
         s = str(payload.subscription_status).strip().lower()
         if s not in valid_statuses:
-            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
+            )
         changes["subscription_status"] = s
     if payload.trial_end_date is not None:
         changes["trial_end_date"] = str(payload.trial_end_date).strip()
@@ -9472,6 +10012,7 @@ def admin_patch_user(user_id: str, payload: PatchAdminUserRequest, request: Requ
 
 # ── Device/Client version-check routes ────────────────────────────────────────
 
+
 @app.get("/v1/mobile/version-check", response_model=None)
 def mobile_version_check(request: Request, platform: str = "android") -> dict[str, Any]:
     user = _mobile_user(request)
@@ -9485,7 +10026,9 @@ def mobile_version_check(request: Request, platform: str = "android") -> dict[st
         bucket = int(hashlib.md5(f"{uid}app_update".encode()).hexdigest(), 16) % 100
         if bucket >= rollout:
             return {"ok": True, "update_available": False}
-    store_url = active.get("store_url_ios") if safe_platform == "ios" else active.get("store_url_android")
+    store_url = (
+        active.get("store_url_ios") if safe_platform == "ios" else active.get("store_url_android")
+    )
     return {
         "ok": True,
         "update_available": True,
@@ -9528,6 +10071,7 @@ def device_firmware_check(
 @app.post("/v1/ai/chat", response_model=None)
 async def ai_chat(payload: ChatRequest, request: Request) -> dict[str, Any]:
     import asyncio
+
     _enforce_same_origin(request)
     actor = _authenticated_actor(request)
     if not actor:
@@ -9577,16 +10121,29 @@ async def ai_chat_stream(message: str, request: Request):
 
     _bump("chat_stream_requests")
 
-    actor_key = _user_profile_key(actor) or str(
-        actor.get("user_id", "") or actor.get("admin_id", "") or actor.get("email", "") or "session"
-    ).strip().lower()
+    actor_key = (
+        _user_profile_key(actor)
+        or str(
+            actor.get("user_id", "")
+            or actor.get("admin_id", "")
+            or actor.get("email", "")
+            or "session"
+        )
+        .strip()
+        .lower()
+    )
 
     profile = _safe_profile()
     if not isinstance(profile, dict):
         profile = {}
 
     settings_defaults = _normalize_user_settings(
-        {"response_style": "balanced", "engagement_level": "high", "wind_down_minutes": 45, "partner_mode_enabled": False}
+        {
+            "response_style": "balanced",
+            "engagement_level": "high",
+            "wind_down_minutes": 45,
+            "partner_mode_enabled": False,
+        }
     )
     settings_payload = _profile_user_settings(profile, actor, defaults=settings_defaults)
     profile_prefs = _chat_profile_prefs_for_user(profile, actor)
@@ -9612,15 +10169,17 @@ async def ai_chat_stream(message: str, request: Request):
             chat_engine = _chat_engine_for_user(actor_key)
 
             def _run_stream():
-                return list(chat_engine.generate_response_stream(
-                    user_text=message,
-                    personality=personality,
-                    realtime_context="",
-                    user_context=user_context,
-                    emotion_state=emotion_state,
-                    cognitive_load_mode=cognitive_load_mode,
-                    max_response_tokens=160,
-                ))
+                return list(
+                    chat_engine.generate_response_stream(
+                        user_text=message,
+                        personality=personality,
+                        realtime_context="",
+                        user_context=user_context,
+                        emotion_state=emotion_state,
+                        cognitive_load_mode=cognitive_load_mode,
+                        max_response_tokens=160,
+                    )
+                )
 
             # generate_response_stream is a sync generator — run in thread pool
             chunks = await asyncio.to_thread(_run_stream)
@@ -9631,7 +10190,12 @@ async def ai_chat_stream(message: str, request: Request):
                 yield {"data": _json.dumps({"chunk": chunk})}
 
         except Exception as exc:
-            _event("warning", "chat_stream_failure", user_id=str(actor.get("user_id", "")), error=str(exc)[:180])
+            _event(
+                "warning",
+                "chat_stream_failure",
+                user_id=str(actor.get("user_id", "")),
+                error=str(exc)[:180],
+            )
             fallback = _chat_local_fallback(message)
             collected = [fallback]
             yield {"event": "error", "data": _json.dumps({"chunk": fallback})}
@@ -9649,6 +10213,7 @@ async def ai_chat_stream(message: str, request: Request):
 
 
 # ── WebSocket endpoints ────────────────────────────────────────────────────────
+
 
 @app.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket):
@@ -9682,9 +10247,17 @@ async def ws_chat(websocket: WebSocket):
     await websocket.accept()
     await websocket.send_json({"type": "connected"})
 
-    actor_key = _user_profile_key(actor) or str(
-        actor.get("user_id", "") or actor.get("admin_id", "") or actor.get("email", "") or "session"
-    ).strip().lower()
+    actor_key = (
+        _user_profile_key(actor)
+        or str(
+            actor.get("user_id", "")
+            or actor.get("admin_id", "")
+            or actor.get("email", "")
+            or "session"
+        )
+        .strip()
+        .lower()
+    )
     memory_store = _memory_store_for_user(actor_key)
 
     try:
@@ -9709,7 +10282,12 @@ async def ws_chat(websocket: WebSocket):
             if not isinstance(profile, dict):
                 profile = {}
             settings_defaults = _normalize_user_settings(
-                {"response_style": "balanced", "engagement_level": "high", "wind_down_minutes": 45, "partner_mode_enabled": False}
+                {
+                    "response_style": "balanced",
+                    "engagement_level": "high",
+                    "wind_down_minutes": 45,
+                    "partner_mode_enabled": False,
+                }
             )
             settings_payload = _profile_user_settings(profile, actor, defaults=settings_defaults)
             profile_prefs = _chat_profile_prefs_for_user(profile, actor)
@@ -9733,15 +10311,17 @@ async def ws_chat(websocket: WebSocket):
                 chat_engine = _chat_engine_for_user(actor_key)
 
                 def _run_stream():
-                    return list(chat_engine.generate_response_stream(
-                        user_text=message,
-                        personality=personality,
-                        realtime_context="",
-                        user_context=user_context,
-                        emotion_state=emotion_state,
-                        cognitive_load_mode=cognitive_load_mode,
-                        max_response_tokens=160,
-                    ))
+                    return list(
+                        chat_engine.generate_response_stream(
+                            user_text=message,
+                            personality=personality,
+                            realtime_context="",
+                            user_context=user_context,
+                            emotion_state=emotion_state,
+                            cognitive_load_mode=cognitive_load_mode,
+                            max_response_tokens=160,
+                        )
+                    )
 
                 chunks = await asyncio.to_thread(_run_stream)
                 for chunk in chunks:
@@ -9749,7 +10329,12 @@ async def ws_chat(websocket: WebSocket):
                     await websocket.send_json({"type": "chunk", "chunk": chunk})
 
             except Exception as exc:
-                _event("warning", "ws_chat_stream_failure", user_id=str(actor.get("user_id", "")), error=str(exc)[:180])
+                _event(
+                    "warning",
+                    "ws_chat_stream_failure",
+                    user_id=str(actor.get("user_id", "")),
+                    error=str(exc)[:180],
+                )
                 fallback = _chat_local_fallback(message)
                 collected = [fallback]
                 await websocket.send_json({"type": "error", "detail": fallback})
@@ -9809,9 +10394,17 @@ async def ws_voice(websocket: WebSocket):
     await websocket.accept()
     await websocket.send_json({"type": "connected"})
 
-    actor_key = _user_profile_key(actor) or str(
-        actor.get("user_id", "") or actor.get("admin_id", "") or actor.get("email", "") or "session"
-    ).strip().lower()
+    actor_key = (
+        _user_profile_key(actor)
+        or str(
+            actor.get("user_id", "")
+            or actor.get("admin_id", "")
+            or actor.get("email", "")
+            or "session"
+        )
+        .strip()
+        .lower()
+    )
     memory_store = _memory_store_for_user(actor_key)
 
     sample_rate = 16000
@@ -9841,7 +10434,9 @@ async def ws_voice(websocket: WebSocket):
                 continue
 
             if msg.get("type") != "stop":
-                await websocket.send_json({"type": "error", "detail": f"Unknown frame type: {msg.get('type')}"})
+                await websocket.send_json(
+                    {"type": "error", "detail": f"Unknown frame type: {msg.get('type')}"}
+                )
                 continue
 
             # "stop" received — transcribe collected audio
@@ -9864,6 +10459,7 @@ async def ws_voice(websocket: WebSocket):
 
             try:
                 from ai.stt_manager import STTManager
+
                 stt = STTManager()
 
                 def _do_transcribe():
@@ -9875,6 +10471,7 @@ async def ws_voice(websocket: WebSocket):
                 continue
             finally:
                 import os as _os
+
                 try:
                     _os.unlink(tmp_path)
                 except Exception:
@@ -9892,7 +10489,12 @@ async def ws_voice(websocket: WebSocket):
             if not isinstance(profile, dict):
                 profile = {}
             settings_defaults = _normalize_user_settings(
-                {"response_style": "balanced", "engagement_level": "high", "wind_down_minutes": 45, "partner_mode_enabled": False}
+                {
+                    "response_style": "balanced",
+                    "engagement_level": "high",
+                    "wind_down_minutes": 45,
+                    "partner_mode_enabled": False,
+                }
             )
             settings_payload = _profile_user_settings(profile, actor, defaults=settings_defaults)
             profile_prefs = _chat_profile_prefs_for_user(profile, actor)
@@ -9916,15 +10518,17 @@ async def ws_voice(websocket: WebSocket):
                 chat_engine = _chat_engine_for_user(actor_key)
 
                 def _run_stream():
-                    return list(chat_engine.generate_response_stream(
-                        user_text=transcript,
-                        personality=personality,
-                        realtime_context="",
-                        user_context=user_context,
-                        emotion_state=emotion_state,
-                        cognitive_load_mode=cognitive_load_mode,
-                        max_response_tokens=160,
-                    ))
+                    return list(
+                        chat_engine.generate_response_stream(
+                            user_text=transcript,
+                            personality=personality,
+                            realtime_context="",
+                            user_context=user_context,
+                            emotion_state=emotion_state,
+                            cognitive_load_mode=cognitive_load_mode,
+                            max_response_tokens=160,
+                        )
+                    )
 
                 chunks = await asyncio.to_thread(_run_stream)
                 for chunk in chunks:
@@ -9932,7 +10536,12 @@ async def ws_voice(websocket: WebSocket):
                     await websocket.send_json({"type": "chunk", "chunk": chunk})
 
             except Exception as exc:
-                _event("warning", "ws_voice_stream_failure", user_id=str(actor.get("user_id", "")), error=str(exc)[:180])
+                _event(
+                    "warning",
+                    "ws_voice_stream_failure",
+                    user_id=str(actor.get("user_id", "")),
+                    error=str(exc)[:180],
+                )
                 fallback = _chat_local_fallback(transcript)
                 collected = [fallback]
                 await websocket.send_json({"type": "error", "detail": fallback})
@@ -9979,6 +10588,7 @@ async def garmin_sync(payload: GarminSyncRequest, request: Request) -> dict[str,
 
     try:
         from integrations.fitness_tracker_api import FitnessTrackerAPI
+
         tracker = FitnessTrackerAPI()
 
         def _do_sync():
@@ -9990,7 +10600,8 @@ async def garmin_sync(payload: GarminSyncRequest, request: Request) -> dict[str,
         raise HTTPException(status_code=502, detail=f"Garmin sync failed: {exc}")
 
     _event(
-        "info", "garmin_synced",
+        "info",
+        "garmin_synced",
         user_id=user_id,
         date=result.get("date", ""),
         ingested=result.get("ingested", False),
@@ -10009,6 +10620,7 @@ def garmin_status(request: Request) -> dict[str, Any]:
     try:
         from integrations.fitness_tracker_api import FitnessTrackerAPI
         from integrations.garmin_client import build_client_from_settings
+
         tracker = FitnessTrackerAPI()
         status = tracker.get_status(profile)
         client = build_client_from_settings()
@@ -10053,6 +10665,7 @@ async def weekly_report_pdf(
             else:
                 reporter.to_pdf(report, tmp_path)
             import os as _os
+
             data = open(tmp_path, "rb").read()
             _os.unlink(tmp_path)
             return data
@@ -10065,6 +10678,7 @@ async def weekly_report_pdf(
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}")
 
     from datetime import date as _date
+
     filename = f"danah_weekly_report_{_date.today().isoformat()}.pdf"
     _event("info", "weekly_pdf_generated", user_id=user_id, renderer=renderer)
     return Response(
@@ -10098,6 +10712,7 @@ async def weekly_report_pdf_url(
 
     try:
         from Storage.s3_client import build_s3_client_from_settings
+
         s3 = build_s3_client_from_settings()
         if s3 is None:
             raise HTTPException(status_code=503, detail="S3 not configured — set AWS_S3_BUCKET")
@@ -10121,6 +10736,7 @@ async def weekly_report_pdf_url(
             else:
                 reporter.to_pdf(report, tmp_path)
             import os as _os
+
             pdf_bytes = open(tmp_path, "rb").read()
             _os.unlink(tmp_path)
             date_str = _date.today().isoformat()
@@ -10179,6 +10795,7 @@ def fitbit_auth_url(request: Request) -> dict[str, Any]:
     _require_user(request)
     try:
         from integrations.fitbit_client import build_auth_url
+
         url = build_auth_url(
             client_id=settings.fitbit_client_id,
             redirect_uri=settings.fitbit_redirect_uri,
@@ -10244,6 +10861,7 @@ async def fitbit_sync(payload: FitbitSyncRequest, request: Request) -> dict[str,
 
     try:
         from integrations.fitness_tracker_api import FitnessTrackerAPI
+
         tracker = FitnessTrackerAPI()
 
         def _do_sync():
@@ -10260,7 +10878,8 @@ async def fitbit_sync(payload: FitbitSyncRequest, request: Request) -> dict[str,
         raise HTTPException(status_code=502, detail=f"Fitbit sync failed: {exc}")
 
     _event(
-        "info", "fitbit_synced",
+        "info",
+        "fitbit_synced",
         user_id=user_id,
         date=result.get("date", ""),
         ingested=result.get("ingested", False),
@@ -10276,7 +10895,9 @@ class GoogleCalendarSyncRequest(BaseModel):
 
 
 @app.post("/v1/calendar/google/sync", response_model=None)
-async def calendar_google_sync(payload: GoogleCalendarSyncRequest, request: Request) -> dict[str, Any]:
+async def calendar_google_sync(
+    payload: GoogleCalendarSyncRequest, request: Request
+) -> dict[str, Any]:
     """Pull events from the authenticated user's Google Calendar and sync into their profile.
 
     The mobile app forwards the Google OAuth2 tokens obtained during sign-in.
@@ -10293,6 +10914,7 @@ async def calendar_google_sync(payload: GoogleCalendarSyncRequest, request: Requ
 
     try:
         from integrations.calendar_sync import CalendarSync
+
         cal = CalendarSync()
 
         def _do_sync():
@@ -10309,7 +10931,12 @@ async def calendar_google_sync(payload: GoogleCalendarSyncRequest, request: Requ
         _event("warning", "google_calendar_sync_error", user_id=user_id, error=str(exc)[:200])
         raise HTTPException(status_code=502, detail=f"Google Calendar sync failed: {exc}")
 
-    _event("info", "google_calendar_synced", user_id=user_id, events_count=result.get("events_count", 0))
+    _event(
+        "info",
+        "google_calendar_synced",
+        user_id=user_id,
+        events_count=result.get("events_count", 0),
+    )
     return result
 
 
@@ -10325,6 +10952,7 @@ async def calendar_schedule(request: Request, days_ahead: int = 1) -> dict[str, 
 
     try:
         from integrations.calendar_sync import CalendarSync
+
         cal = CalendarSync()
         if days_ahead <= 1:
             result = await asyncio.to_thread(cal.get_tomorrow_schedule, profile)

@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_wav(
     freq_hz: float = 440.0,
     sample_rate: int = 16000,
@@ -23,8 +24,7 @@ def _make_wav(
 ) -> bytes:
     n = sample_rate * duration_ms // 1000
     samples = [
-        int(amplitude * 32767 * math.sin(2 * math.pi * freq_hz * i / sample_rate))
-        for i in range(n)
+        int(amplitude * 32767 * math.sin(2 * math.pi * freq_hz * i / sample_rate)) for i in range(n)
     ]
     frame_data = struct.pack(f"<{n}h", *samples)
     if n_channels == 2:
@@ -62,15 +62,17 @@ class _FakeAnnotation:
 # DiarizedSegment
 # ---------------------------------------------------------------------------
 
-class TestDiarizedSegment(unittest.TestCase):
 
+class TestDiarizedSegment(unittest.TestCase):
     def test_duration_s_positive(self):
         from ai.speaker_diarization import DiarizedSegment
+
         seg = DiarizedSegment(start=1.0, end=3.5, speaker="SPEAKER_00")
         self.assertAlmostEqual(seg.duration_s, 2.5)
 
     def test_duration_s_zero_for_inverted_times(self):
         from ai.speaker_diarization import DiarizedSegment
+
         seg = DiarizedSegment(start=5.0, end=3.0, speaker="SPEAKER_00")
         self.assertEqual(seg.duration_s, 0.0)
 
@@ -79,14 +81,16 @@ class TestDiarizedSegment(unittest.TestCase):
 # PYANNOTE_AVAILABLE flag
 # ---------------------------------------------------------------------------
 
-class TestPyannoteAvailabilityFlag(unittest.TestCase):
 
+class TestPyannoteAvailabilityFlag(unittest.TestCase):
     def test_flag_exported(self):
         from ai.speaker_diarization import PYANNOTE_AVAILABLE
+
         self.assertIsInstance(PYANNOTE_AVAILABLE, bool)
 
     def test_stt_manager_exports_flag(self):
         import ai.stt_manager as mod
+
         self.assertIn("_PYANNOTE_AVAILABLE", dir(mod))
         self.assertIsInstance(mod._PYANNOTE_AVAILABLE, bool)
 
@@ -95,10 +99,11 @@ class TestPyannoteAvailabilityFlag(unittest.TestCase):
 # speaker_summary static method
 # ---------------------------------------------------------------------------
 
-class TestSpeakerSummary(unittest.TestCase):
 
+class TestSpeakerSummary(unittest.TestCase):
     def test_empty_segments(self):
         from ai.speaker_diarization import SpeakerDiarizer
+
         result = SpeakerDiarizer.speaker_summary([])
         self.assertEqual(result["num_speakers"], 0)
         self.assertIsNone(result["primary_speaker"])
@@ -106,6 +111,7 @@ class TestSpeakerSummary(unittest.TestCase):
 
     def test_single_speaker(self):
         from ai.speaker_diarization import DiarizedSegment, SpeakerDiarizer
+
         segs = [DiarizedSegment(0.0, 5.0, "SPEAKER_00")]
         result = SpeakerDiarizer.speaker_summary(segs)
         self.assertEqual(result["num_speakers"], 1)
@@ -114,6 +120,7 @@ class TestSpeakerSummary(unittest.TestCase):
 
     def test_primary_is_longest_speaker(self):
         from ai.speaker_diarization import DiarizedSegment, SpeakerDiarizer
+
         segs = [
             DiarizedSegment(0.0, 2.0, "SPEAKER_00"),
             DiarizedSegment(2.5, 7.0, "SPEAKER_01"),  # 4.5 s — longest
@@ -125,6 +132,7 @@ class TestSpeakerSummary(unittest.TestCase):
 
     def test_total_speech_is_sum_of_durations(self):
         from ai.speaker_diarization import DiarizedSegment, SpeakerDiarizer
+
         segs = [
             DiarizedSegment(0.0, 2.0, "SPEAKER_00"),
             DiarizedSegment(3.0, 5.5, "SPEAKER_01"),
@@ -134,6 +142,7 @@ class TestSpeakerSummary(unittest.TestCase):
 
     def test_speaker_durations_keys_sorted(self):
         from ai.speaker_diarization import DiarizedSegment, SpeakerDiarizer
+
         segs = [
             DiarizedSegment(0.0, 1.0, "SPEAKER_02"),
             DiarizedSegment(1.5, 2.5, "SPEAKER_00"),
@@ -148,16 +157,18 @@ class TestSpeakerSummary(unittest.TestCase):
 # SpeakerDiarizer — unavailable path
 # ---------------------------------------------------------------------------
 
-class TestSpeakerDiarizerUnavailable(unittest.TestCase):
 
+class TestSpeakerDiarizerUnavailable(unittest.TestCase):
     def test_load_pipeline_returns_false_when_unavailable(self):
         from ai.speaker_diarization import SpeakerDiarizer
+
         with patch("ai.speaker_diarization.PYANNOTE_AVAILABLE", False):
             d = SpeakerDiarizer(hf_token="tok")
             self.assertFalse(d.load_pipeline())
 
     def test_diarize_wav_bytes_returns_empty_when_unavailable(self):
         from ai.speaker_diarization import SpeakerDiarizer
+
         with patch("ai.speaker_diarization.PYANNOTE_AVAILABLE", False):
             d = SpeakerDiarizer()
             result = d.diarize_wav_bytes(_make_wav())
@@ -165,12 +176,14 @@ class TestSpeakerDiarizerUnavailable(unittest.TestCase):
 
     def test_diarize_file_returns_empty_for_missing_file(self):
         from ai.speaker_diarization import SpeakerDiarizer
+
         d = SpeakerDiarizer()
         result = d.diarize_file("/nonexistent/file.wav")
         self.assertEqual(result, [])
 
     def test_extract_primary_speaker_returns_original_when_unavailable(self):
         from ai.speaker_diarization import SpeakerDiarizer
+
         with patch("ai.speaker_diarization.PYANNOTE_AVAILABLE", False):
             d = SpeakerDiarizer()
             wav = _make_wav()
@@ -182,11 +195,12 @@ class TestSpeakerDiarizerUnavailable(unittest.TestCase):
 # SpeakerDiarizer — mocked pipeline
 # ---------------------------------------------------------------------------
 
-class TestSpeakerDiarizerWithMock(unittest.TestCase):
 
+class TestSpeakerDiarizerWithMock(unittest.TestCase):
     def _make_diarizer_with_mock_pipeline(self, turns):
         """Return a SpeakerDiarizer whose pipeline is pre-loaded with a fake."""
         from ai.speaker_diarization import SpeakerDiarizer
+
         d = SpeakerDiarizer(hf_token="tok")
         d._pipeline = MagicMock()
         d._pipeline.return_value = _FakeAnnotation(turns)
@@ -194,6 +208,7 @@ class TestSpeakerDiarizerWithMock(unittest.TestCase):
 
     def test_segments_returned_for_two_speakers(self):
         from ai.speaker_diarization import SpeakerDiarizer
+
         turns = [(0.0, 2.0, "SPEAKER_00"), (2.5, 5.0, "SPEAKER_01")]
         d = self._make_diarizer_with_mock_pipeline(turns)
         segs = d.diarize_wav_bytes(_make_wav())
@@ -205,18 +220,21 @@ class TestSpeakerDiarizerWithMock(unittest.TestCase):
     def test_segment_duration_correct(self):
         turns = [(1.0, 3.5, "SPEAKER_00")]
         from ai.speaker_diarization import SpeakerDiarizer
+
         d = self._make_diarizer_with_mock_pipeline(turns)
         segs = d.diarize_wav_bytes(_make_wav())
         self.assertAlmostEqual(segs[0].duration_s, 2.5)
 
     def test_empty_annotation_returns_empty_list(self):
         from ai.speaker_diarization import SpeakerDiarizer
+
         d = self._make_diarizer_with_mock_pipeline([])
         result = d.diarize_wav_bytes(_make_wav())
         self.assertEqual(result, [])
 
     def test_min_max_speakers_forwarded_to_pipeline(self):
         from ai.speaker_diarization import SpeakerDiarizer
+
         d = self._make_diarizer_with_mock_pipeline([])
         d.diarize_wav_bytes(_make_wav(), min_speakers=2, max_speakers=4)
         call_kwargs = d._pipeline.call_args[1]
@@ -227,6 +245,7 @@ class TestSpeakerDiarizerWithMock(unittest.TestCase):
         """Stereo input must be mixed to mono for pyannote compatibility."""
         from ai.speaker_diarization import SpeakerDiarizer
         import torch
+
         captured = {}
 
         def _capture_call(payload, **_kw):
@@ -244,6 +263,7 @@ class TestSpeakerDiarizerWithMock(unittest.TestCase):
     def test_unsupported_sampwidth_returns_empty(self):
         """24-bit WAV should be rejected gracefully."""
         from ai.speaker_diarization import SpeakerDiarizer
+
         n = 16000 * 3
         out = io.BytesIO()
         with wave.open(out, "wb") as wf:
@@ -262,10 +282,11 @@ class TestSpeakerDiarizerWithMock(unittest.TestCase):
 # extract_primary_speaker_wav
 # ---------------------------------------------------------------------------
 
-class TestExtractPrimarySpeaker(unittest.TestCase):
 
+class TestExtractPrimarySpeaker(unittest.TestCase):
     def _diarizer_with_segments(self, turns):
         from ai.speaker_diarization import SpeakerDiarizer
+
         d = SpeakerDiarizer(hf_token="tok")
         d._pipeline = MagicMock(return_value=_FakeAnnotation(turns))
         return d
@@ -276,8 +297,7 @@ class TestExtractPrimarySpeaker(unittest.TestCase):
         wav = _make_wav(duration_ms=3000)
         result = d.extract_primary_speaker_wav(wav)
         with wave.open(io.BytesIO(result), "rb") as wf:
-            self.assertEqual(wf.getnframes(),
-                             wave.open(io.BytesIO(wav), "rb").getnframes())
+            self.assertEqual(wf.getnframes(), wave.open(io.BytesIO(wav), "rb").getnframes())
 
     def test_non_primary_frames_zeroed(self):
         """Frames outside the primary speaker window must be zero."""
@@ -288,6 +308,7 @@ class TestExtractPrimarySpeaker(unittest.TestCase):
         result = d.extract_primary_speaker_wav(wav)
 
         import numpy as np
+
         with wave.open(io.BytesIO(result), "rb") as wf:
             raw = wf.readframes(wf.getnframes())
             sr = wf.getframerate()
@@ -298,6 +319,7 @@ class TestExtractPrimarySpeaker(unittest.TestCase):
 
     def test_returns_original_when_no_segments(self):
         from ai.speaker_diarization import SpeakerDiarizer
+
         with patch("ai.speaker_diarization.PYANNOTE_AVAILABLE", False):
             d = SpeakerDiarizer()
             wav = _make_wav()
@@ -308,10 +330,11 @@ class TestExtractPrimarySpeaker(unittest.TestCase):
 # STTManager.transcribe_file_with_diarization
 # ---------------------------------------------------------------------------
 
-class TestTranscribeFileWithDiarization(unittest.TestCase):
 
+class TestTranscribeFileWithDiarization(unittest.TestCase):
     def _tmp_wav(self, tmp_dir: str) -> str:
         import os
+
         path = os.path.join(tmp_dir, "test.wav")
         with open(path, "wb") as f:
             f.write(_make_wav(duration_ms=3000))
@@ -319,6 +342,7 @@ class TestTranscribeFileWithDiarization(unittest.TestCase):
 
     def test_returns_unavailable_for_missing_file(self):
         from ai.stt_manager import STTManager
+
         stt = STTManager(api_key="key")
         result = stt.transcribe_file_with_diarization("/no/such/file.wav")
         self.assertFalse(result["available"])
@@ -327,11 +351,15 @@ class TestTranscribeFileWithDiarization(unittest.TestCase):
     def test_degrades_gracefully_when_pyannote_absent(self):
         import ai.stt_manager as mod
         import tempfile
-        with patch.object(mod, "_PYANNOTE_AVAILABLE", False), \
-             patch.object(mod, "_SpeakerDiarizer", None):
+
+        with (
+            patch.object(mod, "_PYANNOTE_AVAILABLE", False),
+            patch.object(mod, "_SpeakerDiarizer", None),
+        ):
             stt = mod.STTManager(api_key="key")
-            with patch.object(stt, "transcribe_file_with_confidence",
-                              return_value=("hello world", 0.9)):
+            with patch.object(
+                stt, "transcribe_file_with_confidence", return_value=("hello world", 0.9)
+            ):
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                     f.write(_make_wav())
                     tmp = f.name
@@ -354,19 +382,20 @@ class TestTranscribeFileWithDiarization(unittest.TestCase):
 
         turns = [(0.0, 2.0, "SPEAKER_00"), (2.5, 4.0, "SPEAKER_01")]
         mock_diarizer = MagicMock(spec=SpeakerDiarizer)
-        mock_diarizer.diarize_file.return_value = [
-            DiarizedSegment(s, e, sp) for s, e, sp in turns
-        ]
+        mock_diarizer.diarize_file.return_value = [DiarizedSegment(s, e, sp) for s, e, sp in turns]
         mock_diarizer.speaker_summary = SpeakerDiarizer.speaker_summary
 
         mock_cls = MagicMock(return_value=mock_diarizer)
         mock_cls.speaker_summary = staticmethod(SpeakerDiarizer.speaker_summary)
 
-        with patch.object(mod, "_PYANNOTE_AVAILABLE", True), \
-             patch.object(mod, "_SpeakerDiarizer", mock_cls):
+        with (
+            patch.object(mod, "_PYANNOTE_AVAILABLE", True),
+            patch.object(mod, "_SpeakerDiarizer", mock_cls),
+        ):
             stt = mod.STTManager(api_key="key")
-            with patch.object(stt, "transcribe_file_with_confidence",
-                              return_value=("hello there", 0.85)):
+            with patch.object(
+                stt, "transcribe_file_with_confidence", return_value=("hello there", 0.85)
+            ):
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                     f.write(_make_wav())
                     tmp = f.name
@@ -387,11 +416,13 @@ class TestTranscribeFileWithDiarization(unittest.TestCase):
     def test_result_has_required_keys(self):
         import ai.stt_manager as mod
         import tempfile
-        with patch.object(mod, "_PYANNOTE_AVAILABLE", False), \
-             patch.object(mod, "_SpeakerDiarizer", None):
+
+        with (
+            patch.object(mod, "_PYANNOTE_AVAILABLE", False),
+            patch.object(mod, "_SpeakerDiarizer", None),
+        ):
             stt = mod.STTManager(api_key="key")
-            with patch.object(stt, "transcribe_file_with_confidence",
-                              return_value=("", 0.0)):
+            with patch.object(stt, "transcribe_file_with_confidence", return_value=("", 0.0)):
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                     f.write(_make_wav())
                     tmp = f.name
@@ -402,8 +433,14 @@ class TestTranscribeFileWithDiarization(unittest.TestCase):
 
                     os.unlink(tmp)
 
-        for key in ("available", "transcript", "confidence",
-                    "num_speakers", "segments", "speaker_summary"):
+        for key in (
+            "available",
+            "transcript",
+            "confidence",
+            "num_speakers",
+            "segments",
+            "speaker_summary",
+        ):
             self.assertIn(key, result)
 
     def test_hf_token_forwarded_to_diarizer(self):
@@ -417,11 +454,12 @@ class TestTranscribeFileWithDiarization(unittest.TestCase):
         mock_cls = MagicMock(return_value=mock_diarizer)
         mock_cls.speaker_summary = staticmethod(SpeakerDiarizer.speaker_summary)
 
-        with patch.object(mod, "_PYANNOTE_AVAILABLE", True), \
-             patch.object(mod, "_SpeakerDiarizer", mock_cls):
+        with (
+            patch.object(mod, "_PYANNOTE_AVAILABLE", True),
+            patch.object(mod, "_SpeakerDiarizer", mock_cls),
+        ):
             stt = mod.STTManager(api_key="key")
-            with patch.object(stt, "transcribe_file_with_confidence",
-                              return_value=("", 0.0)):
+            with patch.object(stt, "transcribe_file_with_confidence", return_value=("", 0.0)):
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                     f.write(_make_wav())
                     tmp = f.name

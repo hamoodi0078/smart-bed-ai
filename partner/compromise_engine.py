@@ -26,12 +26,15 @@ class CompromiseEngine:
     def ensure_shape(self, profile: dict) -> None:
         profile.setdefault("partner_mode", {})
         pm = profile["partner_mode"]
-        pm.setdefault("compromise_settings", {
-            "brightness_strategy": "average",
-            "sound_strategy": "quieter",
-            "wake_strategy": "staggered",
-            "color_strategy": "average",
-        })
+        pm.setdefault(
+            "compromise_settings",
+            {
+                "brightness_strategy": "average",
+                "sound_strategy": "quieter",
+                "wake_strategy": "staggered",
+                "color_strategy": "average",
+            },
+        )
 
     def resolve_scene(self, profile: dict, both_present: bool = True) -> dict[str, Any]:
         """Compute compromise scene settings when both partners in bed."""

@@ -11,7 +11,9 @@ class TestWebLastCommandResult(unittest.TestCase):
     @patch("web_server._save_profile")
     @patch("web_server._safe_profile")
     @patch("web_server._require_user")
-    def test_last_command_result_stored_after_execution(self, mock_require_user, mock_safe_profile, _mock_save):
+    def test_last_command_result_stored_after_execution(
+        self, mock_require_user, mock_safe_profile, _mock_save
+    ):
         profile: dict = {}
         mock_safe_profile.return_value = profile
         mock_require_user.return_value = {"user_id": "u1", "email": "u1@example.com"}
@@ -37,7 +39,9 @@ class TestWebLastCommandResult(unittest.TestCase):
     @patch("web_server._save_profile")
     @patch("web_server._safe_profile")
     @patch("web_server._require_user")
-    def test_dashboard_payload_includes_status_and_timestamp(self, mock_require_user, mock_safe_profile, _mock_save):
+    def test_dashboard_payload_includes_status_and_timestamp(
+        self, mock_require_user, mock_safe_profile, _mock_save
+    ):
         profile: dict = {}
         mock_safe_profile.return_value = profile
         mock_require_user.return_value = {"user_id": "u1", "email": "u1@example.com"}
@@ -48,7 +52,9 @@ class TestWebLastCommandResult(unittest.TestCase):
         self.assertEqual(dashboard_response.status_code, 200)
 
         last_result = dashboard_response.json().get("last_command_result", {})
-        self.assertIn(str(last_result.get("status", "")), {"queued", "running", "completed", "failed"})
+        self.assertIn(
+            str(last_result.get("status", "")), {"queued", "running", "completed", "failed"}
+        )
         self.assertTrue(str(last_result.get("timestamp_utc", "")).strip())
 
     @patch("web_server._save_profile")
@@ -71,18 +77,24 @@ class TestWebLastCommandResult(unittest.TestCase):
         self.assertEqual(second.status_code, 200)
         second_body = second.json()
         self.assertEqual(str(second_body.get("action", "")), "wake_recovery")
-        self.assertNotEqual(str(first_body.get("command_id", "")), str(second_body.get("command_id", "")))
+        self.assertNotEqual(
+            str(first_body.get("command_id", "")), str(second_body.get("command_id", ""))
+        )
 
     @patch("web_server._save_profile")
     @patch("web_server._safe_profile")
     @patch("web_server._require_user")
-    def test_trace_id_available_for_details_view(self, mock_require_user, mock_safe_profile, _mock_save):
+    def test_trace_id_available_for_details_view(
+        self, mock_require_user, mock_safe_profile, _mock_save
+    ):
         profile: dict = {}
         mock_safe_profile.return_value = profile
         mock_require_user.return_value = {"user_id": "u1", "email": "u1@example.com"}
 
         client = TestClient(web_server.app)
-        create_response = client.post("/v1/mobile/device-commands", json={"action": "reactive_lights"})
+        create_response = client.post(
+            "/v1/mobile/device-commands", json={"action": "reactive_lights"}
+        )
         self.assertEqual(create_response.status_code, 200)
         create_body = create_response.json()
         command_id = str(create_body.get("command_id", ""))
@@ -93,15 +105,18 @@ class TestWebLastCommandResult(unittest.TestCase):
         profile["web_device_commands"]["u1"][0]["created_at"] = "2026-03-01T00:00:00+00:00"
         status_response = client.get(f"/v1/mobile/device-commands/{command_id}")
         self.assertEqual(status_response.status_code, 200)
-        status_trace = str(status_response.json().get("last_command_result", {}).get("trace_id", ""))
+        status_trace = str(
+            status_response.json().get("last_command_result", {}).get("trace_id", "")
+        )
         self.assertRegex(status_trace, r"^req_[a-f0-9]{8}$")
 
         dashboard_response = client.get("/v1/mobile/dashboard")
         self.assertEqual(dashboard_response.status_code, 200)
-        dashboard_trace = str(dashboard_response.json().get("last_command_result", {}).get("trace_id", ""))
+        dashboard_trace = str(
+            dashboard_response.json().get("last_command_result", {}).get("trace_id", "")
+        )
         self.assertRegex(dashboard_trace, r"^req_[a-f0-9]{8}$")
 
 
 if __name__ == "__main__":
     unittest.main()
-

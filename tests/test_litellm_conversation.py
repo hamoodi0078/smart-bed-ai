@@ -17,6 +17,7 @@ import pytest
 # Mock factory
 # ---------------------------------------------------------------------------
 
+
 def _make_litellm_mock(chunks=("Hello", " there")):
     """Return a minimal litellm module mock."""
     mod = types.ModuleType("litellm")
@@ -58,6 +59,7 @@ def _make_litellm_mock(chunks=("Hello", " there")):
 # Module loader
 # ---------------------------------------------------------------------------
 
+
 def _load_mod(monkeypatch, litellm_available=True):
     for key in list(sys.modules):
         if "conversation_engine" in key and "test" not in key:
@@ -94,6 +96,7 @@ def _load_mod(monkeypatch, litellm_available=True):
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def mod(monkeypatch):
     return _load_mod(monkeypatch, litellm_available=True)
@@ -108,6 +111,7 @@ def mod_unavailable(monkeypatch):
 # Module-level flag
 # ---------------------------------------------------------------------------
 
+
 class TestFlag:
     def test_litellm_available_flag_true(self, mod):
         assert mod._LITELLM_AVAILABLE is True
@@ -119,6 +123,7 @@ class TestFlag:
 # ---------------------------------------------------------------------------
 # Construction
 # ---------------------------------------------------------------------------
+
 
 class TestConstruction:
     def test_default_model(self, mod):
@@ -150,6 +155,7 @@ class TestConstruction:
 # System prompt construction
 # ---------------------------------------------------------------------------
 
+
 class TestBuildSystemText:
     def _engine(self, mod):
         return mod.LiteLLMConversationEngine()
@@ -157,7 +163,12 @@ class TestBuildSystemText:
     def test_persona_text_included(self, mod):
         e = self._engine(mod)
         text = e._build_system_text("therapist", "", "neutral", "normal")
-        assert "calm" in text.lower() or "therapeutic" in text.lower() or "empathy" in text.lower() or "professional" in text.lower()
+        assert (
+            "calm" in text.lower()
+            or "therapeutic" in text.lower()
+            or "empathy" in text.lower()
+            or "professional" in text.lower()
+        )
 
     def test_temporal_grounding_included(self, mod):
         e = self._engine(mod)
@@ -183,6 +194,7 @@ class TestBuildSystemText:
 # ---------------------------------------------------------------------------
 # Message list construction
 # ---------------------------------------------------------------------------
+
 
 class TestBuildMessages:
     def test_first_message_is_system(self, mod):
@@ -216,6 +228,7 @@ class TestBuildMessages:
 # generate_response — fallback
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateResponseFallback:
     def test_fallback_when_unavailable(self, mod_unavailable):
         e = mod_unavailable.LiteLLMConversationEngine()
@@ -237,6 +250,7 @@ class TestGenerateResponseFallback:
 # ---------------------------------------------------------------------------
 # generate_response — success
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateResponseSuccess:
     def test_returns_text(self, mod):
@@ -287,6 +301,7 @@ class TestGenerateResponseSuccess:
 # generate_response_stream — fallback
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateResponseStreamFallback:
     def test_fallback_when_unavailable(self, mod_unavailable):
         e = mod_unavailable.LiteLLMConversationEngine()
@@ -304,6 +319,7 @@ class TestGenerateResponseStreamFallback:
 # ---------------------------------------------------------------------------
 # generate_response_stream — success
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateResponseStreamSuccess:
     def test_yields_chunks(self, mod):
@@ -334,6 +350,7 @@ class TestGenerateResponseStreamSuccess:
 # History management
 # ---------------------------------------------------------------------------
 
+
 class TestHistoryManagement:
     def test_appends_two_entries(self, mod):
         e = mod.LiteLLMConversationEngine()
@@ -356,6 +373,7 @@ class TestHistoryManagement:
 # ---------------------------------------------------------------------------
 # Fallback message
 # ---------------------------------------------------------------------------
+
 
 class TestFallbackMessage:
     def test_includes_user_text(self, mod):

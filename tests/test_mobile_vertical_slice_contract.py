@@ -26,8 +26,8 @@ class TestMobileVerticalSliceContract(unittest.TestCase):
 
         self.store = SubscriptionStore(db_path=self._subscription_db_path)
         self.store.hash_password = lambda password: _legacy_sha256(password)
-        self.store.check_password = (
-            lambda password, stored_hash: stored_hash == _legacy_sha256(password)
+        self.store.check_password = lambda password, stored_hash: (
+            stored_hash == _legacy_sha256(password)
         )
 
         self._env_patch = patch.dict(
@@ -36,9 +36,7 @@ class TestMobileVerticalSliceContract(unittest.TestCase):
             clear=False,
         )
         self._patch_store = patch.object(web_server, "store", self.store)
-        self._patch_profile = patch.object(
-            web_server, "PROFILE_PATH", self._profile_path
-        )
+        self._patch_profile = patch.object(web_server, "PROFILE_PATH", self._profile_path)
 
         self._env_patch.start()
         self._patch_store.start()
@@ -137,8 +135,7 @@ class TestMobileVerticalSliceContract(unittest.TestCase):
         self.assertTrue(isinstance(items, list))
         self.assertTrue(
             any(
-                isinstance(row, dict)
-                and str(row.get("command_id", "") or "") == command_id
+                isinstance(row, dict) and str(row.get("command_id", "") or "") == command_id
                 for row in items
             )
         )

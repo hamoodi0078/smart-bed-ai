@@ -14,9 +14,10 @@ from unittest.mock import patch
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_wav(
     freq_hz: float = 440.0,
-    amplitude: float = 0.05,          # intentionally quiet
+    amplitude: float = 0.05,  # intentionally quiet
     sample_rate: int = 16000,
     duration_ms: int = 600,
     n_channels: int = 1,
@@ -24,8 +25,7 @@ def _make_wav(
     """Build an in-memory 16-bit PCM WAV at the given amplitude."""
     n = sample_rate * duration_ms // 1000
     samples = [
-        int(amplitude * 32767 * math.sin(2 * math.pi * freq_hz * i / sample_rate))
-        for i in range(n)
+        int(amplitude * 32767 * math.sin(2 * math.pi * freq_hz * i / sample_rate)) for i in range(n)
     ]
     frame_data = struct.pack(f"<{n}h", *samples)
     if n_channels == 2:
@@ -79,6 +79,7 @@ def _wav_frame_count(wav_bytes: bytes) -> int:
 
 def _make_stt():
     from ai.stt_manager import STTManager
+
     return STTManager(api_key="test_key")
 
 
@@ -86,18 +87,19 @@ def _make_stt():
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestPyloudnormAvailability(unittest.TestCase):
 
+class TestPyloudnormAvailability(unittest.TestCase):
     def test_flag_is_bool(self):
         import ai.stt_manager as mod
+
         self.assertIn("_PYLOUDNORM_AVAILABLE", dir(mod))
         self.assertIsInstance(mod._PYLOUDNORM_AVAILABLE, bool)
 
 
 class TestNormaliseLoudnessUnavailable(unittest.TestCase):
-
     def test_returns_original_when_unavailable(self):
         import ai.stt_manager as mod
+
         with patch.object(mod, "_PYLOUDNORM_AVAILABLE", False):
             stt = _make_stt()
             wav = _make_wav()
@@ -105,17 +107,17 @@ class TestNormaliseLoudnessUnavailable(unittest.TestCase):
 
     def test_returns_original_when_pyln_none(self):
         import ai.stt_manager as mod
-        with patch.object(mod, "_PYLOUDNORM_AVAILABLE", False), \
-             patch.object(mod, "_pyln", None):
+
+        with patch.object(mod, "_PYLOUDNORM_AVAILABLE", False), patch.object(mod, "_pyln", None):
             stt = _make_stt()
             wav = _make_wav()
             self.assertEqual(stt._normalize_loudness_wav_bytes(wav), wav)
 
 
 class TestNormaliseLoudnessFallbacks(unittest.TestCase):
-
     def test_returns_original_for_corrupt_bytes(self):
         import ai.stt_manager as mod
+
         if not mod._PYLOUDNORM_AVAILABLE:
             self.skipTest("pyloudnorm not installed")
         stt = _make_stt()
@@ -124,6 +126,7 @@ class TestNormaliseLoudnessFallbacks(unittest.TestCase):
 
     def test_returns_original_for_silent_wav(self):
         import ai.stt_manager as mod
+
         if not mod._PYLOUDNORM_AVAILABLE:
             self.skipTest("pyloudnorm not installed")
         stt = _make_stt()
@@ -135,6 +138,7 @@ class TestNormaliseLoudnessFallbacks(unittest.TestCase):
     def test_returns_original_for_too_short_wav(self):
         """Clips shorter than 400 ms cannot be measured reliably by BS.1770."""
         import ai.stt_manager as mod
+
         if not mod._PYLOUDNORM_AVAILABLE:
             self.skipTest("pyloudnorm not installed")
         stt = _make_stt()
@@ -144,6 +148,7 @@ class TestNormaliseLoudnessFallbacks(unittest.TestCase):
 
     def test_returns_original_for_24bit_wav(self):
         import ai.stt_manager as mod
+
         if not mod._PYLOUDNORM_AVAILABLE:
             self.skipTest("pyloudnorm not installed")
         # Build a 24-bit WAV (sampwidth=3) — unsupported
@@ -160,9 +165,9 @@ class TestNormaliseLoudnessFallbacks(unittest.TestCase):
 
 
 class TestNormaliseLoudnessCorrectness(unittest.TestCase):
-
     def test_output_is_valid_wav(self):
         import ai.stt_manager as mod
+
         if not mod._PYLOUDNORM_AVAILABLE:
             self.skipTest("pyloudnorm not installed")
         stt = _make_stt()
@@ -175,6 +180,7 @@ class TestNormaliseLoudnessCorrectness(unittest.TestCase):
 
     def test_frame_count_preserved(self):
         import ai.stt_manager as mod
+
         if not mod._PYLOUDNORM_AVAILABLE:
             self.skipTest("pyloudnorm not installed")
         stt = _make_stt()
@@ -184,6 +190,7 @@ class TestNormaliseLoudnessCorrectness(unittest.TestCase):
 
     def test_loudness_closer_to_target_after_normalisation(self):
         import ai.stt_manager as mod
+
         if not mod._PYLOUDNORM_AVAILABLE:
             self.skipTest("pyloudnorm not installed")
         stt = _make_stt()
@@ -204,6 +211,7 @@ class TestNormaliseLoudnessCorrectness(unittest.TestCase):
 
     def test_preserves_sample_rate(self):
         import ai.stt_manager as mod
+
         if not mod._PYLOUDNORM_AVAILABLE:
             self.skipTest("pyloudnorm not installed")
         stt = _make_stt()
@@ -215,6 +223,7 @@ class TestNormaliseLoudnessCorrectness(unittest.TestCase):
 
     def test_stereo_output_preserves_channel_count(self):
         import ai.stt_manager as mod
+
         if not mod._PYLOUDNORM_AVAILABLE:
             self.skipTest("pyloudnorm not installed")
         stt = _make_stt()
@@ -225,6 +234,7 @@ class TestNormaliseLoudnessCorrectness(unittest.TestCase):
 
     def test_custom_target_lufs_applied(self):
         import ai.stt_manager as mod
+
         if not mod._PYLOUDNORM_AVAILABLE:
             self.skipTest("pyloudnorm not installed")
         stt = _make_stt()
@@ -242,7 +252,6 @@ class TestNormaliseLoudnessCorrectness(unittest.TestCase):
 
 
 class TestNormalisationCalledInTranscribePaths(unittest.TestCase):
-
     def _make_spy_stt(self):
         stt = _make_stt()
         calls = []
@@ -263,19 +272,26 @@ class TestNormalisationCalledInTranscribePaths(unittest.TestCase):
         wav = _make_wav()
 
         class _FakeAudio:
-            def get_wav_data(self): return wav
+            def get_wav_data(self):
+                return wav
 
         class _FakeRecognizer:
             energy_threshold = 180.0
-            def adjust_for_ambient_noise(self, *a, **kw): pass
-            def listen(self, *a, **kw): return _FakeAudio()
+
+            def adjust_for_ambient_noise(self, *a, **kw):
+                pass
+
+            def listen(self, *a, **kw):
+                return _FakeAudio()
 
         class _FakeMic:
-            def __enter__(self): return self
-            def __exit__(self, *a): pass
+            def __enter__(self):
+                return self
 
-        with mock.patch.object(mod, "sr") as mock_sr, \
-             mock.patch("requests.post") as mock_post:
+            def __exit__(self, *a):
+                pass
+
+        with mock.patch.object(mod, "sr") as mock_sr, mock.patch("requests.post") as mock_post:
             mock_sr.Recognizer.return_value = _FakeRecognizer()
             mock_sr.Microphone.return_value = _FakeMic()
             mock_post.return_value.raise_for_status = lambda: None

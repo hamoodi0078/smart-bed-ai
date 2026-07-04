@@ -25,6 +25,7 @@ def _get_mqtt():
     _mqtt_attempted = True
     try:
         from integrations.mqtt_client import get_mqtt_client
+
         client = get_mqtt_client()
         if client.is_connected():
             _mqtt_client = client
@@ -100,7 +101,9 @@ class RaspberryPiSensorMonitor:
         try:
             if bool(pressure_enabled) and int(pressure_pin) >= 0:
                 self._devices["pressure"] = {
-                    "device": self._input_factory(int(pressure_pin), pull_up=bool(pressure_pull_up)),
+                    "device": self._input_factory(
+                        int(pressure_pin), pull_up=bool(pressure_pull_up)
+                    ),
                     "active_low": bool(pressure_active_low),
                     "pin": int(pressure_pin),
                 }
@@ -183,7 +186,9 @@ class RaspberryPiSensorMonitor:
                     mqtt = _get_mqtt()
                     if mqtt:
                         try:
-                            mqtt.publish_sensor("pressure", 100.0 if snapshot.pressure_active else 0.0)
+                            mqtt.publish_sensor(
+                                "pressure", 100.0 if snapshot.pressure_active else 0.0
+                            )
                             mqtt.publish_sensor("motion", 1.0 if snapshot.motion_active else 0.0)
                         except Exception as exc:
                             logger.debug("MQTT sensor publish failed: %s", exc)

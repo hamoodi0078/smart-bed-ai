@@ -112,7 +112,8 @@ class WindDownSession:
         if not isinstance(history, list):
             return []
         return [
-            item for item in history
+            item
+            for item in history
             if isinstance(item, dict) and str(item.get("user_id", "")) == str(user_id)
         ]
 

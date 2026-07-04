@@ -68,7 +68,9 @@ class TestBedStateApi(unittest.TestCase):
     @patch("web_server._safe_profile")
     @patch("web_server._cookie_user")
     @patch("web_server._device_health_status")
-    def test_v1_state_redacts_sensitive_tokens(self, mock_device_health, mock_cookie_user, mock_safe_profile):
+    def test_v1_state_redacts_sensitive_tokens(
+        self, mock_device_health, mock_cookie_user, mock_safe_profile
+    ):
         mock_cookie_user.return_value = {"user_id": "u1"}
         mock_safe_profile.return_value = {"preferences": {"personality": "guide"}}
         mock_device_health.return_value = {
@@ -96,10 +98,15 @@ class TestBedStateApi(unittest.TestCase):
         self.assertNotIn("oauth_token", payload)
         self.assertTrue(snapshot.get("device_health_status", {}).get("nested", {}).get("ok"))
 
-    @patch("web_server._bed_state_freshness_meta", return_value=("2026-03-07T10:00:00Z", False, True, "raspberry_pi"))
+    @patch(
+        "web_server._bed_state_freshness_meta",
+        return_value=("2026-03-07T10:00:00Z", False, True, "raspberry_pi"),
+    )
     @patch("web_server._safe_profile", return_value={"preferences": {"personality": "guide"}})
     @patch("web_server._cookie_user", return_value={"user_id": "u1"})
-    def test_v2_state_exposes_freshness_contract(self, _mock_cookie_user, _mock_safe_profile, _mock_freshness):
+    def test_v2_state_exposes_freshness_contract(
+        self, _mock_cookie_user, _mock_safe_profile, _mock_freshness
+    ):
         client = TestClient(web_server.app)
         response = client.get("/v2/bed/state")
         self.assertEqual(response.status_code, 200)

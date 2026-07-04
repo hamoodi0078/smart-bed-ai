@@ -23,10 +23,7 @@ class DanaGuide:
         return steps.get(step, "Stay present with your breath and let your body unwind.")
 
     def get_prayer_message(self, prayer_name: str) -> str:
-        return (
-            f"It is almost time for {prayer_name}. "
-            "A moment of peace and connection."
-        )
+        return f"It is almost time for {prayer_name}. A moment of peace and connection."
 
     def get_islamic_good_night(self) -> str:
         return "بِسْمِكَ اللَّهُمَّ أَمُوتُ وَأَحْيَا — In Your name O Allah, I die and I live. Sleep well."

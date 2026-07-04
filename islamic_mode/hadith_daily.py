@@ -22,19 +22,19 @@ logger = logging.getLogger(__name__)
 class HadithService:
     """
     Comprehensive Hadith Service with multiple API sources.
-    
+
     Sources:
     - hadith-api.com: 16,000+ hadiths from multiple books
     - random-hadith-generator: Bukhari collection
     - Fallback: Local hadith collection
     """
-    
+
     # Primary API: hadith-api.com (comprehensive collection)
     HADITH_API_BASE = "https://hadithapi.com/api"
-    
+
     # Fallback API: random-hadith-generator
     RANDOM_HADITH_API = "https://random-hadith-generator.vercel.app/bukhari/"
-    
+
     # Available hadith books
     BOOKS = {
         "bukhari": "sahih-bukhari",
@@ -42,9 +42,9 @@ class HadithService:
         "abudawud": "abu-dawood",
         "tirmidhi": "al-tirmidhi",
         "nasai": "al-nasai",
-        "ibnmajah": "ibn-e-majah"
+        "ibnmajah": "ibn-e-majah",
     }
-    
+
     def __init__(self, cache_dir: Optional[Path] = None):
         self.cache_dir = cache_dir or RUNTIME_DATA_DIR / "hadith_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -54,7 +54,7 @@ class HadithService:
         """Get cache file path for today's hadith."""
         today = datetime.today().date()
         return self.cache_dir / f"daily_hadith_{today}.json"
-    
+
     def _read_cache(self, cache_path: Path) -> Optional[dict]:
         """Read hadith from cache file."""
         if not cache_path.exists():
@@ -65,7 +65,7 @@ class HadithService:
         except Exception as e:
             logger.debug(f"Failed to read cache: {e}")
             return None
-    
+
     def _write_cache(self, cache_path: Path, data: dict) -> None:
         """Write hadith to cache file."""
         try:
@@ -88,27 +88,27 @@ class HadithService:
         today = datetime.today().date()
         seed = f"{today.year}-{today.month}-{today.day}"
         hash_val = int(hashlib.md5(seed.encode()).hexdigest(), 16)
-        
+
         # Rotate through different books
         book_list = list(self.BOOKS.keys())
         book_key = book_list[hash_val % len(book_list)]
-        
+
         # Get hadith number (each book has different ranges)
         # Using conservative ranges to ensure valid hadiths
         ranges = {
             "bukhari": 7563,  # Sahih Bukhari has ~7500 hadiths
-            "muslim": 7190,   # Sahih Muslim has ~7000 hadiths
-            "abudawud": 5274, # Abu Dawood has ~5200 hadiths
-            "tirmidhi": 3956, # Tirmidhi has ~3900 hadiths
-            "nasai": 5758,    # Nasai has ~5700 hadiths
-            "ibnmajah": 4341  # Ibn Majah has ~4300 hadiths
+            "muslim": 7190,  # Sahih Muslim has ~7000 hadiths
+            "abudawud": 5274,  # Abu Dawood has ~5200 hadiths
+            "tirmidhi": 3956,  # Tirmidhi has ~3900 hadiths
+            "nasai": 5758,  # Nasai has ~5700 hadiths
+            "ibnmajah": 4341,  # Ibn Majah has ~4300 hadiths
         }
-        
+
         max_number = ranges.get(book_key, 1000)
         hadith_number = (hash_val % max_number) + 1
-        
+
         return book_key, hadith_number
-    
+
     def _fetch_from_hadith_api(self, book_key: str, number: int) -> Optional[dict]:
         """Fetch hadith from hadithapi.com."""
         try:
@@ -119,7 +119,7 @@ class HadithService:
             response = requests.get(url, timeout=self.timeout)
             response.raise_for_status()
             data = response.json()
-            
+
             if data.get("status") == 200 and "hadith" in data:
                 hadith_data = data["hadith"]
                 return {
@@ -129,42 +129,36 @@ class HadithService:
                     "chapter": hadith_data.get("chapter", {}).get("chapterEnglish", ""),
                     "number": hadith_data.get("hadithNumber", number),
                     "narrator": hadith_data.get("englishNarrator", ""),
-                    "api_source": "hadithapi.com"
+                    "api_source": "hadithapi.com",
                 }
         except Exception as e:
             logger.debug(f"hadithapi.com fetch failed: {e}")
         return None
-    
+
     def _fetch_from_random_api(self) -> Optional[dict]:
         """Fetch random hadith from random-hadith-generator."""
         try:
             response = requests.get(self.RANDOM_HADITH_API, timeout=self.timeout)
             response.raise_for_status()
             payload = response.json()
-            
+
             data = payload.get("data", {}) if isinstance(payload, dict) else {}
             hadith_text = (
-                data.get("hadith_english") or 
-                data.get("hadith") or 
-                payload.get("hadith", "")
+                data.get("hadith_english") or data.get("hadith") or payload.get("hadith", "")
             )
-            chapter = (
-                data.get("header") or 
-                data.get("chapter") or 
-                payload.get("chapter", "")
-            )
-            
+            chapter = data.get("header") or data.get("chapter") or payload.get("chapter", "")
+
             if hadith_text:
                 return {
                     "hadith": str(hadith_text).strip(),
                     "source": "Sahih Bukhari",
                     "chapter": str(chapter).strip(),
-                    "api_source": "random-hadith-generator"
+                    "api_source": "random-hadith-generator",
                 }
         except Exception as e:
             logger.debug(f"random-hadith-generator fetch failed: {e}")
         return None
-    
+
     def _get_local_fallback(self) -> dict:
         """Get local fallback hadith collection."""
         fallback_hadiths = [
@@ -172,44 +166,44 @@ class HadithService:
                 "hadith": "The most beloved deeds to Allah are those done consistently, even if small.",
                 "source": "Sahih Bukhari & Muslim",
                 "chapter": "Good deeds done regularly",
-                "narrator": "Aisha (RA)"
+                "narrator": "Aisha (RA)",
             },
             {
                 "hadith": "Actions are judged by intentions, so each man will have what he intended.",
                 "source": "Sahih Bukhari",
                 "chapter": "Revelation",
-                "narrator": "Umar ibn al-Khattab (RA)"
+                "narrator": "Umar ibn al-Khattab (RA)",
             },
             {
                 "hadith": "The strong person is not the one who can wrestle, but the one who controls himself in a fit of rage.",
                 "source": "Sahih Bukhari & Muslim",
                 "chapter": "Good Manners",
-                "narrator": "Abu Hurairah (RA)"
+                "narrator": "Abu Hurairah (RA)",
             },
             {
                 "hadith": "Whoever believes in Allah and the Last Day should speak good or remain silent.",
                 "source": "Sahih Bukhari & Muslim",
                 "chapter": "Good Manners",
-                "narrator": "Abu Hurairah (RA)"
+                "narrator": "Abu Hurairah (RA)",
             },
             {
                 "hadith": "The believers, in their love, mutual kindness, and close ties, are like one body; when any part complains, the whole body responds with wakefulness and fever.",
                 "source": "Sahih Muslim",
                 "chapter": "Righteousness and Maintaining Ties of Kinship",
-                "narrator": "Nu'man ibn Bashir (RA)"
-            }
+                "narrator": "Nu'man ibn Bashir (RA)",
+            },
         ]
-        
+
         # Use date-based selection for consistency
         index = datetime.today().day % len(fallback_hadiths)
         selected = fallback_hadiths[index].copy()
         selected["api_source"] = "local_fallback"
         return selected
-    
+
     def get_daily_hadith(self) -> dict:
         """
         Get hadith of the day with intelligent caching and multi-source fallback.
-        
+
         Strategy:
         1. Check cache for today's hadith
         2. Try hadithapi.com (primary source)
@@ -217,20 +211,20 @@ class HadithService:
         4. Use local collection (last resort)
         """
         cache_path = self._get_daily_cache_path()
-        
+
         # Try cache first
         cached = self._read_cache(cache_path)
         if cached:
             logger.debug("Using cached daily hadith")
             return cached
-        
+
         # Try primary API
         book_key, number = self._get_deterministic_book_and_number()
         logger.info("Fetching daily hadith: {} #{}", book_key, number)
-        
+
         hadith = self._fetch_from_hadith_api(book_key, number)
         if hadith:
-            logger.info("Fetched from hadithapi.com: {}", hadith['source'])
+            logger.info("Fetched from hadithapi.com: {}", hadith["source"])
             hadith = self._enrich_with_grade(hadith)
             self._write_cache(cache_path, hadith)
             return hadith
@@ -242,7 +236,7 @@ class HadithService:
             hadith = self._enrich_with_grade(hadith)
             self._write_cache(cache_path, hadith)
             return hadith
-        
+
         # Use local fallback
         logger.warning("All APIs failed, using local fallback hadith")
         hadith = self._get_local_fallback()
@@ -251,20 +245,41 @@ class HadithService:
 
     # ── Authenticity rating ───────────────────────────────────────────────────
 
-    _SAHIH_SOURCES = frozenset({
-        "sahih al-bukhari", "sahih bukhari", "bukhari", "sahih-bukhari",
-        "sahih muslim", "muslim", "sahih-muslim",
-        "sahih al-bukhari & sahih muslim", "sahih bukhari & muslim",
-        "sahih al-bukhari & muslim",
-    })
-    _HASAN_SOURCES = frozenset({
-        "al-tirmidhi", "tirmidhi", "sunan al-tirmidhi",
-        "sunan abi dawud", "sunan abu dawood", "abu dawud", "abudawud",
-    })
-    _AUTHENTICATED_SOURCES = frozenset({
-        "sunan an-nasai", "al-nasai", "nasai",
-        "sunan ibn majah", "ibn majah", "ibnmajah",
-    })
+    _SAHIH_SOURCES = frozenset(
+        {
+            "sahih al-bukhari",
+            "sahih bukhari",
+            "bukhari",
+            "sahih-bukhari",
+            "sahih muslim",
+            "muslim",
+            "sahih-muslim",
+            "sahih al-bukhari & sahih muslim",
+            "sahih bukhari & muslim",
+            "sahih al-bukhari & muslim",
+        }
+    )
+    _HASAN_SOURCES = frozenset(
+        {
+            "al-tirmidhi",
+            "tirmidhi",
+            "sunan al-tirmidhi",
+            "sunan abi dawud",
+            "sunan abu dawood",
+            "abu dawud",
+            "abudawud",
+        }
+    )
+    _AUTHENTICATED_SOURCES = frozenset(
+        {
+            "sunan an-nasai",
+            "al-nasai",
+            "nasai",
+            "sunan ibn majah",
+            "ibn majah",
+            "ibnmajah",
+        }
+    )
 
     @classmethod
     def _grade_hadith(cls, source: str) -> dict:

@@ -27,6 +27,7 @@ logger = logging.getLogger("notifications.ses_sender")
 try:
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
+
     _BOTO3_AVAILABLE = True
 except ImportError:
     _BOTO3_AVAILABLE = False
@@ -55,7 +56,9 @@ class SESSender:
             session_kwargs["aws_access_key_id"] = access_key
             session_kwargs["aws_secret_access_key"] = secret_key
 
-        self._ses = boto3.client("ses", region_name=str(region).strip() or "us-east-1", **session_kwargs)
+        self._ses = boto3.client(
+            "ses", region_name=str(region).strip() or "us-east-1", **session_kwargs
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -160,6 +163,7 @@ class SESSender:
 # Factory
 # ---------------------------------------------------------------------------
 
+
 def build_ses_sender_from_settings() -> "SESSender | None":
     """Build an SESSender from config/settings.py. Returns None if not configured."""
     if not _BOTO3_AVAILABLE:
@@ -168,13 +172,16 @@ def build_ses_sender_from_settings() -> "SESSender | None":
 
     try:
         from config.settings import settings
+
         from_email = str(getattr(settings, "aws_ses_from_email", "") or "").strip()
         if not from_email:
             return None
         return SESSender(
             region=str(getattr(settings, "aws_region", "us-east-1") or "us-east-1"),
             from_email=from_email,
-            from_name=str(getattr(settings, "aws_ses_from_name", "Danah Smart Bed") or "Danah Smart Bed"),
+            from_name=str(
+                getattr(settings, "aws_ses_from_name", "Danah Smart Bed") or "Danah Smart Bed"
+            ),
             access_key=str(getattr(settings, "aws_access_key_id", "") or ""),
             secret_key=str(getattr(settings, "aws_secret_access_key", "") or ""),
         )

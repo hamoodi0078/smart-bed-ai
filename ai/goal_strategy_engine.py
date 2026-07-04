@@ -52,9 +52,11 @@ class GoalStrategyEngine:
         steps = self.decompose_goal_text(str(goal.get("title", "")))
         if not steps:
             return False, "Could not decompose this goal."
-        return True, "Micro-plan: " + " | ".join(f"{idx+1}. {s}" for idx, s in enumerate(steps))
+        return True, "Micro-plan: " + " | ".join(f"{idx + 1}. {s}" for idx, s in enumerate(steps))
 
-    def mark_goal_missed(self, profile: dict, goal_ref: str, cause_text: str = "") -> Tuple[bool, str, str]:
+    def mark_goal_missed(
+        self, profile: dict, goal_ref: str, cause_text: str = ""
+    ) -> Tuple[bool, str, str]:
         self.ensure_shape(profile)
         goal = self._match_goal(profile, goal_ref)
         if not goal:
@@ -80,13 +82,21 @@ class GoalStrategyEngine:
             counts: Dict[str, int] = gs.get("cause_counts", {})
             counts[cause] = int(counts.get(cause, 0)) + 1
             gs["cause_counts"] = counts
-            return True, f"Marked '{goal.get('title', '')}' as missed. Cause tracked as {cause}.", cause
+            return (
+                True,
+                f"Marked '{goal.get('title', '')}' as missed. Cause tracked as {cause}.",
+                cause,
+            )
 
         gs["pending_miss_goal_id"] = str(goal.get("id", ""))
-        return True, (
-            f"Marked '{goal.get('title', '')}' as missed. "
-            "What was the main blocker: time, energy, clarity, or overwhelm?"
-        ), ""
+        return (
+            True,
+            (
+                f"Marked '{goal.get('title', '')}' as missed. "
+                "What was the main blocker: time, energy, clarity, or overwhelm?"
+            ),
+            "",
+        )
 
     def record_miss_cause(self, profile: dict, cause_text: str) -> str:
         self.ensure_shape(profile)
@@ -149,14 +159,20 @@ class GoalStrategyEngine:
         if cause == "time":
             return "Primary blocker is time. Suggest time-boxed 10-minute starts."
         if cause == "energy":
-            return "Primary blocker is energy. Suggest low-friction first step and earlier wind-down."
+            return (
+                "Primary blocker is energy. Suggest low-friction first step and earlier wind-down."
+            )
         if cause == "clarity":
-            return "Primary blocker is clarity. Suggest breaking goals into smaller concrete outputs."
+            return (
+                "Primary blocker is clarity. Suggest breaking goals into smaller concrete outputs."
+            )
         if cause == "overwhelm":
             return "Primary blocker is overwhelm. Suggest reducing active goals and focusing one priority."
         return "Primary blocker trend detected. Keep steps small and specific."
 
-    def should_trigger_recovery_protocol(self, profile: dict, days: int = 7, threshold: int = 2) -> bool:
+    def should_trigger_recovery_protocol(
+        self, profile: dict, days: int = 7, threshold: int = 2
+    ) -> bool:
         self.ensure_shape(profile)
         misses = self.recent_miss_count(profile, days=days)
         if misses < max(1, int(threshold)):

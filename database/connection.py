@@ -22,6 +22,7 @@ try:
         async_sessionmaker as _async_sessionmaker,
         create_async_engine,
     )
+
     _ASYNCPG_AVAILABLE = True
 except ImportError:
     _asyncpg = None  # type: ignore[assignment]
@@ -49,9 +50,9 @@ class DatabaseConnection:
                 # The deployment stack sets DANAH_ENV (Dockerfile, compose);
                 # ENVIRONMENT is kept for backwards compatibility. Without this
                 # guard a missing DATABASE_URL silently falls back to SQLite.
-                env_name = str(
-                    os.getenv("DANAH_ENV") or os.getenv("ENVIRONMENT") or ""
-                ).strip().lower()
+                env_name = (
+                    str(os.getenv("DANAH_ENV") or os.getenv("ENVIRONMENT") or "").strip().lower()
+                )
                 if env_name in ("production", "prod"):
                     raise RuntimeError(
                         "DATABASE_URL is required in production. "
@@ -83,7 +84,9 @@ class DatabaseConnection:
             retry=retry_if_exception_type(Exception),
             before_sleep=lambda rs: logger.warning(
                 "DB connection attempt {}/{} failed: {} — retrying",
-                rs.attempt_number, attempts, rs.outcome.exception(),
+                rs.attempt_number,
+                attempts,
+                rs.outcome.exception(),
             ),
             reraise=False,
         )
@@ -120,6 +123,7 @@ class DatabaseConnection:
 
         try:
             from config.settings import settings as _s
+
             _pool_size = _s.db_pool_size
             _max_overflow = _s.db_max_overflow
             _pool_timeout = _s.db_pool_timeout
@@ -164,10 +168,7 @@ class DatabaseConnection:
                 )
             )
             raw_value = connection.execute(
-                text(
-                    f"SELECT value FROM {self.SCHEMA_META_TABLE} "
-                    "WHERE key = :key"
-                ),
+                text(f"SELECT value FROM {self.SCHEMA_META_TABLE} WHERE key = :key"),
                 {"key": self.SCHEMA_VERSION_KEY},
             ).scalar_one_or_none()
             try:
@@ -179,10 +180,7 @@ class DatabaseConnection:
                 # Current migration strategy is table-first: ensure ORM metadata is present.
                 Base.metadata.create_all(bind=self.engine)
                 updated = connection.execute(
-                    text(
-                        f"UPDATE {self.SCHEMA_META_TABLE} SET value = :value "
-                        "WHERE key = :key"
-                    ),
+                    text(f"UPDATE {self.SCHEMA_META_TABLE} SET value = :value WHERE key = :key"),
                     {"key": self.SCHEMA_VERSION_KEY, "value": str(self.CURRENT_SCHEMA_VERSION)},
                 )
                 if int(getattr(updated, "rowcount", 0) or 0) == 0:
@@ -207,17 +205,13 @@ class DatabaseConnection:
         missing = sorted(expected - existing)
         if missing:
             raise RuntimeError(
-                "Database schema is incomplete; missing required tables: "
-                + ", ".join(missing)
+                "Database schema is incomplete; missing required tables: " + ", ".join(missing)
             )
 
     def schema_version(self) -> int:
         with self.engine.connect() as connection:
             raw_value = connection.execute(
-                text(
-                    f"SELECT value FROM {self.SCHEMA_META_TABLE} "
-                    "WHERE key = :key"
-                ),
+                text(f"SELECT value FROM {self.SCHEMA_META_TABLE} WHERE key = :key"),
                 {"key": self.SCHEMA_VERSION_KEY},
             ).scalar_one_or_none()
         try:
@@ -227,7 +221,7 @@ class DatabaseConnection:
 
     def health_check(self) -> bool:
         """Check database connectivity and health.
-        
+
         Returns:
             True if database is healthy, False otherwise
         """
@@ -238,10 +232,10 @@ class DatabaseConnection:
         except Exception as exc:
             logger.error("Database health check failed: {}", exc)
             return False
-    
+
     def get_pool_status(self) -> dict[str, int]:
         """Get current connection pool statistics.
-        
+
         Returns:
             Dict with pool size, checked out connections, and overflow
         """
@@ -293,9 +287,7 @@ class AsyncDatabaseConnection:
         command_timeout: float | None = None,
     ) -> None:
         if not _ASYNCPG_AVAILABLE:
-            raise RuntimeError(
-                "asyncpg is not installed. Run: pip install asyncpg"
-            )
+            raise RuntimeError("asyncpg is not installed. Run: pip install asyncpg")
         raw_url = str(database_url or os.getenv("DATABASE_URL", "")).strip()
         if not raw_url or raw_url.lower().startswith("sqlite"):
             raise ValueError(
@@ -307,6 +299,7 @@ class AsyncDatabaseConnection:
 
         try:
             from config.settings import settings as _s
+
             _cfg_min = _s.db_async_pool_min
             _cfg_max = _s.db_async_pool_max
             _cfg_timeout = _s.db_async_command_timeout
@@ -314,11 +307,15 @@ class AsyncDatabaseConnection:
             _cfg_min, _cfg_max, _cfg_timeout = self._DEFAULT_MIN, self._DEFAULT_MAX, 30.0
 
         self._min_size = max(1, int(min_pool_size if min_pool_size is not None else _cfg_min))
-        self._max_size = max(self._min_size, int(max_pool_size if max_pool_size is not None else _cfg_max))
-        self._command_timeout = max(1.0, float(command_timeout if command_timeout is not None else _cfg_timeout))
+        self._max_size = max(
+            self._min_size, int(max_pool_size if max_pool_size is not None else _cfg_max)
+        )
+        self._command_timeout = max(
+            1.0, float(command_timeout if command_timeout is not None else _cfg_timeout)
+        )
 
-        self._pool: Any = None       # asyncpg.Pool
-        self._engine: Any = None     # AsyncEngine
+        self._pool: Any = None  # asyncpg.Pool
+        self._engine: Any = None  # AsyncEngine
         self._session_factory: Any = None
         self._initialized = False
 

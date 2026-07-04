@@ -7,7 +7,7 @@ from typing import Optional
 
 class ProphetStoriesService:
     """Service for accessing stories of the 25 prophets mentioned in the Quran."""
-    
+
     PROPHETS = [
         {
             "name": "Adam",
@@ -18,10 +18,10 @@ class ProphetStoriesService:
                 "Humans are honored by Allah as His vicegerents on Earth",
                 "The importance of repentance and seeking forgiveness",
                 "Satan is the eternal enemy of mankind",
-                "Knowledge is a divine gift"
+                "Knowledge is a divine gift",
             ],
             "mentions_in_quran": ["Al-Baqarah 2:30-39", "Al-A'raf 7:11-25", "Ta-Ha 20:115-123"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Idris",
@@ -31,10 +31,10 @@ class ProphetStoriesService:
             "key_lessons": [
                 "Patience and truthfulness are noble qualities",
                 "Knowledge and learning are important in Islam",
-                "Steadfastness in calling to the truth"
+                "Steadfastness in calling to the truth",
             ],
             "mentions_in_quran": ["Maryam 19:56-57", "Al-Anbya 21:85"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Nuh",
@@ -45,10 +45,10 @@ class ProphetStoriesService:
                 "Patience in calling to truth, even when rejected",
                 "Obedience to Allah's commands",
                 "Divine punishment for persistent rejection",
-                "Salvation through faith"
+                "Salvation through faith",
             ],
             "mentions_in_quran": ["Nuh 71:1-28", "Hud 11:25-49", "Al-Mu'minun 23:23-30"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Hud",
@@ -58,10 +58,10 @@ class ProphetStoriesService:
             "key_lessons": [
                 "Arrogance and ingratitude lead to destruction",
                 "Material strength cannot save from divine punishment",
-                "Importance of humility and gratitude"
+                "Importance of humility and gratitude",
             ],
             "mentions_in_quran": ["Hud 11:50-60", "Al-Ahqaf 46:21-26"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Salih",
@@ -71,10 +71,10 @@ class ProphetStoriesService:
             "key_lessons": [
                 "Signs of Allah should not be violated",
                 "Arrogance leads to downfall",
-                "Divine warnings should be heeded"
+                "Divine warnings should be heeded",
             ],
             "mentions_in_quran": ["Al-A'raf 7:73-79", "Hud 11:61-68", "Ash-Shu'ara 26:141-159"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Ibrahim",
@@ -85,10 +85,14 @@ class ProphetStoriesService:
                 "Unshakeable faith in Allah",
                 "Standing for truth against all odds",
                 "Complete submission to Allah's will",
-                "The reward of patience and trust"
+                "The reward of patience and trust",
             ],
-            "mentions_in_quran": ["Al-Baqarah 2:124-141", "As-Saffat 37:83-113", "Al-Anbya 21:51-73"],
-            "age_appropriate": "all"
+            "mentions_in_quran": [
+                "Al-Baqarah 2:124-141",
+                "As-Saffat 37:83-113",
+                "Al-Anbya 21:51-73",
+            ],
+            "age_appropriate": "all",
         },
         {
             "name": "Lut",
@@ -98,10 +102,10 @@ class ProphetStoriesService:
             "key_lessons": [
                 "Importance of moral purity",
                 "Consequences of persisting in sin",
-                "Allah protects the righteous"
+                "Allah protects the righteous",
             ],
             "mentions_in_quran": ["Al-A'raf 7:80-84", "Hud 11:77-83", "Al-Hijr 15:57-77"],
-            "age_appropriate": "teen_adult"
+            "age_appropriate": "teen_adult",
         },
         {
             "name": "Isma'il",
@@ -112,10 +116,10 @@ class ProphetStoriesService:
                 "Complete submission to Allah's will",
                 "Trust in Allah's plan",
                 "Obedience to parents in righteousness",
-                "Patience in trials"
+                "Patience in trials",
             ],
             "mentions_in_quran": ["As-Saffat 37:99-113", "Al-Baqarah 2:127-129"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Ishaq",
@@ -125,10 +129,10 @@ class ProphetStoriesService:
             "key_lessons": [
                 "Allah's promises always come true",
                 "Blessings can come in unexpected ways",
-                "Gratitude for divine gifts"
+                "Gratitude for divine gifts",
             ],
             "mentions_in_quran": ["Hud 11:71-73", "As-Saffat 37:112-113"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Ya'qub",
@@ -139,10 +143,10 @@ class ProphetStoriesService:
                 "Patience in adversity",
                 "Never losing hope in Allah's mercy",
                 "Maintaining faith through trials",
-                "The blessing of eventual reunion"
+                "The blessing of eventual reunion",
             ],
             "mentions_in_quran": ["Yusuf 12:1-111", "Maryam 19:49"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Yusuf",
@@ -154,10 +158,10 @@ class ProphetStoriesService:
                 "Forgiveness and mercy",
                 "Trust in Allah's plan",
                 "Dreams can be divine messages",
-                "Justice and wisdom in leadership"
+                "Justice and wisdom in leadership",
             ],
             "mentions_in_quran": ["Yusuf 12:1-111 (entire surah)"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Ayyub",
@@ -169,10 +173,10 @@ class ProphetStoriesService:
                 "Never despairing of Allah's mercy",
                 "Maintaining faith through loss",
                 "The reward of steadfastness",
-                "Trials test and strengthen faith"
+                "Trials test and strengthen faith",
             ],
             "mentions_in_quran": ["Al-Anbya 21:83-84", "Sad 38:41-44"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Shu'ayb",
@@ -182,10 +186,10 @@ class ProphetStoriesService:
             "key_lessons": [
                 "Honesty in business dealings",
                 "Justice and fairness in transactions",
-                "Economic justice is part of faith"
+                "Economic justice is part of faith",
             ],
             "mentions_in_quran": ["Al-A'raf 7:85-93", "Hud 11:84-95"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Musa",
@@ -197,10 +201,10 @@ class ProphetStoriesService:
                 "Stand against oppression",
                 "Miracles are signs of Allah's power",
                 "Patience with one's community",
-                "The importance of the law and guidance"
+                "The importance of the law and guidance",
             ],
             "mentions_in_quran": ["Ta-Ha 20:9-98", "Al-Qasas 28:1-46", "Al-A'raf 7:103-162"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Harun",
@@ -211,10 +215,10 @@ class ProphetStoriesService:
                 "Importance of supporting good leadership",
                 "Speaking truth with wisdom",
                 "Patience in guiding people",
-                "Standing against wrong even when difficult"
+                "Standing against wrong even when difficult",
             ],
             "mentions_in_quran": ["Ta-Ha 20:29-36", "Al-A'raf 7:142-150"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Dawud",
@@ -225,10 +229,10 @@ class ProphetStoriesService:
                 "Small can defeat large with Allah's help",
                 "Wisdom and justice in leadership",
                 "Gratitude to Allah through worship",
-                "Using skills to serve others"
+                "Using skills to serve others",
             ],
             "mentions_in_quran": ["Sad 38:17-26", "Al-Baqarah 2:251", "Saba 34:10-11"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Sulayman",
@@ -240,10 +244,10 @@ class ProphetStoriesService:
                 "Using power and wealth for good",
                 "Humility despite greatness",
                 "Wisdom in judgment",
-                "All power belongs to Allah"
+                "All power belongs to Allah",
             ],
             "mentions_in_quran": ["An-Naml 27:15-44", "Saba 34:12-14", "Sad 38:30-40"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Ilyas",
@@ -253,10 +257,10 @@ class ProphetStoriesService:
             "key_lessons": [
                 "Standing firm against false worship",
                 "Courage in calling to truth",
-                "Not being discouraged by few followers"
+                "Not being discouraged by few followers",
             ],
             "mentions_in_quran": ["As-Saffat 37:123-132"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Al-Yasa'",
@@ -266,10 +270,10 @@ class ProphetStoriesService:
             "key_lessons": [
                 "Continuing the work of predecessors",
                 "Patience in da'wah",
-                "Righteousness and steadfastness"
+                "Righteousness and steadfastness",
             ],
             "mentions_in_quran": ["Al-An'am 6:86", "Sad 38:48"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Yunus",
@@ -281,10 +285,10 @@ class ProphetStoriesService:
                 "The power of sincere repentance",
                 "Allah accepts those who turn to Him",
                 "Never give up on people's ability to change",
-                "Glorifying Allah in times of distress"
+                "Glorifying Allah in times of distress",
             ],
             "mentions_in_quran": ["Yunus 10:98", "Al-Anbya 21:87-88", "As-Saffat 37:139-148"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Zakariya",
@@ -295,10 +299,10 @@ class ProphetStoriesService:
                 "Never too late to pray to Allah",
                 "Allah answers prayers in His way and time",
                 "Caring for orphans is blessed",
-                "Faith in Allah's power over nature"
+                "Faith in Allah's power over nature",
             ],
             "mentions_in_quran": ["Maryam 19:1-11", "Ali 'Imran 3:37-41"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Yahya",
@@ -309,10 +313,10 @@ class ProphetStoriesService:
                 "Piety from a young age",
                 "Kindness to parents",
                 "Standing for truth fearlessly",
-                "Youth can be righteous leaders"
+                "Youth can be righteous leaders",
             ],
             "mentions_in_quran": ["Maryam 19:12-15", "Ali 'Imran 3:39"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "'Isa",
@@ -324,10 +328,10 @@ class ProphetStoriesService:
                 "Miracles are signs, not objects of worship",
                 "Worship Allah alone, not His prophets",
                 "Patience in the face of rejection",
-                "The truth will always prevail"
+                "The truth will always prevail",
             ],
             "mentions_in_quran": ["Maryam 19:16-36", "Ali 'Imran 3:45-55", "Al-Ma'idah 5:110-120"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Muhammad",
@@ -341,62 +345,66 @@ class ProphetStoriesService:
                 "Justice and equality",
                 "The Quran is the final revelation",
                 "Following the Sunnah",
-                "Compassion and forgiveness"
+                "Compassion and forgiveness",
             ],
             "mentions_in_quran": ["Al-Ahzab 33:40", "Muhammad 47:1-38", "Al-Fath 48:29"],
-            "age_appropriate": "all"
+            "age_appropriate": "all",
         },
         {
             "name": "Dhul-Kifl",
             "arabic": "ذو الكفل",
             "title": "The Patient One",
             "story_summary": "Prophet Dhul-Kifl is briefly mentioned in the Quran. He was known for his patience and righteousness. Some scholars say he was patient in prayer and fasting, maintaining his worship consistently.",
-            "key_lessons": [
-                "Consistency in worship",
-                "Patience in obedience",
-                "Righteousness"
-            ],
+            "key_lessons": ["Consistency in worship", "Patience in obedience", "Righteousness"],
             "mentions_in_quran": ["Al-Anbya 21:85", "Sad 38:48"],
-            "age_appropriate": "all"
-        }
+            "age_appropriate": "all",
+        },
     ]
-    
+
     def get_all_prophets(self) -> list[dict]:
         """Get list of all 25 prophets."""
         return self.PROPHETS
-    
+
     def get_prophet_by_name(self, name: str) -> Optional[dict]:
         """Get a specific prophet's story by name."""
         name_lower = name.lower()
         for prophet in self.PROPHETS:
-            if (prophet["name"].lower() == name_lower or 
-                prophet["arabic"] == name or
-                name_lower in prophet["name"].lower()):
+            if (
+                prophet["name"].lower() == name_lower
+                or prophet["arabic"] == name
+                or name_lower in prophet["name"].lower()
+            ):
                 return prophet
         return None
-    
+
     def get_prophets_by_age_group(self, age_group: str = "all") -> list[dict]:
         """
         Filter prophets by age appropriateness.
-        
+
         Args:
             age_group: 'all', 'children', 'teen_adult'
         """
         if age_group == "all":
             return self.PROPHETS
-        
-        return [p for p in self.PROPHETS if p["age_appropriate"] == age_group or p["age_appropriate"] == "all"]
-    
+
+        return [
+            p
+            for p in self.PROPHETS
+            if p["age_appropriate"] == age_group or p["age_appropriate"] == "all"
+        ]
+
     def search_stories(self, query: str) -> list[dict]:
         """Search prophet stories by keyword."""
         query_lower = query.lower()
         results = []
-        
+
         for prophet in self.PROPHETS:
-            if (query_lower in prophet["name"].lower() or
-                query_lower in prophet["title"].lower() or
-                query_lower in prophet["story_summary"].lower() or
-                any(query_lower in lesson.lower() for lesson in prophet["key_lessons"])):
+            if (
+                query_lower in prophet["name"].lower()
+                or query_lower in prophet["title"].lower()
+                or query_lower in prophet["story_summary"].lower()
+                or any(query_lower in lesson.lower() for lesson in prophet["key_lessons"])
+            ):
                 results.append(prophet)
-        
+
         return results

@@ -19,12 +19,14 @@ def _make_user(db: DatabaseConnection, email: str = "test@example.com") -> str:
     uid = "u-" + hashlib.md5(email.encode()).hexdigest()[:8]
     with db.get_session() as session:
         if session.get(User, uid) is None:
-            session.add(User(
-                id=uid,
-                email=email,
-                password_hash="x",
-                full_name="Test User",
-            ))
+            session.add(
+                User(
+                    id=uid,
+                    email=email,
+                    password_hash="x",
+                    full_name="Test User",
+                )
+            )
             session.flush()
     return uid
 
@@ -111,9 +113,7 @@ class TestAlarmRepositoryGetUpdateDelete(unittest.TestCase):
         self.db.create_tables()
         self.user_id = _make_user(self.db)
         self.repo = AlarmRepository(db=self.db)
-        self.alarm = self.repo.create_alarm(
-            user_id=self.user_id, time="09:00", label="Test"
-        )
+        self.alarm = self.repo.create_alarm(user_id=self.user_id, time="09:00", label="Test")
 
     def test_get_alarm_returns_correct_row(self):
         fetched = self.repo.get_alarm(self.alarm.id, self.user_id)

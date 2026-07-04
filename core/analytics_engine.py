@@ -91,7 +91,7 @@ class AnalyticsEngine:
         with self._lock:
             self._events.append(event)
             if len(self._events) > self._max_memory:
-                self._events = self._events[-self._max_memory:]
+                self._events = self._events[-self._max_memory :]
             self._persist_events()
         return event
 
@@ -116,10 +116,14 @@ class AnalyticsEngine:
         if user_id:
             results = [e for e in results if e.get("user_id") == user_id]
         if since:
-            since_iso = since.isoformat() if since.tzinfo else since.replace(tzinfo=timezone.utc).isoformat()
+            since_iso = (
+                since.isoformat()
+                if since.tzinfo
+                else since.replace(tzinfo=timezone.utc).isoformat()
+            )
             results = [e for e in results if str(e.get("timestamp", "")) >= since_iso]
 
-        return results[-max(1, int(limit)):]
+        return results[-max(1, int(limit)) :]
 
     def count_events(
         self,
@@ -199,11 +203,15 @@ class AnalyticsEngine:
         max_possible = sum(w * 3 for w in weights.values())
         normalized = min(100, int((weighted_score / max_possible) * 100)) if max_possible > 0 else 0
 
-        active_days = len(set(
-            datetime.fromisoformat(str(e.get("timestamp", ""))).date().isoformat()
-            for e in self.get_events(user_id=user_id, since=_utcnow() - timedelta(days=days), limit=99999)
-            if e.get("timestamp")
-        ))
+        active_days = len(
+            set(
+                datetime.fromisoformat(str(e.get("timestamp", ""))).date().isoformat()
+                for e in self.get_events(
+                    user_id=user_id, since=_utcnow() - timedelta(days=days), limit=99999
+                )
+                if e.get("timestamp")
+            )
+        )
 
         return {
             "score": normalized,
@@ -261,7 +269,9 @@ class AnalyticsEngine:
         return {
             "total_features": total_features,
             "adopted_count": adopted_count,
-            "adoption_rate": round(adopted_count / total_features * 100, 1) if total_features > 0 else 0,
+            "adoption_rate": round(adopted_count / total_features * 100, 1)
+            if total_features > 0
+            else 0,
             "features": adopted,
             "usage_counts": usage,
         }
@@ -273,18 +283,22 @@ class AnalyticsEngine:
     def sleep_trend(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
         """Return daily sleep session data for trend visualization."""
         since = _utcnow() - timedelta(days=max(1, days))
-        events = self.get_events(event_type="sleep_session_end", user_id=user_id, since=since, limit=99999)
+        events = self.get_events(
+            event_type="sleep_session_end", user_id=user_id, since=since, limit=99999
+        )
         trend: list[dict[str, Any]] = []
         for e in events:
             meta = e.get("metadata", {})
             try:
                 ts = datetime.fromisoformat(str(e.get("timestamp", "")))
-                trend.append({
-                    "date": ts.date().isoformat(),
-                    "sleep_score": meta.get("sleep_score"),
-                    "total_hours": meta.get("total_hours"),
-                    "quality_rating": meta.get("quality_rating"),
-                })
+                trend.append(
+                    {
+                        "date": ts.date().isoformat(),
+                        "sleep_score": meta.get("sleep_score"),
+                        "total_hours": meta.get("total_hours"),
+                        "quality_rating": meta.get("quality_rating"),
+                    }
+                )
             except Exception:
                 pass
         return trend
@@ -300,7 +314,9 @@ class AnalyticsEngine:
             "total_triggered": triggered,
             "total_accepted": accepted,
             "total_declined": declined,
-            "acceptance_rate": round(accepted / total_responses * 100, 1) if total_responses > 0 else 0,
+            "acceptance_rate": round(accepted / total_responses * 100, 1)
+            if total_responses > 0
+            else 0,
             "period_days": days,
         }
 
@@ -315,14 +331,14 @@ class AnalyticsEngine:
             with open(self._events_path, "r", encoding="utf-8") as fh:
                 data = json.load(fh)
             if isinstance(data, list):
-                self._events = data[-self._max_memory:]
+                self._events = data[-self._max_memory :]
         except (OSError, json.JSONDecodeError):
             self._events = []
 
     def _persist_events(self) -> None:
         try:
             with open(self._events_path, "w", encoding="utf-8") as fh:
-                json.dump(self._events[-self._max_memory:], fh, indent=2, ensure_ascii=False)
+                json.dump(self._events[-self._max_memory :], fh, indent=2, ensure_ascii=False)
         except OSError as exc:
             logger.error("Failed to persist analytics events: %s", exc)
 

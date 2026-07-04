@@ -163,7 +163,9 @@ class EmailService:
                 if self.send_daily_summary_for_user(user.id):
                     success_count += 1
             except Exception as exc:
-                self.logger.warning("Daily email summary send failed user_id=%s error=%s", user.id, exc)
+                self.logger.warning(
+                    "Daily email summary send failed user_id=%s error=%s", user.id, exc
+                )
 
         self.logger.info(
             "Daily email summary batch finished at %s successes=%s attempted=%s",

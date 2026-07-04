@@ -12,6 +12,7 @@ Routes:
   GET  /v1/ring/status   — current connection state + last biometric readings
   POST /v1/ring/unpair   — forget the ring address and stop the client
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,6 +42,7 @@ def set_ring_client(client: Any, automation: Any = None) -> None:
 
 # ── Request / Response models ─────────────────────────────────────────────────
 
+
 class RingPairRequest(BaseModel):
     address: str = Field(..., description="BLE MAC address of the ring, e.g. 'AA:BB:CC:DD:EE:FF'")
     model: str = Field("colmi_r02", description="Ring model: colmi_r02 | colmi_r06 | colmi_r10")
@@ -48,9 +50,12 @@ class RingPairRequest(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _get_client() -> Any:
     if _ring_client is None:
-        raise HTTPException(status_code=503, detail="Ring client is not initialised. Restart the bed runtime.")
+        raise HTTPException(
+            status_code=503, detail="Ring client is not initialised. Restart the bed runtime."
+        )
     return _ring_client
 
 
@@ -58,6 +63,7 @@ def _save_ring_address(address: str, model: str) -> None:
     """Persist ring address to user_profile.json so it survives reboots."""
     try:
         from Storage.user_profile import load_profile, save_profile
+
         profile = load_profile() or {}
         profile.setdefault("hardware", {})["ring_ble_address"] = address.strip().upper()
         profile["hardware"]["ring_model"] = model.strip()
@@ -68,6 +74,7 @@ def _save_ring_address(address: str, model: str) -> None:
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
 
 @router.post("/v1/ring/scan")
 async def ring_scan(
@@ -109,7 +116,9 @@ async def ring_scan(
         "ok": True,
         "rings": ring_list,
         "count": len(ring_list),
-        "message": f"Found {len(ring_list)} ring(s)." if ring_list else "No COLMI rings found nearby.",
+        "message": f"Found {len(ring_list)} ring(s)."
+        if ring_list
+        else "No COLMI rings found nearby.",
     }
 
 
@@ -217,6 +226,7 @@ def ring_unpair(
     # Clear from profile
     try:
         from Storage.user_profile import load_profile, save_profile
+
         profile = load_profile() or {}
         hw = profile.get("hardware", {})
         hw.pop("ring_ble_address", None)

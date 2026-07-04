@@ -20,7 +20,9 @@ class TestSubscriptionEndpoints(unittest.TestCase):
         web_server._DB_COMMAND_REPOSITORY = None
 
         self.user_repo = web_server._db_user_repository()
-        self.user = self.user_repo.create_user("trial-endpoint@example.com", "hashed_pw", "Trial Endpoint User")
+        self.user = self.user_repo.create_user(
+            "trial-endpoint@example.com", "hashed_pw", "Trial Endpoint User"
+        )
         self.client = TestClient(web_server.app)
         user_token = web_server.store.issue_user_token(user_id=self.user.id)
         self.client.cookies.set("sb_user_token", str(user_token.get("access_token", "") or ""))
@@ -76,7 +78,9 @@ class TestSubscriptionEndpoints(unittest.TestCase):
         error = body.get("error", {}) if isinstance(body.get("error", {}), dict) else {}
         self.assertEqual(error.get("code"), "VALIDATION_ERROR")
         self.assertRegex(str(error.get("trace_id", "")), r"^req_[a-f0-9]{8}$")
-        self.assertEqual(str(response.headers.get("X-Trace-Id", "")), str(error.get("trace_id", "")))
+        self.assertEqual(
+            str(response.headers.get("X-Trace-Id", "")), str(error.get("trace_id", ""))
+        )
 
     def test_get_status_returns_subscription_status(self):
         response = self.client.get("/v1/subscriptions/status", params={"user_id": self.user.id})

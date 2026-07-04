@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import logging
@@ -38,18 +39,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ring.automation")
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
-HR_HIGH_THRESHOLD = 100          # bpm — elevated HR during sleep
+HR_HIGH_THRESHOLD = 100  # bpm — elevated HR during sleep
 HR_HIGH_SUSTAINED_SECONDS = 180  # 3 minutes sustained to trigger
-HR_SETTLED_THRESHOLD = 60        # bpm — considered resting / settled
+HR_SETTLED_THRESHOLD = 60  # bpm — considered resting / settled
 
-SPO2_WATCH_THRESHOLD = 93        # % — first-level warning
-SPO2_WATCH_CONSECUTIVE = 2       # consecutive readings needed
-SPO2_EMERGENCY_THRESHOLD = 88    # % — clinical emergency level
+SPO2_WATCH_THRESHOLD = 93  # % — first-level warning
+SPO2_WATCH_CONSECUTIVE = 2  # consecutive readings needed
+SPO2_EMERGENCY_THRESHOLD = 88  # % — clinical emergency level
 
-STILLNESS_DEEP_SLEEP_SECONDS = 4 * 3600   # 4 hours without movement
-MOVEMENT_BURST_ACCEL_G = 0.3              # g-force threshold for "burst"
+STILLNESS_DEEP_SLEEP_SECONDS = 4 * 3600  # 4 hours without movement
+MOVEMENT_BURST_ACCEL_G = 0.3  # g-force threshold for "burst"
 
-VOICE_SUPPRESS_SECONDS = 300     # 5 min voice command suppression
+VOICE_SUPPRESS_SECONDS = 300  # 5 min voice command suppression
 
 # ── LED color codes used by set_color_value ───────────────────────────────────
 LED_CALM_BLUE = "calm_blue"
@@ -142,7 +143,9 @@ class RingAutomationEngine:
         user intent always wins.
         """
         self._voice_suppressed_until = time.monotonic() + VOICE_SUPPRESS_SECONDS
-        logger.debug("Ring automations suppressed for %ds after voice command.", VOICE_SUPPRESS_SECONDS)
+        logger.debug(
+            "Ring automations suppressed for %ds after voice command.", VOICE_SUPPRESS_SECONDS
+        )
 
     def notify_wake(self) -> str:
         """Return a morning ring summary for inclusion in the wake greeting."""
@@ -154,7 +157,9 @@ class RingAutomationEngine:
             bpm = getattr(hr, "heart_rate_bpm", 0) or 0
             if bpm > 0:
                 if bpm < 60:
-                    lines.append(f"Your resting heart rate overnight was {bpm} bpm — nice and calm.")
+                    lines.append(
+                        f"Your resting heart rate overnight was {bpm} bpm — nice and calm."
+                    )
                 elif bpm > 90:
                     lines.append(f"Your heart rate was a bit elevated overnight at {bpm} bpm.")
                 else:
@@ -165,7 +170,9 @@ class RingAutomationEngine:
             pct = getattr(spo2, "spo2_pct", 0) or 0
             if pct > 0:
                 if pct < 93:
-                    lines.append(f"Oxygen saturation dipped to {pct}% at some point — mention this to your doctor if it happens often.")
+                    lines.append(
+                        f"Oxygen saturation dipped to {pct}% at some point — mention this to your doctor if it happens often."
+                    )
                 else:
                     lines.append(f"Oxygen level was {pct}% — well within normal range.")
 
@@ -208,7 +215,11 @@ class RingAutomationEngine:
                 else:
                     elapsed = (now - self._hr_high_since).total_seconds()
                     if elapsed >= HR_HIGH_SUSTAINED_SECONDS:
-                        logger.info("Ring automation: sustained high HR (%d bpm, %.0fs). Dimming to calm blue.", bpm, elapsed)
+                        logger.info(
+                            "Ring automation: sustained high HR (%d bpm, %.0fs). Dimming to calm blue.",
+                            bpm,
+                            elapsed,
+                        )
                         self._set_led_calm()
                         self._hr_high_since = None  # reset until next trigger
                         self._was_restless = True
@@ -238,11 +249,14 @@ class RingAutomationEngine:
             return
 
         # ── Watch threshold (two consecutive low readings) ────────────────
-        if (
-            len(self._spo2_window) >= SPO2_WATCH_CONSECUTIVE
-            and all(v < SPO2_WATCH_THRESHOLD for v in self._spo2_window)
+        if len(self._spo2_window) >= SPO2_WATCH_CONSECUTIVE and all(
+            v < SPO2_WATCH_THRESHOLD for v in self._spo2_window
         ):
-            logger.info("Ring automation: low SpO2 (%d%%) x %d readings. Alerting.", pct, SPO2_WATCH_CONSECUTIVE)
+            logger.info(
+                "Ring automation: low SpO2 (%d%%) x %d readings. Alerting.",
+                pct,
+                SPO2_WATCH_CONSECUTIVE,
+            )
             self._spo2_warning_alert(pct)
             self._spo2_window.clear()  # reset window to avoid repeated alerts
 
@@ -254,8 +268,14 @@ class RingAutomationEngine:
             # ── Deep sleep detection ──────────────────────────────────────
             if magnitude < MOVEMENT_BURST_ACCEL_G:
                 stillness_seconds = (now - self._last_movement_at).total_seconds()
-                if stillness_seconds >= STILLNESS_DEEP_SLEEP_SECONDS and not self._deep_sleep_flagged:
-                    logger.info("Ring automation: deep sleep detected (%.1fh stillness). Suppressing automations.", stillness_seconds / 3600)
+                if (
+                    stillness_seconds >= STILLNESS_DEEP_SLEEP_SECONDS
+                    and not self._deep_sleep_flagged
+                ):
+                    logger.info(
+                        "Ring automation: deep sleep detected (%.1fh stillness). Suppressing automations.",
+                        stillness_seconds / 3600,
+                    )
                     self._deep_sleep_flagged = True
                     self._profile.setdefault("runtime_flags", {})["ring_deep_sleep"] = True
             else:
@@ -267,7 +287,9 @@ class RingAutomationEngine:
 
                 if was_deep:
                     # User stirred from deep sleep — flag potential restlessness
-                    logger.info("Ring automation: movement burst after deep sleep. Flagging restlessness.")
+                    logger.info(
+                        "Ring automation: movement burst after deep sleep. Flagging restlessness."
+                    )
                     self._was_restless = True
         elif magnitude >= MOVEMENT_BURST_ACCEL_G:
             self._last_movement_at = now
@@ -285,9 +307,9 @@ class RingAutomationEngine:
             if hasattr(led, "set_user_animation"):
                 led.set_user_animation("breathing")  # type: ignore[union-attr]
             if hasattr(led, "set_user_brightness"):
-                led.set_user_brightness(0.15)         # type: ignore[union-attr]
+                led.set_user_brightness(0.15)  # type: ignore[union-attr]
             if hasattr(led, "set_color_value"):
-                led.set_color_value(LED_CALM_BLUE)    # type: ignore[union-attr]
+                led.set_color_value(LED_CALM_BLUE)  # type: ignore[union-attr]
         except Exception as exc:
             logger.warning("Ring automation: LED calm effect failed: %s", exc)
 
@@ -295,9 +317,9 @@ class RingAutomationEngine:
         try:
             led = self._led
             if hasattr(led, "set_state"):
-                led.set_state("sleep")                # type: ignore[union-attr]
+                led.set_state("sleep")  # type: ignore[union-attr]
             if hasattr(led, "set_user_brightness"):
-                led.set_user_brightness(0.1)          # type: ignore[union-attr]
+                led.set_user_brightness(0.1)  # type: ignore[union-attr]
         except Exception as exc:
             logger.warning("Ring automation: LED sleep restore failed: %s", exc)
 
@@ -317,7 +339,7 @@ class RingAutomationEngine:
             if hasattr(led, "set_color_value"):
                 led.set_color_value(LED_AMBER_PULSE)  # type: ignore[union-attr]
             if hasattr(led, "set_user_animation"):
-                led.set_user_animation("pulse")       # type: ignore[union-attr]
+                led.set_user_animation("pulse")  # type: ignore[union-attr]
         except Exception as exc:
             logger.warning("Ring automation: SpO2 LED effect failed: %s", exc)
 
@@ -332,9 +354,9 @@ class RingAutomationEngine:
             if hasattr(led, "set_color_value"):
                 led.set_color_value(LED_RED_EMERGENCY)  # type: ignore[union-attr]
             if hasattr(led, "set_user_animation"):
-                led.set_user_animation("flash")          # type: ignore[union-attr]
+                led.set_user_animation("flash")  # type: ignore[union-attr]
             if hasattr(led, "set_user_brightness"):
-                led.set_user_brightness(1.0)             # type: ignore[union-attr]
+                led.set_user_brightness(1.0)  # type: ignore[union-attr]
         except Exception as exc:
             logger.warning("Ring automation: emergency LED failed: %s", exc)
 

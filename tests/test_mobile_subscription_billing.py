@@ -145,12 +145,12 @@ class TestBillingService(unittest.TestCase):
 
         self.assertEqual(result.user_id, "usr_webhook")
         self.assertTrue(result.verified)
-        
+
         subscription = self.store.get_subscription("usr_webhook")
         self.assertIsNotNone(subscription)
         assert subscription is not None
         self.assertEqual(subscription.get("tier"), "standard")
-        
+
         session = self.store.get_checkout_session(checkout["session_id"])
         self.assertIsNotNone(session)
         assert session is not None
@@ -220,7 +220,9 @@ class _FakePayPalProvider(PayPalProvider):
     def suspend_subscription(self, subscription_id: str, *, reason: str = "Paused by user") -> None:
         self._status_map[str(subscription_id or "").strip()] = "SUSPENDED"
 
-    def cancel_subscription(self, subscription_id: str, *, reason: str = "Cancelled by user") -> None:
+    def cancel_subscription(
+        self, subscription_id: str, *, reason: str = "Cancelled by user"
+    ) -> None:
         self._status_map[str(subscription_id or "").strip()] = "CANCELLED"
 
     def verify_webhook_signature(self, *, headers, payload) -> PayPalWebhookVerification:
@@ -326,8 +328,8 @@ class TestMobileBillingEndpoints(unittest.TestCase):
         self._io_lock_patch.start()
         self.store = SubscriptionStore(db_path=self._subscription_db_path)
         self.store.hash_password = lambda password: _legacy_sha256(password)
-        self.store.check_password = (
-            lambda password, stored_hash: stored_hash == _legacy_sha256(password)
+        self.store.check_password = lambda password, stored_hash: (
+            stored_hash == _legacy_sha256(password)
         )
 
         self._env_patch = unittest.mock.patch.dict(
@@ -336,7 +338,9 @@ class TestMobileBillingEndpoints(unittest.TestCase):
             clear=False,
         )
         self._patch_store = unittest.mock.patch.object(web_server, "store", self.store)
-        self._patch_profile = unittest.mock.patch.object(web_server, "PROFILE_PATH", self._profile_path)
+        self._patch_profile = unittest.mock.patch.object(
+            web_server, "PROFILE_PATH", self._profile_path
+        )
         self._patch_user_repo = unittest.mock.patch.object(
             web_server,
             "_db_user_repository",
@@ -459,7 +463,7 @@ class TestMobileBillingEndpoints(unittest.TestCase):
         assert subscription is not None
         self.assertEqual(subscription.get("tier"), "standard")
         self.assertEqual(subscription.get("payment_provider"), "paypal")
-        
+
         checkout = self.store.get_checkout_session(session_id)
         self.assertIsNotNone(checkout)
         assert checkout is not None
@@ -553,7 +557,9 @@ class TestMobileBillingEndpoints(unittest.TestCase):
         events = body.get("events", [])
         self.assertIsInstance(events, list)
         self.assertGreaterEqual(len(events), 2)
-        event_types = {str(event.get("event_type", "")).lower() for event in events if isinstance(event, dict)}
+        event_types = {
+            str(event.get("event_type", "")).lower() for event in events if isinstance(event, dict)
+        }
         self.assertIn("billing.subscription.activated", event_types)
         self.assertIn("billing.subscription.suspended", event_types)
 
@@ -605,7 +611,11 @@ class TestMobileBillingEndpoints(unittest.TestCase):
         self.assertTrue(bool(second_body.get("duplicate")))
 
         events = self.store.list_payment_events(user_id, limit=30)
-        renewed_events = [row for row in events if str(row.get("event_type", "")).lower() == "billing.subscription.renewed"]
+        renewed_events = [
+            row
+            for row in events
+            if str(row.get("event_type", "")).lower() == "billing.subscription.renewed"
+        ]
         self.assertEqual(len(renewed_events), 1)
 
     def test_paypal_webhook_replay_transmission_is_rejected(self):
@@ -655,7 +665,11 @@ class TestMobileBillingEndpoints(unittest.TestCase):
             headers=self._paypal_headers(tx_id),
         )
         self.assertEqual(replay.status_code, 400)
-        json_body = replay.json() if replay.headers.get("content-type", "").startswith("application/json") else {}
+        json_body = (
+            replay.json()
+            if replay.headers.get("content-type", "").startswith("application/json")
+            else {}
+        )
         body = json_body if isinstance(json_body, dict) else {}
         detail = str(body.get("detail", "")).lower()
         if not detail:

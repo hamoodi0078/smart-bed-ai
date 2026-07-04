@@ -20,10 +20,10 @@ async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> dict:
     """Verify JWT token and return user payload.
-    
+
     Raises:
         HTTPException: 401 if token is missing, invalid, or expired
-        
+
     Returns:
         dict: Decoded token payload with user_id, email, etc.
     """
@@ -34,12 +34,12 @@ async def get_current_user(
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = credentials.credentials
-    
+
     try:
         payload = decode_access_token(token)
-        
+
         # Verify token type
         if payload.get("type") != "access":
             logger.warning("Invalid token type: {}", payload.get("type"))
@@ -48,7 +48,7 @@ async def get_current_user(
                 detail="Invalid token type",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         # Verify required fields
         user_id = payload.get("sub")
         if not user_id:
@@ -58,10 +58,10 @@ async def get_current_user(
                 detail="Invalid token payload",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         logger.debug("User authenticated: user_id={}", user_id)
         return payload
-        
+
     except ExpiredSignatureError:
         logger.info("Expired token presented")
         raise HTTPException(
@@ -101,20 +101,21 @@ async def get_current_user_optional(
 
 def require_role(*allowed_roles: str):
     """Dependency factory to enforce role-based access control.
-    
+
     Usage:
         @router.get("/admin/users", dependencies=[Depends(require_role("admin"))])
         async def list_users(): ...
-        
+
     Args:
         *allowed_roles: One or more role names that are allowed access
-        
+
     Returns:
         Dependency function that checks user role
     """
+
     async def role_checker(current_user: dict = Depends(get_current_user)) -> dict:
         user_role = current_user.get("role", "user")
-        
+
         if user_role not in allowed_roles:
             logger.warning(
                 "Access denied: user_id={} role={} required_roles={}",
@@ -126,14 +127,14 @@ def require_role(*allowed_roles: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",
             )
-        
+
         logger.debug(
             "Role check passed: user_id={} role={}",
             current_user.get("sub"),
             user_role,
         )
         return current_user
-    
+
     return role_checker
 
 

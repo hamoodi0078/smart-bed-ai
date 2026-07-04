@@ -91,10 +91,10 @@ def get_available_hadith_books() -> dict:
             {"key": "abudawud", "name": "Abu Dawood", "hadiths": "~5,200"},
             {"key": "tirmidhi", "name": "Al-Tirmidhi", "hadiths": "~3,900"},
             {"key": "nasai", "name": "Al-Nasai", "hadiths": "~5,700"},
-            {"key": "ibnmajah", "name": "Ibn Majah", "hadiths": "~4,300"}
+            {"key": "ibnmajah", "name": "Ibn Majah", "hadiths": "~4,300"},
         ],
         "total_books": 6,
-        "total_hadiths": "~33,000+"
+        "total_hadiths": "~33,000+",
     }
 
 
@@ -103,14 +103,14 @@ def get_hadith_service_info() -> dict:
     """Get information about the hadith service and current status."""
     cache_path = hadith_service._get_daily_cache_path()
     cached = hadith_service._read_cache(cache_path)
-    
+
     return {
         "primary_source": "hadithapi.com",
         "fallback_sources": ["random-hadith-generator", "local_collection"],
         "available_books": list(hadith_service.BOOKS.keys()),
         "cache_enabled": True,
         "today_cached": cached is not None,
-        "today_source": cached.get("api_source") if cached else None
+        "today_source": cached.get("api_source") if cached else None,
     }
 
 
@@ -125,7 +125,7 @@ def get_islamic_calendar() -> dict:
 def get_sunnah_tip() -> dict:
     return {
         "tip": sunnah_tips_service.get_tip_of_night(),
-        "total_tips": sunnah_tips_service.get_tips_count()
+        "total_tips": sunnah_tips_service.get_tips_count(),
     }
 
 
@@ -133,15 +133,11 @@ def get_sunnah_tip() -> dict:
 def get_sunnah_tips_by_category(category: str) -> dict:
     """
     Get sunnah tips by category.
-    
+
     Categories: posture, quran, dua, timing, spiritual, physical, family, special
     """
     tips = sunnah_tips_service.get_tip_by_category(category)
-    return {
-        "category": category,
-        "tips": tips,
-        "count": len(tips)
-    }
+    return {"category": category, "tips": tips, "count": len(tips)}
 
 
 @router.get("/sunnah-tips/all")
@@ -149,7 +145,7 @@ def get_all_sunnah_tips() -> dict:
     """Get all sunnah sleep tips."""
     return {
         "tips": sunnah_tips_service.get_all_tips(),
-        "total": sunnah_tips_service.get_tips_count()
+        "total": sunnah_tips_service.get_tips_count(),
     }
 
 
@@ -187,22 +183,16 @@ def get_prayer_location() -> dict:
 
 @router.post("/location/update")
 def update_prayer_location(
-    city: str = None,
-    country: str = None,
-    latitude: float = None,
-    longitude: float = None
+    city: str = None, country: str = None, latitude: float = None, longitude: float = None
 ) -> dict:
     """Update prayer times location dynamically."""
     prayer_service.update_location(
-        city=city,
-        country=country,
-        latitude=latitude,
-        longitude=longitude
+        city=city, country=country, latitude=latitude, longitude=longitude
     )
     return {
         "success": True,
         "message": "Prayer times location updated",
-        "location": prayer_service.get_current_location()
+        "location": prayer_service.get_current_location(),
     }
 
 
@@ -213,7 +203,7 @@ def refresh_prayer_location() -> dict:
     return {
         "success": success,
         "message": "Location refreshed" if success else "Auto-detection not enabled or failed",
-        "location": prayer_service.get_current_location()
+        "location": prayer_service.get_current_location(),
     }
 
 
@@ -224,26 +214,24 @@ def get_prayer_times_detailed() -> dict:
     return {
         "prayers": bundle.get("prayers", {}),
         "location": bundle.get("location", {}),
-        "next_prayer": prayer_service.get_next_prayer()
+        "next_prayer": prayer_service.get_next_prayer(),
     }
 
 
 # ============= QURAN TEXT ENDPOINTS =============
 
+
 @router.get("/quran/surahs")
 def get_quran_surahs() -> dict:
     """Get list of all 114 surahs with metadata."""
-    return {
-        "surahs": quran_text_service.get_surahs_list(),
-        "total": 114
-    }
+    return {"surahs": quran_text_service.get_surahs_list(), "total": 114}
 
 
 @router.get("/quran/surah/{surah_number}")
 def get_quran_surah(surah_number: int, edition: str = "arabic") -> dict:
     """
     Get full surah with verses.
-    
+
     Args:
         surah_number: Surah number (1-114)
         edition: Edition type (arabic, english, transliteration)
@@ -267,7 +255,7 @@ def get_quran_surah_info(surah_number: int) -> dict:
 def get_quran_ayah(surah_number: int, ayah_number: int, edition: str = "arabic") -> dict:
     """
     Get a specific verse (ayah).
-    
+
     Args:
         surah_number: Surah number (1-114)
         ayah_number: Ayah number within the surah
@@ -292,22 +280,18 @@ def get_quran_ayah_multi_edition(surah_number: int, ayah_number: int) -> dict:
 def search_quran(q: str, edition: str = "english", limit: int = 20) -> dict:
     """
     Search Quran text.
-    
+
     Args:
         q: Search query
         edition: Edition to search (arabic, english, transliteration)
         limit: Maximum results to return
     """
     results = quran_text_service.search_quran(q, edition, limit)
-    return {
-        "query": q,
-        "edition": edition,
-        "results": results,
-        "count": len(results)
-    }
+    return {"query": q, "edition": edition, "results": results, "count": len(results)}
 
 
 # ============= PROPHET STORIES ENDPOINTS =============
+
 
 @router.get("/stories/prophets")
 def get_prophets_list() -> dict:
@@ -315,14 +299,9 @@ def get_prophets_list() -> dict:
     prophets = prophet_stories_service.get_all_prophets()
     return {
         "prophets": [
-            {
-                "name": p["name"],
-                "arabic": p["arabic"],
-                "title": p["title"]
-            }
-            for p in prophets
+            {"name": p["name"], "arabic": p["arabic"], "title": p["title"]} for p in prophets
         ],
-        "total": len(prophets)
+        "total": len(prophets),
     }
 
 
@@ -339,49 +318,36 @@ def get_prophet_story(prophet_name: str) -> dict:
 def get_prophets_by_age(age_group: str) -> dict:
     """
     Get prophet stories filtered by age appropriateness.
-    
+
     Args:
         age_group: 'all', 'children', 'teen_adult'
     """
     stories = prophet_stories_service.get_prophets_by_age_group(age_group)
-    return {
-        "age_group": age_group,
-        "stories": stories,
-        "count": len(stories)
-    }
+    return {"age_group": age_group, "stories": stories, "count": len(stories)}
 
 
 @router.get("/stories/search")
 def search_prophet_stories(q: str) -> dict:
     """Search prophet stories by keyword."""
     results = prophet_stories_service.search_stories(q)
-    return {
-        "query": q,
-        "results": results,
-        "count": len(results)
-    }
+    return {"query": q, "results": results, "count": len(results)}
 
 
 # ============= QURAN AUDIO ENDPOINTS =============
+
 
 @router.get("/quran/reciters")
 def get_reciters() -> dict:
     """Get list of available Quran reciters."""
     reciters = ReciterCatalog.get_all_reciters()
-    return {
-        "reciters": reciters,
-        "total": len(reciters)
-    }
+    return {"reciters": reciters, "total": len(reciters)}
 
 
 @router.get("/quran/reciters/popular")
 def get_popular_reciters() -> dict:
     """Get list of popular reciters."""
     reciters = ReciterCatalog.get_popular_reciters()
-    return {
-        "reciters": reciters,
-        "total": len(reciters)
-    }
+    return {"reciters": reciters, "total": len(reciters)}
 
 
 @router.get("/quran/reciters/{reciter_id}")
@@ -404,7 +370,7 @@ def get_audio_url(reciter_id: str, surah_number: int, ayah_number: int) -> dict:
         "surah": surah_number,
         "ayah": ayah_number,
         "url": url,
-        "format": "mp3"
+        "format": "mp3",
     }
 
 
@@ -418,7 +384,7 @@ def download_ayah_audio(reciter_id: str, surah: int, ayah: int) -> dict:
         "reciter_id": reciter_id,
         "surah": surah,
         "ayah": ayah,
-        "cached": quran_audio_service.is_cached(reciter_id, surah, ayah)
+        "cached": quran_audio_service.is_cached(reciter_id, surah, ayah),
     }
 
 
@@ -439,7 +405,7 @@ def get_audio_cache_stats(reciter_id: str = None) -> dict:
 def clear_audio_cache(reciter_id: str = None) -> dict:
     """
     Clear cached audio files.
-    
+
     Args:
         reciter_id: Clear specific reciter (None = clear all)
     """
@@ -453,12 +419,14 @@ def get_player_status() -> dict:
     return {
         "ready": quran_audio_service.is_player_ready(),
         "playing": quran_audio_service.is_playing(),
-        "current": quran_audio_service.get_current_playback_info()
+        "current": quran_audio_service.get_current_playback_info(),
     }
 
 
 @router.post("/quran/audio/play/ayah")
-def play_ayah_audio(reciter_id: str, surah: int, ayah: int, download_if_missing: bool = True) -> dict:
+def play_ayah_audio(
+    reciter_id: str, surah: int, ayah: int, download_if_missing: bool = True
+) -> dict:
     """Play a single ayah audio."""
     success, message = quran_audio_service.play_ayah(reciter_id, surah, ayah, download_if_missing)
     return {
@@ -466,7 +434,7 @@ def play_ayah_audio(reciter_id: str, surah: int, ayah: int, download_if_missing:
         "message": message,
         "reciter_id": reciter_id,
         "surah": surah,
-        "ayah": ayah
+        "ayah": ayah,
     }
 
 
@@ -479,7 +447,7 @@ def create_surah_playlist(reciter_id: str, surah: int, total_ayahs: int) -> dict
         "message": message,
         "reciter_id": reciter_id,
         "surah": surah,
-        "total_ayahs": total_ayahs
+        "total_ayahs": total_ayahs,
     }
 
 
@@ -490,7 +458,7 @@ def audio_play_next(download_if_missing: bool = True) -> dict:
     return {
         "success": success,
         "message": message,
-        "current": quran_audio_service.get_current_playback_info()
+        "current": quran_audio_service.get_current_playback_info(),
     }
 
 
@@ -501,7 +469,7 @@ def audio_play_previous(download_if_missing: bool = True) -> dict:
     return {
         "success": success,
         "message": message,
-        "current": quran_audio_service.get_current_playback_info()
+        "current": quran_audio_service.get_current_playback_info(),
     }
 
 
@@ -527,6 +495,7 @@ def audio_stop() -> dict:
 
 
 # ============= UNIFIED SEARCH ENDPOINT =============
+
 
 @router.get("/search")
 def search_all_content(q: str, limit: int = 20) -> dict:

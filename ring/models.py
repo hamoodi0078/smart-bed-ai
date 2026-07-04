@@ -21,8 +21,10 @@ def _utcnow() -> datetime:
 # Enums
 # ---------------------------------------------------------------------------
 
+
 class RingModel(str, Enum):
     """Supported COLMI ring models."""
+
     R02 = "colmi_r02"
     R06 = "colmi_r06"
     R10 = "colmi_r10"
@@ -39,6 +41,7 @@ class RingModel(str, Enum):
 
 class SleepStage(str, Enum):
     """Sleep stage classification (ring + bed fusion)."""
+
     DEEP = "deep"
     LIGHT = "light"
     REM = "rem"
@@ -48,6 +51,7 @@ class SleepStage(str, Enum):
 
 class RingConnectionState(str, Enum):
     """BLE connection lifecycle states."""
+
     DISCONNECTED = "disconnected"
     SCANNING = "scanning"
     CONNECTING = "connecting"
@@ -60,12 +64,14 @@ class RingConnectionState(str, Enum):
 # BLE discovery
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class RingDevice:
     """A COLMI ring discovered during BLE scan."""
-    address: str = ""        # BLE MAC address (e.g. "AA:BB:CC:DD:EE:FF")
-    name: str = ""           # Advertised BLE name (e.g. "R02_XXXX")
-    rssi: int = -100         # Signal strength in dBm
+
+    address: str = ""  # BLE MAC address (e.g. "AA:BB:CC:DD:EE:FF")
+    name: str = ""  # Advertised BLE name (e.g. "R02_XXXX")
+    rssi: int = -100  # Signal strength in dBm
     model: RingModel = RingModel.UNKNOWN
 
     @property
@@ -82,11 +88,12 @@ class RingDevice:
 @dataclass(frozen=True)
 class RingDeviceInfo:
     """Detailed info about a connected ring."""
+
     address: str = ""
     name: str = ""
     model: RingModel = RingModel.UNKNOWN
     firmware_version: str = ""
-    battery_pct: int = 0          # 0-100
+    battery_pct: int = 0  # 0-100
     last_sync_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -104,11 +111,13 @@ class RingDeviceInfo:
 # Real-time readings
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class RingHrReading:
     """A single heart-rate reading from the ring."""
+
     heart_rate_bpm: float = 0.0
-    confidence: float = 0.0       # 0.0–1.0
+    confidence: float = 0.0  # 0.0–1.0
     timestamp: datetime = field(default_factory=_utcnow)
     valid: bool = False
 
@@ -121,6 +130,7 @@ class RingHrReading:
 @dataclass(frozen=True)
 class RingSpo2Reading:
     """A single SpO₂ reading from the ring."""
+
     spo2_pct: float = 0.0
     confidence: float = 0.0
     timestamp: datetime = field(default_factory=_utcnow)
@@ -135,6 +145,7 @@ class RingSpo2Reading:
 @dataclass(frozen=True)
 class RingSkinTempReading:
     """Skin temperature reading from the ring."""
+
     temperature_c: float = 0.0
     timestamp: datetime = field(default_factory=_utcnow)
     valid: bool = False
@@ -143,7 +154,8 @@ class RingSkinTempReading:
 @dataclass(frozen=True)
 class RingAccelReading:
     """Accelerometer movement intensity from the ring (0–100 scale)."""
-    intensity: float = 0.0        # 0 = still, 100 = vigorous movement
+
+    intensity: float = 0.0  # 0 = still, 100 = vigorous movement
     x: float = 0.0
     y: float = 0.0
     z: float = 0.0
@@ -158,9 +170,11 @@ class RingAccelReading:
 # Historical data (synced from ring memory)
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class RingStepRecord:
     """Step count record from ring memory."""
+
     date: date | None = None
     steps: int = 0
     distance_m: float = 0.0
@@ -170,6 +184,7 @@ class RingStepRecord:
 @dataclass(frozen=True)
 class RingHrLogEntry:
     """Historical HR data point from ring memory."""
+
     timestamp: datetime = field(default_factory=_utcnow)
     heart_rate_bpm: float = 0.0
     valid: bool = False
@@ -182,6 +197,7 @@ class RingSleepRecord:
     This is the ring's own analysis.  The *RingBedFusionEngine* may produce
     a more accurate analysis by combining this with bed sensor data.
     """
+
     date: date | None = None
     total_minutes: int = 0
     deep_minutes: int = 0
@@ -254,17 +270,19 @@ class RingSleepRecord:
 # Unified biometrics (ring + bed fused)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class UnifiedBiometrics:
     """Combined snapshot from ring and bed sensors.
 
     Every field is optional — the fusion engine fills what it can.
     """
+
     # Ring biometrics
     ring_connected: bool = False
     ring_battery_pct: int = 0
     heart_rate_bpm: float | None = None
-    heart_rate_source: str = ""          # "ring", "bed_max30102", "none"
+    heart_rate_source: str = ""  # "ring", "bed_max30102", "none"
     spo2_pct: float | None = None
     spo2_source: str = ""
     skin_temp_c: float | None = None
@@ -278,8 +296,8 @@ class UnifiedBiometrics:
 
     # Fused intelligence
     current_sleep_stage: SleepStage = SleepStage.UNKNOWN
-    stress_indicator: float | None = None      # 0–100
-    recovery_readiness: float | None = None    # 0–100
+    stress_indicator: float | None = None  # 0–100
+    recovery_readiness: float | None = None  # 0–100
     is_asleep: bool = False
     is_in_bed: bool = False
     asleep_since: datetime | None = None

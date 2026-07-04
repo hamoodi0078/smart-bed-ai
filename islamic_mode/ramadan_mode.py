@@ -46,9 +46,7 @@ class RamadanMode:
         if not isha:
             return "Tarawih reminder: 30 minutes after Isha is a beautiful time to stand in prayer tonight."
         tarawih_time = self._shift_time(isha, 30)
-        return (
-            f"Tarawih reminder: Around {tarawih_time}, take a few quiet moments for Tarawih prayer tonight."
-        )
+        return f"Tarawih reminder: Around {tarawih_time}, take a few quiet moments for Tarawih prayer tonight."
 
     # ------------------------------------------------------------------
     # Profile shape
@@ -118,24 +116,30 @@ class RamadanMode:
         key = f"{today}:suhoor_wake"
         if 0 <= diff <= 5 and key not in self._last_actions:
             self._last_actions[key] = now.isoformat()
-            actions.append({
-                "type": "led_scene",
-                "action": "suhoor_wake",
-                "color": "#FF8C00",
-                "brightness": 0.20,
-                "animation": "gentle_sunrise",
-            })
-            actions.append({
-                "type": "voice",
-                "message": f"Time for Suhoor. Fajr is at {fajr}. Eat well and make your intention.",
-                "volume": 0.4,
-            })
-            actions.append({
-                "type": "notification",
-                "category": "ramadan_suhoor",
-                "message": f"Suhoor time! Fajr at {fajr}.",
-                "priority": "high",
-            })
+            actions.append(
+                {
+                    "type": "led_scene",
+                    "action": "suhoor_wake",
+                    "color": "#FF8C00",
+                    "brightness": 0.20,
+                    "animation": "gentle_sunrise",
+                }
+            )
+            actions.append(
+                {
+                    "type": "voice",
+                    "message": f"Time for Suhoor. Fajr is at {fajr}. Eat well and make your intention.",
+                    "volume": 0.4,
+                }
+            )
+            actions.append(
+                {
+                    "type": "notification",
+                    "category": "ramadan_suhoor",
+                    "message": f"Suhoor time! Fajr at {fajr}.",
+                    "priority": "high",
+                }
+            )
 
         return actions
 
@@ -165,12 +169,14 @@ class RamadanMode:
         pre_key = f"{today}:iftar_pre"
         if 5 < diff <= 10 and pre_key not in self._last_actions:
             self._last_actions[pre_key] = now.isoformat()
-            actions.append({
-                "type": "notification",
-                "category": "ramadan_iftar_soon",
-                "message": f"Iftar in {diff} minutes. Prepare to break your fast.",
-                "priority": "medium",
-            })
+            actions.append(
+                {
+                    "type": "notification",
+                    "category": "ramadan_iftar_soon",
+                    "message": f"Iftar in {diff} minutes. Prepare to break your fast.",
+                    "priority": "medium",
+                }
+            )
 
         at_key = f"{today}:iftar_at"
         if -2 <= diff <= 0 and at_key not in self._last_actions:
@@ -178,24 +184,30 @@ class RamadanMode:
 
             self._log_fast_completed(profile, today)
 
-            actions.append({
-                "type": "led_scene",
-                "action": "iftar_celebration",
-                "color": "#FFD700",
-                "brightness": 0.40,
-                "animation": "warm_glow",
-            })
-            actions.append({
-                "type": "voice",
-                "message": "Alhamdulillah, time to break your fast. Bismillah!",
-                "volume": 0.5,
-            })
-            actions.append({
-                "type": "notification",
-                "category": "ramadan_iftar",
-                "message": "Iftar time! Break your fast. Alhamdulillah.",
-                "priority": "high",
-            })
+            actions.append(
+                {
+                    "type": "led_scene",
+                    "action": "iftar_celebration",
+                    "color": "#FFD700",
+                    "brightness": 0.40,
+                    "animation": "warm_glow",
+                }
+            )
+            actions.append(
+                {
+                    "type": "voice",
+                    "message": "Alhamdulillah, time to break your fast. Bismillah!",
+                    "volume": 0.5,
+                }
+            )
+            actions.append(
+                {
+                    "type": "notification",
+                    "category": "ramadan_iftar",
+                    "message": "Iftar time! Break your fast. Alhamdulillah.",
+                    "priority": "high",
+                }
+            )
 
         return actions
 
@@ -227,12 +239,14 @@ class RamadanMode:
 
         if 0 <= diff <= 5:
             self._last_actions[key] = now.isoformat()
-            return [{
-                "type": "notification",
-                "category": "ramadan_tarawih",
-                "message": self.get_tarawih_reminder(),
-                "priority": "medium",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "ramadan_tarawih",
+                    "message": self.get_tarawih_reminder(),
+                    "priority": "medium",
+                }
+            ]
 
         return []
 
@@ -240,7 +254,9 @@ class RamadanMode:
     # Laylatul Qadr (last 10 nights)
     # ------------------------------------------------------------------
 
-    def _evaluate_laylatul_qadr(self, profile: dict, now: datetime, today: str) -> list[dict[str, Any]]:
+    def _evaluate_laylatul_qadr(
+        self, profile: dict, now: datetime, today: str
+    ) -> list[dict[str, Any]]:
         ram = profile.get("ramadan", {})
         if not ram.get("laylatul_qadr_mode_enabled", True):
             return []
@@ -271,26 +287,32 @@ class RamadanMode:
             self._last_actions[key] = now.isoformat()
             night_label = f"night {day_num}"
             if is_odd:
-                actions.append({
-                    "type": "led_scene",
-                    "action": "laylatul_qadr_special",
-                    "color": "#E6E6FA",
-                    "brightness": 0.15,
-                    "animation": "starlight_shimmer",
-                })
-                actions.append({
-                    "type": "notification",
-                    "category": "laylatul_qadr",
-                    "message": f"This is {night_label} of Ramadan (odd night). Seek Laylatul Qadr with extra worship tonight.",
-                    "priority": "high",
-                })
+                actions.append(
+                    {
+                        "type": "led_scene",
+                        "action": "laylatul_qadr_special",
+                        "color": "#E6E6FA",
+                        "brightness": 0.15,
+                        "animation": "starlight_shimmer",
+                    }
+                )
+                actions.append(
+                    {
+                        "type": "notification",
+                        "category": "laylatul_qadr",
+                        "message": f"This is {night_label} of Ramadan (odd night). Seek Laylatul Qadr with extra worship tonight.",
+                        "priority": "high",
+                    }
+                )
             else:
-                actions.append({
-                    "type": "notification",
-                    "category": "last_ten_nights",
-                    "message": f"Last 10 nights: {night_label}. Increase your ibadah and dua tonight.",
-                    "priority": "medium",
-                })
+                actions.append(
+                    {
+                        "type": "notification",
+                        "category": "last_ten_nights",
+                        "message": f"Last 10 nights: {night_label}. Increase your ibadah and dua tonight.",
+                        "priority": "medium",
+                    }
+                )
 
         return actions
 
@@ -298,7 +320,9 @@ class RamadanMode:
     # Quran reading reminder
     # ------------------------------------------------------------------
 
-    def _evaluate_quran_reminder(self, profile: dict, now: datetime, today: str) -> list[dict[str, Any]]:
+    def _evaluate_quran_reminder(
+        self, profile: dict, now: datetime, today: str
+    ) -> list[dict[str, Any]]:
         ram = profile.get("ramadan", {})
         goal = int(ram.get("daily_quran_goal_pages", 20) or 20)
         if goal <= 0:
@@ -315,14 +339,20 @@ class RamadanMode:
 
         if 14 <= now.hour <= 17:
             self._last_actions[key] = now.isoformat()
-            pages_read = int(ram.get("quran_pages_read_today", 0) or 0) if ram.get("quran_last_date", "") == today else 0
+            pages_read = (
+                int(ram.get("quran_pages_read_today", 0) or 0)
+                if ram.get("quran_last_date", "") == today
+                else 0
+            )
             remaining = max(0, goal - pages_read)
-            return [{
-                "type": "notification",
-                "category": "ramadan_quran",
-                "message": f"Quran reminder: {remaining} pages remaining to meet today's goal of {goal} pages.",
-                "priority": "low",
-            }]
+            return [
+                {
+                    "type": "notification",
+                    "category": "ramadan_quran",
+                    "message": f"Quran reminder: {remaining} pages remaining to meet today's goal of {goal} pages.",
+                    "priority": "low",
+                }
+            ]
 
         return []
 
@@ -339,7 +369,9 @@ class RamadanMode:
         ram["fasting_log"] = log[-40:]
         ram["total_fasts_completed"] = sum(1 for e in log if e.get("completed", False))
 
-    def log_quran_pages(self, profile: dict, pages: int, now: datetime | None = None) -> dict[str, Any]:
+    def log_quran_pages(
+        self, profile: dict, pages: int, now: datetime | None = None
+    ) -> dict[str, Any]:
         """Log Quran pages read today."""
         now = now or datetime.now()
         self.ensure_shape(profile)
@@ -350,7 +382,9 @@ class RamadanMode:
             ram["quran_pages_read_today"] = 0
             ram["quran_last_date"] = today
 
-        ram["quran_pages_read_today"] = int(ram.get("quran_pages_read_today", 0)) + max(0, int(pages))
+        ram["quran_pages_read_today"] = int(ram.get("quran_pages_read_today", 0)) + max(
+            0, int(pages)
+        )
         goal = int(ram.get("daily_quran_goal_pages", 20) or 20)
         current = int(ram.get("quran_pages_read_today", 0))
 
@@ -359,7 +393,8 @@ class RamadanMode:
             "goal": goal,
             "remaining": max(0, goal - current),
             "completed": current >= goal,
-            "message": f"{current}/{goal} pages today." + (" MashaAllah, goal reached!" if current >= goal else ""),
+            "message": f"{current}/{goal} pages today."
+            + (" MashaAllah, goal reached!" if current >= goal else ""),
         }
 
     def get_ramadan_progress(self, profile: dict) -> dict[str, Any]:

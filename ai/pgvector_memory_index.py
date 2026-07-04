@@ -116,6 +116,7 @@ class PgVectorMemoryIndex:
             return False
         try:
             from ai.embedding_service import encode
+
             vec = self._vec_str(encode(text).tolist())
             meta_json = json.dumps(metadata or {})
             async with self._db.acquire() as conn:
@@ -128,7 +129,11 @@ class PgVectorMemoryIndex:
                             embedding = EXCLUDED.embedding,
                             metadata  = EXCLUDED.metadata
                     """,
-                    doc_id, user_id, text[:2000], vec, meta_json,
+                    doc_id,
+                    user_id,
+                    text[:2000],
+                    vec,
+                    meta_json,
                 )
             return True
         except Exception as exc:
@@ -150,6 +155,7 @@ class PgVectorMemoryIndex:
             return []
         try:
             from ai.embedding_service import encode
+
             vec = self._vec_str(encode(text).tolist())
             async with self._db.acquire() as conn:
                 rows = await conn.fetch(
@@ -163,18 +169,22 @@ class PgVectorMemoryIndex:
                     ORDER  BY embedding <=> $1::vector
                     LIMIT  $3
                     """,
-                    vec, user_id, int(n_results),
+                    vec,
+                    user_id,
+                    int(n_results),
                 )
             hits: list[dict[str, Any]] = []
             for row in rows:
                 sim = float(row["similarity"])
                 if sim >= min_similarity:
-                    hits.append({
-                        "id": row["id"],
-                        "document": row["text"],
-                        "metadata": dict(row["metadata"] or {}),
-                        "similarity": round(sim, 4),
-                    })
+                    hits.append(
+                        {
+                            "id": row["id"],
+                            "document": row["text"],
+                            "metadata": dict(row["metadata"] or {}),
+                            "similarity": round(sim, 4),
+                        }
+                    )
             return hits
         except Exception as exc:
             logger.debug("PgVectorMemoryIndex.query failed: {}", exc)
@@ -186,9 +196,7 @@ class PgVectorMemoryIndex:
             return False
         try:
             async with self._db.acquire() as conn:
-                await conn.execute(
-                    f"DELETE FROM {self.TABLE} WHERE id = $1", doc_id
-                )
+                await conn.execute(f"DELETE FROM {self.TABLE} WHERE id = $1", doc_id)
             return True
         except Exception as exc:
             logger.debug("PgVectorMemoryIndex.delete failed doc_id={}: {}", doc_id, exc)
@@ -201,13 +209,13 @@ class PgVectorMemoryIndex:
         try:
             async with self._db.acquire() as conn:
                 if user_id:
-                    return int(await conn.fetchval(
-                        f"SELECT COUNT(*) FROM {self.TABLE} WHERE user_id = $1",
-                        user_id,
-                    ))
-                return int(await conn.fetchval(
-                    f"SELECT COUNT(*) FROM {self.TABLE}"
-                ))
+                    return int(
+                        await conn.fetchval(
+                            f"SELECT COUNT(*) FROM {self.TABLE} WHERE user_id = $1",
+                            user_id,
+                        )
+                    )
+                return int(await conn.fetchval(f"SELECT COUNT(*) FROM {self.TABLE}"))
         except Exception:
             return 0
 
