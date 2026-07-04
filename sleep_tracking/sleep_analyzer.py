@@ -230,6 +230,13 @@ class SleepAnalyzer:
 
     @staticmethod
     def _calculate_durations(bed_times: list[datetime], wake_times: list[datetime]) -> list[float]:
+        """Pair the most recent bed/wake entries and return durations in
+        CHRONOLOGICAL order (oldest → newest).
+
+        Order matters: every caller feeds this into a time series (EWM,
+        Holt-Winters, ADF, seasonal decompose) or zips it against the
+        chronological bed_times list.
+        """
         pairs = min(len(bed_times), len(wake_times))
         durations = []
         for i in range(1, pairs + 1):
@@ -240,6 +247,7 @@ class SleepAnalyzer:
             hours = (wake - bed).total_seconds() / 3600.0
             if 2.0 <= hours <= 16.0:
                 durations.append(hours)
+        durations.reverse()
         return durations
 
     @staticmethod

@@ -1,11 +1,16 @@
-"""Centralised password hashing using passlib + bcrypt.
+"""Centralised password hashing using bcrypt.
 
 All password operations go through this module so the hashing scheme
 can be upgraded in one place without touching call sites.
 
-Preferred: passlib CryptContext (bcrypt scheme, auto-deprecates weaker hashes)
-Fallback:  raw bcrypt package
+Preferred: raw bcrypt package (compatible with bcrypt 4.x and 5.x)
+Fallback:  passlib CryptContext — passlib 1.7.4 is unmaintained and breaks
+           with bcrypt >= 4.1 (missing __about__, 72-byte ValueError), so it
+           is only used when the raw bcrypt package is absent.
 Both unavailable: RuntimeError on hash, False on verify
+
+Hashes are interchangeable: passlib's bcrypt scheme produces standard
+"$2b$..." strings that bcrypt.checkpw verifies, and vice versa.
 """
 
 from __future__ import annotations
@@ -16,6 +21,13 @@ import hmac
 from loguru import logger
 
 try:
+    import bcrypt as _bcrypt
+    _BCRYPT_AVAILABLE = True
+except ImportError:
+    _bcrypt = None  # type: ignore[assignment]
+    _BCRYPT_AVAILABLE = False
+
+try:
     from passlib.context import CryptContext as _CryptContext
     _pwd_context = _CryptContext(schemes=["bcrypt"], deprecated="auto")
     _PASSLIB_AVAILABLE = True
@@ -24,15 +36,9 @@ except ImportError:
     _pwd_context = None
     _PASSLIB_AVAILABLE = False
 
-if not _PASSLIB_AVAILABLE:
-    try:
-        import bcrypt as _bcrypt
-        _BCRYPT_AVAILABLE = True
-    except ImportError:
-        _bcrypt = None  # type: ignore[assignment]
-        _BCRYPT_AVAILABLE = False
-else:
-    _BCRYPT_AVAILABLE = False  # passlib takes priority
+# bcrypt's algorithmic input limit. bcrypt < 4 truncated silently;
+# bcrypt >= 4.1 raises ValueError instead, so we truncate explicitly.
+_BCRYPT_MAX_SECRET_BYTES = 72
 
 
 def _is_legacy_sha256(stored: str) -> bool:
@@ -44,20 +50,20 @@ def _is_legacy_sha256(stored: str) -> bool:
 def hash_password(password: str) -> str:
     """Return a bcrypt hash of *password*.
 
-    Uses passlib when available, falls back to the raw bcrypt package.
+    Uses the raw bcrypt package when available, falls back to passlib.
     Raises RuntimeError if neither is installed.
     """
-    secret = (password or "").encode("utf-8")
-
-    if _PASSLIB_AVAILABLE and _pwd_context is not None:
-        return _pwd_context.hash(password)
+    secret = (password or "").encode("utf-8")[:_BCRYPT_MAX_SECRET_BYTES]
 
     if _BCRYPT_AVAILABLE and _bcrypt is not None:
         return _bcrypt.hashpw(secret, _bcrypt.gensalt()).decode("utf-8")
 
+    if _PASSLIB_AVAILABLE and _pwd_context is not None:
+        return _pwd_context.hash(secret.decode("utf-8", errors="ignore"))
+
     raise RuntimeError(
         "No password hashing backend available. "
-        "Install passlib[bcrypt] or bcrypt."
+        "Install bcrypt or passlib[bcrypt]."
     )
 
 
@@ -65,8 +71,8 @@ def verify_password(password: str, stored_hash: str) -> bool:
     """Verify *password* against *stored_hash*.
 
     Handles three cases:
-    - passlib bcrypt hashes  (preferred, uses CryptContext.verify)
-    - raw bcrypt hashes      (fallback when passlib absent)
+    - bcrypt hashes           (preferred, raw bcrypt.checkpw)
+    - passlib bcrypt hashes   (same "$2b$" format — either backend verifies both)
     - legacy bare SHA-256 hex (migration path — 64 char hex strings)
 
     Returns False on any error rather than raising.
@@ -81,20 +87,22 @@ def verify_password(password: str, stored_hash: str) -> bool:
         legacy = hashlib.sha256(secret).hexdigest()
         return hmac.compare_digest(text.lower(), legacy)
 
-    # passlib path (preferred)
-    if _PASSLIB_AVAILABLE and _pwd_context is not None:
-        try:
-            return bool(_pwd_context.verify(password, text))
-        except Exception as exc:
-            logger.debug("passlib verify error: {}", exc)
-            return False
+    truncated = secret[:_BCRYPT_MAX_SECRET_BYTES]
 
-    # raw bcrypt fallback
+    # raw bcrypt path (preferred)
     if _BCRYPT_AVAILABLE and _bcrypt is not None:
         try:
-            return bool(_bcrypt.checkpw(secret, text.encode("utf-8")))
+            return bool(_bcrypt.checkpw(truncated, text.encode("utf-8")))
         except Exception as exc:
             logger.debug("bcrypt verify error: {}", exc)
+            return False
+
+    # passlib fallback
+    if _PASSLIB_AVAILABLE and _pwd_context is not None:
+        try:
+            return bool(_pwd_context.verify(truncated.decode("utf-8", errors="ignore"), text))
+        except Exception as exc:
+            logger.debug("passlib verify error: {}", exc)
             return False
 
     return False

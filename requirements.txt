@@ -8,7 +8,7 @@ hijri-converter==2.3.0
 pyarabic==0.6.15
 arabic-reshaper==3.0.0
 google-api-python-client==2.131.0
-garminconnect==0.2.19
+garminconnect==0.3.2           # 0.2.x depends on withings-sync, which is uninstallable on py3.11 (broken 4.x sdist, 5.x+ needs py3.12); 0.3.2 drops that dependency and matches the tested local env
 reportlab==4.2.0
 requests==2.32.3
 httpx==0.27.0
@@ -22,7 +22,7 @@ redis==5.0.8
 aiofiles==24.1.0
 
 # ── Auth & security ─────────────────────────────────────────────────
-bcrypt==4.1.3
+bcrypt==5.0.0                  # core/security.py uses raw bcrypt directly (passlib 1.7.4 is incompatible with bcrypt>=4.1 and only kept as fallback)
 firebase-admin==6.5.0
 passlib[bcrypt]==1.7.4
 python-dotenv==1.0.1

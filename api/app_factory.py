@@ -54,7 +54,9 @@ async def _lifespan(app: FastAPI):
 
     # Sentry error tracking (must be initialised early so it catches startup errors)
     try:
-        if settings.sentry_dsn:
+        import sys as _sys
+        # Never report test-suite noise to production Sentry
+        if settings.sentry_dsn and "pytest" not in _sys.modules:
             import sentry_sdk
             from sentry_sdk.integrations.fastapi import FastApiIntegration
             from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
