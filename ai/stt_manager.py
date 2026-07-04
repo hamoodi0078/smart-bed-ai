@@ -561,6 +561,11 @@ class STTManager:
                 "sample_rate": max(8000, int(sample_rate_hz)),
                 "encoding": "linear16",
                 "channels": 1,
+                # Finalize ~300ms after end of speech instead of waiting for
+                # the stream to close — the single biggest turn-taking win.
+                "endpointing": 300,
+                "vad_events": True,
+                "utterance_end_ms": "1000",
             }
             language_hint = self._normalized_language_hint()
             if language_hint:

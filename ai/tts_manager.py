@@ -11,6 +11,13 @@ from pathlib import Path
 import requests
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
+try:
+    import sounddevice as _sd
+except Exception:  # pragma: no cover - optional runtime dependency
+    _sd = None
+
+_STREAM_PCM_SAMPLE_RATE = 24_000  # Deepgram Aura linear16 output rate
+
 
 def _write_bytes_to_path(path: Path, data: bytes) -> None:
     path.write_bytes(data)
@@ -266,6 +273,90 @@ class TTSManager:
                 return output_path
             finally:
                 _log.debug("Write lock released: {} (thread={})", output_path.resolve(), writer)
+
+    def supports_streaming_playback(self) -> bool:
+        return _sd is not None and bool(self.api_key)
+
+    def speak_streaming(
+        self,
+        text: str,
+        voice_override: str = "",
+        pace_override: float = 1.0,
+        emotion_state: str = "neutral",
+        profile_override: str = "",
+        chunk_size: int = 4096,
+    ) -> bool:
+        """Speak *text* with chunked PCM playback — first audio at network TTFB.
+
+        Streams linear16 straight from Deepgram Aura into the sound card
+        instead of buffering a full MP3 to disk first (~200-400ms to first
+        sound vs full-synthesis latency). Blocks until playback finishes so
+        fragment ordering in the realtime pipeline is preserved.
+
+        Returns False on any failure so callers can fall back to
+        synthesize_to_mp3 + file playback.
+        """
+        if not self.supports_streaming_playback():
+            return False
+        normalized = self._normalize_tts_text(text)
+        if not normalized:
+            return False
+
+        voice = str(voice_override or self.voice or "").strip() or self.voice
+        model = self._resolve_deepgram_model(voice)
+        query = {
+            "model": model,
+            "encoding": "linear16",
+            "sample_rate": str(_STREAM_PCM_SAMPLE_RATE),
+            "container": "none",
+        }
+        url = f"https://api.deepgram.com/v1/speak?{urlencode(query)}"
+        headers = {
+            "Authorization": f"Token {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        stream = None
+        try:
+            with requests.post(
+                url,
+                headers=headers,
+                json={"text": normalized},
+                stream=True,
+                timeout=(4, self.timeout_seconds),
+            ) as response:
+                if not response.ok:
+                    _log.warning("Deepgram streaming TTS failed. status=%s", response.status_code)
+                    return False
+                stream = _sd.RawOutputStream(
+                    samplerate=_STREAM_PCM_SAMPLE_RATE,
+                    channels=1,
+                    dtype="int16",
+                )
+                stream.start()
+                got_audio = False
+                leftover = b""
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if not chunk:
+                        continue
+                    data = leftover + chunk
+                    # int16 frames must be written in whole samples
+                    usable = len(data) - (len(data) % 2)
+                    if usable:
+                        stream.write(data[:usable])
+                        got_audio = True
+                    leftover = data[usable:]
+                return got_audio
+        except Exception as exc:
+            _log.warning("Streaming TTS playback failed: %s", exc)
+            return False
+        finally:
+            if stream is not None:
+                try:
+                    stream.stop()
+                    stream.close()
+                except Exception:
+                    pass
 
     def synthesize_to_mp3(
         self,

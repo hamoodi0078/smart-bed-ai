@@ -168,6 +168,20 @@ class Settings(BaseSettings):
     wake_word_barge_in_timeout_seconds: int = 1
     wake_word_barge_in_phrase_limit_seconds: int = 1
 
+    # ── Acoustic wake word (on-device keyword spotting, ai/acoustic_wake.py) ──
+    # auto: use porcupine if configured, else openwakeword, else fall back to
+    # the legacy record→STT→text-match wake loop. off: legacy loop only.
+    wake_acoustic_backend: str = "auto"
+    wake_acoustic_sensitivity: float = 0.6
+    porcupine_access_key: str = ""  # console.picovoice.ai (free tier)
+    porcupine_keyword_path: str = ""  # .ppn file for the wake phrase
+    openwakeword_model_path: str = ""  # .onnx/.tflite trained wake model
+
+    # ── TTS streaming playback (chunked PCM, first audio ≈ network TTFB) ──
+    # Off by default; enable on the bed (TTS_STREAMING_PLAYBACK=1) after
+    # verifying speaker output on the device.
+    tts_streaming_playback: bool = False
+
     # ── Quiet hours ───────────────────────────────────────────────────
     quiet_hours_default_window: str = "22:00-07:00"
     quiet_hours_override_max_minutes: int = 120

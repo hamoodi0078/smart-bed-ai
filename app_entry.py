@@ -297,6 +297,11 @@ def main():
     echo_guard = AcousticEchoGuard(
         min_confidence_when_playing=settings.aec_min_confidence_when_playing,
     )
+    from ai.acoustic_wake import build_acoustic_wake_detector
+
+    acoustic_wake = build_acoustic_wake_detector(settings)
+    logger.info("Acoustic wake: {}", acoustic_wake.status_line())
+
     wake_word_manager = WakeWordManager(
         mode=settings.wake_word_mode,
         wake_word=settings.wake_word_phrase,
@@ -306,6 +311,7 @@ def main():
         barge_in_timeout_seconds=settings.wake_word_barge_in_timeout_seconds,
         barge_in_phrase_limit_seconds=settings.wake_word_barge_in_phrase_limit_seconds,
         mic_device_index=settings.wake_word_mic_index,
+        acoustic_detector=acoustic_wake,
     )
     stt = STTManager(
         api_key=settings.deepgram_api_key,
@@ -329,7 +335,9 @@ def main():
         voice=settings.tts_voice,
         timeout_seconds=settings.ai_timeout_seconds,
     )
-    realtime_voice_pipeline = RealtimeVoicePipeline(tts, tts_player)
+    realtime_voice_pipeline = RealtimeVoicePipeline(
+        tts, tts_player, streaming_playback=settings.tts_streaming_playback
+    )
     barge_in_monitor = ContinuousBargeInMonitor(wake_word_manager)
     stt.warm_up()
     routine_engine.set_breathing_guide(breathing_guide)

@@ -8,6 +8,11 @@ try:
 except Exception:  # pragma: no cover - optional runtime dependency
     sr = None
 
+try:
+    from ai.acoustic_wake import AcousticWakeDetector
+except Exception:  # pragma: no cover - optional runtime dependency
+    AcousticWakeDetector = None
+
 
 class WakeWordManager:
     def __init__(
@@ -21,6 +26,7 @@ class WakeWordManager:
         barge_in_timeout_seconds: int = 3,
         barge_in_phrase_limit_seconds: int = 3,
         mic_device_index: Optional[int] = None,
+        acoustic_detector: Optional["AcousticWakeDetector"] = None,
     ):
         self.mode = (mode or "keyboard").strip().lower()
         self.wake_word = (wake_word or "hey smart bed").strip().lower()
@@ -44,6 +50,7 @@ class WakeWordManager:
         self._recognizer = sr.Recognizer() if sr is not None else None
         self._active_mic_index = self._preferred_mic_index
         self._local_detector = LocalWakeWordDetector(primary_phrase=self.wake_word)
+        self._acoustic_detector = acoustic_detector
         self._voice_available = self._detect_voice_capability()
 
     def _detect_voice_capability(self) -> bool:
@@ -163,10 +170,29 @@ class WakeWordManager:
             return None
         return max(2, value)
 
+    def has_acoustic_wake(self) -> bool:
+        return self._acoustic_detector is not None and bool(
+            getattr(self._acoustic_detector, "available", False)
+        )
+
+    def acoustic_wake_status(self) -> str:
+        if self._acoustic_detector is None:
+            return "Acoustic wake not configured."
+        return str(self._acoustic_detector.status_line())
+
     def wait_for_wake_text(self) -> str:
         if not self.is_voice_available():
             return input("You (wake): ").strip().lower()
 
+        # Preferred path: on-device keyword spotting — continuous, ~ms latency,
+        # zero cloud calls. Audio only goes to STT after the phrase is heard.
+        if self.has_acoustic_wake():
+            print(f"Bed: Listening for '{self.wake_word}' (on-device).")
+            if self._acoustic_detector.wait_for_wake():
+                return self.wake_word
+            # Detector stopped or errored — fall through to the legacy loop.
+
+        # Legacy path: record a phrase, transcribe it, fuzzy-match the text.
         print(f"Bed: Voice wake mode active. Say '{self.wake_word}'.")
         while True:
             text = self._listen_once(local_only=self.enforce_local_wake)

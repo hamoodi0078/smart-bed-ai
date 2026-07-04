@@ -6,11 +6,20 @@ from typing import Callable, Iterable
 
 
 class RealtimeVoicePipeline:
-    """Streams sentence fragments to TTS and audio playback with low latency."""
+    """Streams sentence fragments to TTS and audio playback with low latency.
 
-    def __init__(self, tts_manager, playback_controller):
+    streaming_playback: when True and the TTS manager supports it, fragments
+    are spoken via chunked PCM (first audio ≈ network TTFB) instead of
+    synthesize-full-MP3-then-play. Off by default — enable on the bed via
+    TTS_STREAMING_PLAYBACK=1 after verifying speaker output on the device.
+    """
+
+    def __init__(self, tts_manager, playback_controller, streaming_playback: bool = False):
         self.tts = tts_manager
         self.player = playback_controller
+        self.streaming_playback = bool(streaming_playback) and bool(
+            getattr(tts_manager, "supports_streaming_playback", lambda: False)()
+        )
 
     @staticmethod
     def _split_sentences(buffer: str) -> tuple[list[str], str]:
@@ -69,6 +78,19 @@ class RealtimeVoicePipeline:
                     break
                 if _stopped():
                     break
+
+                if self.streaming_playback and not self.player.is_playing():
+                    spoken = self.tts.speak_streaming(
+                        fragment,
+                        voice_override=voice_override,
+                        pace_override=pace_override,
+                        emotion_state=emotion_state,
+                        profile_override=profile_override,
+                    )
+                    if spoken:
+                        playback_started.set()
+                        continue
+                    # fall through to the file path on failure
 
                 filename = f"stream_fragment_{int(time.time() * 1000)}_{fragment_index}.mp3"
                 fragment_index += 1
