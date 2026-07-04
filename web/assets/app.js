@@ -756,7 +756,7 @@ function readQueryParam(key) {
 
 function initLoginPage() {
   const mode = readQueryParam("role").toLowerCase() === "admin" ? "admin" : "user";
-  const nextUrl = readQueryParam("next") || (mode === "admin" ? "/admin-panel" : "/user-dashboard");
+  const nextUrl = readQueryParam("next") || (mode === "admin" ? "/admin" : "/user-dashboard");
 
   const title = document.getElementById("login-mode-title");
   const form = document.getElementById("login-form");

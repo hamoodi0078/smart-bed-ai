@@ -28,7 +28,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from core.metrics import REQUEST_COUNT, REQUEST_LATENCY, ERROR_COUNT
 from pydantic import BaseModel, Field
@@ -160,8 +160,10 @@ try:
     from sentry_sdk.integrations.logging import LoggingIntegration
     from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
     import logging as _logging
+    import sys as _sys
 
-    if settings.sentry_dsn:
+    # Never report test-suite noise to production Sentry
+    if settings.sentry_dsn and "pytest" not in _sys.modules:
         sentry_sdk.init(
             dsn=settings.sentry_dsn,
             environment=settings.sentry_environment,
@@ -188,6 +190,10 @@ try:
         logger.debug("SENTRY_DSN not set — Sentry disabled")
 except ImportError:
     logger.debug("sentry-sdk not installed — Sentry disabled")
+except Exception as _sentry_exc:
+    # A malformed SENTRY_DSN must never prevent the server from starting —
+    # observability is optional, uptime is not.
+    logger.warning("Sentry init failed — continuing without Sentry: %s", _sentry_exc)
 # ─────────────────────────────────────────────────────────────────────────
 
 TELEMETRY = {
@@ -5507,46 +5513,53 @@ def v2_bed_state(request: Request) -> BedStateV2Response:
     )
 
 
+_USER_DASHBOARD_MOVED_HTML = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Danah — Mobile App</title>
+  <style>
+    body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#0f1220;color:#eef;margin:0}
+    main{max-width:440px;padding:32px;text-align:center}
+    a{color:#8ab4ff}
+  </style>
+</head>
+<body><main>
+  <h1>Danah</h1>
+  <p id="spotify-status"></p>
+  <p>The user experience now lives in the <strong>Danah mobile app</strong>.</p>
+  <p>Administrators can sign in at <a href="/admin">/admin</a>.</p>
+  <script>
+    var q = new URLSearchParams(location.search);
+    var s = q.get("spotify");
+    var el = document.getElementById("spotify-status");
+    if (s === "connected") { el.textContent = "Spotify connected — you can return to the app."; }
+    else if (s === "error") { el.textContent = "Spotify connection failed — please try again from the app."; }
+  </script>
+</main></body></html>"""
+
+
 @app.get("/user-dashboard", response_model=None)
 def user_dashboard(request: Request):
-    if not _cookie_user(request):
-        return RedirectResponse(url="/login?role=user&next=/user-dashboard", status_code=302)
-    return FileResponse(
-        WEB_DIR / "user-dashboard.html",
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        },
-    )
+    """The web user dashboard is retired — users belong in the mobile app.
+
+    Kept as a lightweight landing page (not a full page) because the Spotify
+    OAuth callback still redirects here with ?spotify=connected|error.
+    """
+    return HTMLResponse(_USER_DASHBOARD_MOVED_HTML)
 
 
 @app.get("/admin-panel", response_model=None)
 def admin_panel(request: Request):
-    if not _cookie_admin(request):
-        return RedirectResponse(url="/login?role=admin&next=/admin-panel", status_code=302)
-    return FileResponse(
-        WEB_DIR / "admin-panel.html",
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        },
-    )
+    """Legacy v1 admin panel — superseded by the v2 panel at /admin."""
+    return RedirectResponse(url="/admin", status_code=302)
 
 
 @app.get("/admin-billing", response_model=None)
 def admin_billing(request: Request):
-    if not _cookie_admin(request):
-        return RedirectResponse(url="/login?role=admin&next=/admin-billing", status_code=302)
-    return FileResponse(
-        WEB_DIR / "admin-billing.html",
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        },
-    )
+    """Legacy billing page — billing now lives inside the v2 panel at /admin."""
+    return RedirectResponse(url="/admin", status_code=302)
 
 
 @app.get("/admin", response_model=None)
