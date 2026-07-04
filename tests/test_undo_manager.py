@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 import web_server
+from env_isolation import IsolatedWebAuthTestCase
 from commands.undo_manager import UndoManager
 from scenes.scene_store import SceneStore
 from time_utils import utcnow
@@ -65,20 +66,18 @@ class TestUndoManager(unittest.TestCase):
         self.assertIsNone(second_read)
 
 
-class TestUndoEndpoints(unittest.TestCase):
-    def setUp(self):
+class TestUndoEndpoints(IsolatedWebAuthTestCase):
+    def extra_patchers(self):
         self.tmp_dir = _workspace_tmp_dir()
         self.undo_manager = UndoManager(window_seconds=10)
         self.scene_store = SceneStore(path=self.tmp_dir / "scenes_store.json")
-        self._undo_patcher = patch.object(web_server, "undo_manager", self.undo_manager)
-        self._scene_store_patcher = patch.object(web_server, "scene_store", self.scene_store)
-        self._undo_patcher.start()
-        self._scene_store_patcher.start()
-        self.client = TestClient(web_server.app)
+        return [
+            patch.object(web_server, "undo_manager", self.undo_manager),
+            patch.object(web_server, "scene_store", self.scene_store),
+        ]
 
     def tearDown(self):
-        self._scene_store_patcher.stop()
-        self._undo_patcher.stop()
+        super().tearDown()
         shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
     def test_undo_endpoint_returns_ok(self):
@@ -92,9 +91,9 @@ class TestUndoEndpoints(unittest.TestCase):
             }
         )
         new_state = self.scene_store.get_all_templates()
-        self.undo_manager.record_action("u1", "scene_compose", previous_state, new_state)
+        self.undo_manager.record_action(self.user_id, "scene_compose", previous_state, new_state)
 
-        response = self.client.post("/v1/actions/undo", json={"user_id": "u1"})
+        response = self.client.post("/v1/actions/undo", json={"user_id": self.user_id})
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -106,8 +105,8 @@ class TestUndoEndpoints(unittest.TestCase):
     def test_undo_endpoint_expired_returns_404(self):
         base = utcnow()
         with patch("commands.undo_manager.utcnow", side_effect=[base, base + timedelta(seconds=11)]):
-            self.undo_manager.record_action("u1", "device_command", {"before": 1}, {"after": 2})
-            response = self.client.post("/v1/actions/undo", json={"user_id": "u1"})
+            self.undo_manager.record_action(self.user_id, "device_command", {"before": 1}, {"after": 2})
+            response = self.client.post("/v1/actions/undo", json={"user_id": self.user_id})
 
         self.assertEqual(response.status_code, 404)
         body = response.json()
@@ -118,9 +117,9 @@ class TestUndoEndpoints(unittest.TestCase):
         self.assertEqual(str(response.headers.get("X-Trace-Id", "")), str(error.get("trace_id", "")))
 
     def test_undo_status_shows_can_undo_true(self):
-        self.undo_manager.record_action("u1", "device_command", {"before": 1}, {"after": 2})
+        self.undo_manager.record_action(self.user_id, "device_command", {"before": 1}, {"after": 2})
 
-        response = self.client.get("/v1/actions/undo/status", params={"user_id": "u1"})
+        response = self.client.get("/v1/actions/undo/status", params={"user_id": self.user_id})
 
         self.assertEqual(response.status_code, 200)
         body = response.json()

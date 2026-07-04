@@ -19,9 +19,9 @@ class TestAutomationCooldownTimeline(unittest.TestCase):
         rows = web_server._automation_cooldown_timeline_items()
 
         self.assertEqual(len(rows), 2)
-        self.assertIn("next run available in 18 min", rows[0].get("event", ""))
+        self.assertIn("next: in 18 min", rows[0].get("event", ""))
         self.assertEqual(rows[0].get("status"), "cooldown")
-        self.assertIn("available now", rows[1].get("event", ""))
+        self.assertIn("ready", rows[1].get("event", ""))
         self.assertEqual(rows[1].get("status"), "ready")
 
     @patch(

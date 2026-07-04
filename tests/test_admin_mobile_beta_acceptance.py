@@ -8,11 +8,12 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import web_server
+from env_isolation import reset_auth_service_singleton
 
 
 class TestAdminMobileBetaAcceptance(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
+        self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self._db_path = Path(self._tmp.name) / "admin_beta_acceptance.sqlite3"
         self._env_patch = patch.dict(
             os.environ,
@@ -49,6 +50,7 @@ class TestAdminMobileBetaAcceptance(unittest.TestCase):
         web_server._DB_SLEEP_SESSION_REPOSITORY = None
         web_server._DB_COMMAND_REPOSITORY = None
         self._env_patch.stop()
+        reset_auth_service_singleton()
         self._tmp.cleanup()
 
     def _seed_tester(

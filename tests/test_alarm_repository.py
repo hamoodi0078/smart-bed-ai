@@ -95,10 +95,13 @@ class TestAlarmRepositoryList(unittest.TestCase):
         self.assertEqual(alarms, [])
 
     def test_list_capped_at_max_per_user(self):
-        for i in range(25):
+        limit = AlarmRepository._MAX_ALARMS_PER_USER
+        for i in range(limit):
             self.repo.create_alarm(user_id=self.user_id, time=f"0{i % 9}:00")
+        with self.assertRaises(ValueError):
+            self.repo.create_alarm(user_id=self.user_id, time="09:00")
         alarms = self.repo.list_alarms(self.user_id)
-        self.assertLessEqual(len(alarms), AlarmRepository._MAX_ALARMS_PER_USER)
+        self.assertLessEqual(len(alarms), limit)
 
 
 class TestAlarmRepositoryGetUpdateDelete(unittest.TestCase):

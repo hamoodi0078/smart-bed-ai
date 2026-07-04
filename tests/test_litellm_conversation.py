@@ -123,7 +123,7 @@ class TestFlag:
 class TestConstruction:
     def test_default_model(self, mod):
         e = mod.LiteLLMConversationEngine()
-        assert e._model == "anthropic/claude-opus-4-7"
+        assert e._model == mod.LiteLLMConversationEngine.DEFAULT_MODEL
 
     def test_custom_model(self, mod):
         e = mod.LiteLLMConversationEngine(model="gpt-4o")
@@ -248,8 +248,9 @@ class TestGenerateResponseSuccess:
         e = mod.LiteLLMConversationEngine()
         e.generate_response("Good morning")
         assert len(e.history) == 2
-        assert e.history[0]["role"] == "user"
-        assert e.history[1]["role"] == "assistant"
+        hist = e._messages_to_dicts(e.history)
+        assert hist[0]["role"] == "user"
+        assert hist[1]["role"] == "assistant"
 
     def test_model_passed_to_litellm(self, mod):
         e = mod.LiteLLMConversationEngine(model="gpt-4o")
@@ -314,7 +315,7 @@ class TestGenerateResponseStreamSuccess:
         e = mod.LiteLLMConversationEngine()
         list(e.generate_response_stream("Good morning"))
         assert len(e.history) == 2
-        assert e.history[1]["content"] == "Hello there"
+        assert e._messages_to_dicts(e.history)[1]["content"] == "Hello there"
 
     def test_stream_true_passed_to_litellm(self, mod):
         e = mod.LiteLLMConversationEngine()
@@ -349,7 +350,7 @@ class TestHistoryManagement:
         e = mod.LiteLLMConversationEngine()
         for i in range(10):
             e._append_history(f"Q{i}", f"A{i}")
-        assert e.history[-1]["content"] == "A9"
+        assert e._messages_to_dicts(e.history)[-1]["content"] == "A9"
 
 
 # ---------------------------------------------------------------------------

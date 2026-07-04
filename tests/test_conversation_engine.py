@@ -14,7 +14,7 @@ class _MockResponse:
 
 
 class TestConversationEngineTemporalGrounding(unittest.TestCase):
-    @patch("ai.conversation_engine.requests.post")
+    @patch("ai.conversation_engine.http.post")
     def test_temporal_grounding_message_is_injected(self, mock_post):
         mock_post.return_value = _MockResponse()
         engine = ConversationEngine(api_key="test-key")

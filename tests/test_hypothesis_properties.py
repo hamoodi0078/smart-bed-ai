@@ -15,6 +15,12 @@ from pathlib import Path
 from hypothesis import given, settings, assume
 from hypothesis import strategies as st
 
+# First-run import costs can exceed hypothesis' default 200ms deadline and
+# make these tests flaky in full-suite runs; the invariants themselves are
+# order-of-milliseconds, so wall-clock deadlines add no value here.
+settings.register_profile("no_deadline", deadline=None)
+settings.load_profile("no_deadline")
+
 # ---------------------------------------------------------------------------
 # Strategies shared across suites
 # ---------------------------------------------------------------------------

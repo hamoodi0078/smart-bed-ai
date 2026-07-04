@@ -49,7 +49,7 @@ class TestEmailService(unittest.TestCase):
         user = self.user_repo.create_user("", "hash", "No Email User")
         service = EmailService(db=self.db)
 
-        with patch("notifications.email_service.requests.post") as mocked_post:
+        with patch("notifications.email_service.http.post") as mocked_post:
             result = service.send_daily_summary_for_user(user.id)
 
         self.assertFalse(result)
@@ -78,7 +78,7 @@ class TestEmailService(unittest.TestCase):
         service = EmailService(db=self.db)
         with patch("notifications.summaries.utcnow", return_value=fixed_now):
             with patch(
-                "notifications.email_service.requests.post",
+                "notifications.email_service.http.post",
                 return_value=_FakeResponse(202, "accepted"),
             ) as mocked_post:
                 result = service.send_daily_summary_for_user(user.id)
@@ -100,7 +100,7 @@ class TestEmailService(unittest.TestCase):
         service = EmailService(db=self.db)
 
         with patch(
-            "notifications.email_service.requests.post",
+            "notifications.email_service.http.post",
             return_value=_FakeResponse(500, "send failed"),
         ):
             result = service.send_monthly_summary_for_user(user.id, 2026, 3)

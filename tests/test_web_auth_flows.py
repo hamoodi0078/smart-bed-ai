@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from Storage.subscription_store import SubscriptionStore
 from time_utils import from_iso, utcnow
+import services.auth_service as auth_service_module
 import web_server
 
 
@@ -17,9 +18,27 @@ def _legacy_sha256(password: str) -> str:
     return hashlib.sha256((password or "").encode("utf-8")).hexdigest()
 
 
+def _reset_auth_service_singleton() -> None:
+    """Dispose the AuthService singleton's DB engines and force re-creation.
+
+    The singleton caches repositories bound to whichever DATABASE_URL was
+    active when it was first used.  Without this reset it keeps the previous
+    test's temp sqlite file open, which breaks the test (stale engine) and
+    the temp-dir cleanup on Windows (file lock).
+    """
+    svc = auth_service_module._auth_service
+    if svc is not None:
+        for repo in (svc._users, svc._tokens):
+            try:
+                repo.db.engine.dispose()
+            except Exception:
+                pass
+    auth_service_module._auth_service = None
+
+
 class TestWebAuthFlows(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
+        self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.db_path = Path(self._tmp.name) / "subscription_db.json"
         self.profile_path = Path(self._tmp.name) / "user_profile.json"
         self.sqlite_path = Path(self._tmp.name) / "web_auth.sqlite3"
@@ -49,6 +68,7 @@ class TestWebAuthFlows(unittest.TestCase):
         web_server._DB_SLEEP_SESSION_REPOSITORY = None
         web_server._DB_COMMAND_REPOSITORY = None
         web_server._DB_MOBILE_AUTH_REPOSITORY = None
+        _reset_auth_service_singleton()
         self.client = TestClient(web_server.app)
 
     def tearDown(self):
@@ -67,6 +87,7 @@ class TestWebAuthFlows(unittest.TestCase):
         web_server._DB_SLEEP_SESSION_REPOSITORY = None
         web_server._DB_COMMAND_REPOSITORY = None
         web_server._DB_MOBILE_AUTH_REPOSITORY = None
+        _reset_auth_service_singleton()
         self._patch_profile.stop()
         self._patch_store.stop()
         self._patch_env.stop()
@@ -96,10 +117,10 @@ class TestWebAuthFlows(unittest.TestCase):
         self.assertIn(token, self.store.db.get("user_sessions", {}))
 
     def test_login_returns_authenticated_user(self):
-        self._register(email="login@example.com", password="letmein1")
+        self._register(email="login@example.com", password="Letmein12345")
         self.client.post("/v1/auth/logout")
 
-        response = self._login(email="login@example.com", password="letmein1")
+        response = self._login(email="login@example.com", password="Letmein12345")
         self.assertEqual(response.status_code, 200)
         me = self.client.get("/v1/auth/me")
         self.assertEqual(me.status_code, 200)
@@ -118,12 +139,12 @@ class TestWebAuthFlows(unittest.TestCase):
         self.assertLessEqual(remaining, 3600)
 
     def test_admin_bootstrap_does_not_auto_promote_owner(self):
-        register = self._register(email="admin-bootstrap@example.com", password="letmein1")
+        register = self._register(email="admin-bootstrap@example.com", password="Letmein12345")
         user_id = register.json().get("user", {}).get("user_id")
 
         response = self.client.post(
             "/v1/admin/auth/login",
-            json={"email": "admin-bootstrap@example.com", "password": "letmein1"},
+            json={"email": "admin-bootstrap@example.com", "password": "Letmein12345"},
         )
         self.assertEqual(response.status_code, 403)
 
@@ -132,7 +153,7 @@ class TestWebAuthFlows(unittest.TestCase):
         self.assertEqual(admin_row.get("role"), "viewer")
 
     def test_logout_revokes_server_session(self):
-        self._register(email="logout@example.com", password="letmein1")
+        self._register(email="logout@example.com", password="Letmein12345")
         token = self.client.cookies.get("sb_user_token")
         self.assertIn(token, self.store.db.get("user_sessions", {}))
 
@@ -144,7 +165,7 @@ class TestWebAuthFlows(unittest.TestCase):
         self.assertEqual(me.status_code, 401)
 
     def test_delete_data_removes_user_profile_and_sessions(self):
-        register = self._register(email="delete@example.com", password="letmein1")
+        register = self._register(email="delete@example.com", password="Letmein12345")
         body = register.json()
         user = body.get("user", {})
         user_id = user.get("user_id", "")
@@ -175,7 +196,7 @@ class TestWebAuthFlows(unittest.TestCase):
 
 class TestDeviceOwnershipIsolation(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
+        self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.db_path = Path(self._tmp.name) / "subscription_db.json"
         self.store = SubscriptionStore(db_path=self.db_path)
         self.store.hash_password = lambda password: _legacy_sha256(password)

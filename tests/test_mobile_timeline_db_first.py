@@ -7,11 +7,12 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import web_server
+from env_isolation import reset_auth_service_singleton
 
 
 class TestMobileTimelineDbFirst(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
+        self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self._db_path = Path(self._tmp.name) / "timeline_db_first.sqlite3"
         self._env_patch = patch.dict(
             os.environ,
@@ -47,6 +48,7 @@ class TestMobileTimelineDbFirst(unittest.TestCase):
         web_server._DB_SLEEP_SESSION_REPOSITORY = None
         web_server._DB_COMMAND_REPOSITORY = None
         self._env_patch.stop()
+        reset_auth_service_singleton()
         self._tmp.cleanup()
 
     @patch("web_server._save_profile")

@@ -228,7 +228,7 @@ class TestSleepInsight:
 class TestConstruction:
     def test_default_model_litellm_format(self, mod_full):
         e = mod_full.InstructorExtractor()
-        assert e._model == "anthropic/claude-opus-4-7"
+        assert e._model == mod_full.InstructorExtractor.DEFAULT_MODEL
 
     def test_custom_model(self, mod_full):
         e = mod_full.InstructorExtractor(model="gpt-4o")
@@ -358,7 +358,7 @@ class TestAnalyzeJournalLiteLLM:
         e = _extractor_litellm(mod_full, fake)
         e.analyze_journal_entry("Test entry.")
         call_kwargs = mod_full._instructor.from_litellm.return_value.call_args[1]
-        assert call_kwargs["model"] == "anthropic/claude-opus-4-7"
+        assert call_kwargs["model"] == mod_full.InstructorExtractor.DEFAULT_MODEL
 
     def test_returns_none_on_empty(self, mod_full):
         e = mod_full.InstructorExtractor()

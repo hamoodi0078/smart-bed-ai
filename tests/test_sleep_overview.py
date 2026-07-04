@@ -4,9 +4,8 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
-from fastapi.testclient import TestClient
-
 import web_server
+from env_isolation import IsolatedWebAuthTestCase
 from scenes.scene_store import SceneStore
 
 
@@ -18,26 +17,24 @@ def _workspace_tmp_dir() -> Path:
     return path
 
 
-class TestSleepOverview(unittest.TestCase):
-    def setUp(self):
+class TestSleepOverview(IsolatedWebAuthTestCase):
+    def extra_patchers(self):
         self.tmp_dir = _workspace_tmp_dir()
-        self._scene_store_patcher = patch.object(
-            web_server,
-            "scene_store",
-            SceneStore(path=self.tmp_dir / "scenes_store.json"),
-        )
-        self._sleep_history_path_patcher = patch.object(
-            web_server,
-            "SLEEP_HISTORY_PATH",
-            self.tmp_dir / "sleep_history.json",
-        )
-        self._scene_store_patcher.start()
-        self._sleep_history_path_patcher.start()
-        self.client = TestClient(web_server.app)
+        return [
+            patch.object(
+                web_server,
+                "scene_store",
+                SceneStore(path=self.tmp_dir / "scenes_store.json"),
+            ),
+            patch.object(
+                web_server,
+                "SLEEP_HISTORY_PATH",
+                self.tmp_dir / "sleep_history.json",
+            ),
+        ]
 
     def tearDown(self):
-        self._scene_store_patcher.stop()
-        self._sleep_history_path_patcher.stop()
+        super().tearDown()
         shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
     def test_sleep_overview_returns_ok_true(self):

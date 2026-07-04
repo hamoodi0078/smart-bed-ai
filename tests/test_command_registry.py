@@ -22,17 +22,17 @@ class TestExtractedCommandHandlers(unittest.TestCase):
     def test_light_result_returns_led_effects(self):
         result = handle_light_intent_result("set lights warm and dim")
 
-        self.assertEqual(result.text, "Okay, I will set the lights to a dim warm scene.")
+        self.assertEqual(result.text, "Setting the lights to dim warmwhite.")
         led_effects = [effect for effect in result.effects if effect.kind == "led"]
         self.assertEqual(len(led_effects), 2)
 
         color_effect = next(effect for effect in led_effects if effect.payload.get("op") == "set_user_color")
-        self.assertEqual(color_effect.payload.get("color"), "orange")
+        self.assertEqual(color_effect.payload.get("color"), "warmwhite")
 
         brightness_effect = next(
             effect for effect in led_effects if effect.payload.get("op") == "set_user_brightness"
         )
-        self.assertEqual(brightness_effect.payload.get("brightness"), 0.25)
+        self.assertEqual(brightness_effect.payload.get("brightness"), 0.2)
 
     def test_sleep_result_returns_activate_scene_effect(self):
         result = handle_sleep_intent_result("go to sleep")
@@ -80,9 +80,9 @@ class TestExtractedCommandHandlers(unittest.TestCase):
             log=lambda _: None,
         )
 
-        self.assertEqual(calls["color"], "orange")
-        self.assertEqual(calls["brightness"], 0.25)
-        self.assertEqual(reply, "Okay, I will set the lights to a dim warm scene.")
+        self.assertEqual(calls["color"], "warmwhite")
+        self.assertEqual(calls["brightness"], 0.2)
+        self.assertEqual(reply, "Setting the lights to dim warmwhite.")
 
     def test_sleep_handler_calls_activate_scene(self):
         called = {"value": False}

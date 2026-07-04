@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from Storage.subscription_store import SubscriptionStore
 import web_server
+from env_isolation import reset_auth_service_singleton
 
 
 def _legacy_sha256(password: str) -> str:
@@ -47,7 +48,7 @@ class _FakeMemoryStore:
 
 class TestWebAiChat(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
+        self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.db_path = Path(self._tmp.name) / "subscription_db.json"
         self.profile_path = Path(self._tmp.name) / "user_profile.json"
         self.sqlite_path = Path(self._tmp.name) / "web_ai_chat.sqlite3"
@@ -96,6 +97,7 @@ class TestWebAiChat(unittest.TestCase):
         self._patch_profile.stop()
         self._patch_store.stop()
         self._patch_env.stop()
+        reset_auth_service_singleton()
         self._tmp.cleanup()
 
     def _register(self, email: str = "chat@example.com", password: str = "Secret1234", name: str = "Chat User"):

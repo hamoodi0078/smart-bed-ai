@@ -24,7 +24,7 @@ class TestSendPushNotification(unittest.TestCase):
         mock_sender = MagicMock()
         mock_sender.send_to_user.return_value = mock_result
 
-        with patch("tasks.arq_tasks.ExpoPushSender", return_value=mock_sender):
+        with patch("notifications.expo_sender.ExpoPushSender", return_value=mock_sender):
             result = _run(send_push_notification(
                 CTX,
                 user_id="u-1",
@@ -41,7 +41,7 @@ class TestSendPushNotification(unittest.TestCase):
         mock_sender = MagicMock()
         mock_sender.send_to_user.side_effect = RuntimeError("network error")
 
-        with patch("tasks.arq_tasks.ExpoPushSender", return_value=mock_sender):
+        with patch("notifications.expo_sender.ExpoPushSender", return_value=mock_sender):
             with self.assertRaises(RuntimeError):
                 _run(send_push_notification(
                     CTX,
@@ -58,7 +58,7 @@ class TestSendWhatsappNotification(unittest.TestCase):
         mock_notifier = MagicMock()
         mock_notifier.send_dana_checkin.return_value = {"sent": True}
 
-        with patch("tasks.arq_tasks.WhatsAppNotifier", return_value=mock_notifier):
+        with patch("notifications.whatsapp_notifier.WhatsAppNotifier", return_value=mock_notifier):
             result = _run(send_whatsapp_notification(
                 CTX,
                 method="dana_checkin",
@@ -76,7 +76,7 @@ class TestSendWhatsappNotification(unittest.TestCase):
         mock_notifier = MagicMock()
         mock_notifier.send_streak_message.return_value = {"sent": True}
 
-        with patch("tasks.arq_tasks.WhatsAppNotifier", return_value=mock_notifier):
+        with patch("notifications.whatsapp_notifier.WhatsAppNotifier", return_value=mock_notifier):
             result = _run(send_whatsapp_notification(
                 CTX,
                 method="streak_message",
@@ -92,7 +92,7 @@ class TestSendWhatsappNotification(unittest.TestCase):
 
         mock_notifier = MagicMock()
 
-        with patch("tasks.arq_tasks.WhatsAppNotifier", return_value=mock_notifier):
+        with patch("notifications.whatsapp_notifier.WhatsAppNotifier", return_value=mock_notifier):
             result = _run(send_whatsapp_notification(
                 CTX,
                 method="unknown_method",
@@ -113,7 +113,7 @@ class TestSendFcmNotification(unittest.TestCase):
         mock_sender = MagicMock()
         mock_sender.send_to_user.return_value = mock_result
 
-        with patch("tasks.arq_tasks.FcmSender", return_value=mock_sender):
+        with patch("notifications.fcm_sender.FcmSender", return_value=mock_sender):
             result = _run(send_fcm_notification(
                 CTX,
                 user_id="u-6",
@@ -129,7 +129,7 @@ class TestSendFcmNotification(unittest.TestCase):
         mock_sender = MagicMock()
         mock_sender.send_to_user.side_effect = ConnectionError("FCM unreachable")
 
-        with patch("tasks.arq_tasks.FcmSender", return_value=mock_sender):
+        with patch("notifications.fcm_sender.FcmSender", return_value=mock_sender):
             with self.assertRaises(ConnectionError):
                 _run(send_fcm_notification(
                     CTX,
@@ -147,7 +147,7 @@ class TestSendWeeklyReportNotification(unittest.TestCase):
         mock_sender = MagicMock()
         mock_sender.send_to_user.return_value = mock_result
 
-        with patch("tasks.arq_tasks.ExpoPushSender", return_value=mock_sender):
+        with patch("notifications.expo_sender.ExpoPushSender", return_value=mock_sender):
             result = _run(send_weekly_report_notification(
                 CTX,
                 user_id="u-8",
@@ -162,7 +162,7 @@ class TestSendWeeklyReportNotification(unittest.TestCase):
         mock_sender = MagicMock()
         mock_sender.send_to_user.return_value = {"sent": True}
 
-        with patch("tasks.arq_tasks.ExpoPushSender", return_value=mock_sender):
+        with patch("notifications.expo_sender.ExpoPushSender", return_value=mock_sender):
             _run(send_weekly_report_notification(CTX, user_id="u-9"))
 
         call_kwargs = mock_sender.send_to_user.call_args[1]

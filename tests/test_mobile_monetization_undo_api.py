@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from Storage.subscription_store import SubscriptionStore
 import web_server
+from env_isolation import reset_auth_service_singleton
 
 
 def _legacy_sha256(password: str) -> str:
@@ -17,7 +18,7 @@ def _legacy_sha256(password: str) -> str:
 
 class TestMobileMonetizationUndoApi(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
+        self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self._subscription_db_path = Path(self._tmp.name) / "subscription_db.json"
         self._profile_path = Path(self._tmp.name) / "user_profile.json"
         self._sqlite_path = Path(self._tmp.name) / "mobile_monetization.sqlite3"
@@ -40,6 +41,7 @@ class TestMobileMonetizationUndoApi(unittest.TestCase):
         self._env_patch.start()
         self._patch_store.start()
         self._patch_profile.start()
+        reset_auth_service_singleton()
 
         web_server._DB_CONNECTION = None
         web_server._DB_CONNECTION_URL = ""
@@ -71,6 +73,7 @@ class TestMobileMonetizationUndoApi(unittest.TestCase):
         web_server._DB_SLEEP_SESSION_REPOSITORY = None
         web_server._DB_COMMAND_REPOSITORY = None
 
+        reset_auth_service_singleton()
         self._patch_profile.stop()
         self._patch_store.stop()
         self._env_patch.stop()

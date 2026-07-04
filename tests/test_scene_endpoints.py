@@ -1,4 +1,6 @@
+import os
 import shutil
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -7,7 +9,9 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 import web_server
+from Storage.subscription_store import SubscriptionStore
 from scenes.scene_store import SceneStore
+from env_isolation import reset_web_server_db_singletons
 from time_utils import from_iso
 
 
@@ -22,16 +26,50 @@ def _workspace_tmp_dir() -> Path:
 class TestSceneEndpoints(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = _workspace_tmp_dir()
-        self._patcher = patch.object(
+        self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        tmp = Path(self._tmp.name)
+
+        # Scene endpoints require an authenticated user; isolate both the
+        # session store and the DB so tests never touch real dev data.
+        self._patch_env = patch.dict(
+            os.environ,
+            {"DATABASE_URL": f"sqlite:///{(tmp / 'scenes.sqlite3').as_posix()}"},
+            clear=False,
+        )
+        self._patch_store = patch.object(
+            web_server, "store", SubscriptionStore(db_path=tmp / "subscription_db.json")
+        )
+        self._patch_scene = patch.object(
             web_server,
             "scene_store",
             SceneStore(path=self.tmp_dir / "scenes_store.json"),
         )
-        self._patcher.start()
+        self._patch_env.start()
+        self._patch_store.start()
+        self._patch_scene.start()
+        reset_web_server_db_singletons(web_server)
+
         self.client = TestClient(web_server.app)
+        response = self.client.post(
+            "/v1/auth/register",
+            json={
+                "email": "scene-tester@example.com",
+                "password": "Scenepass123",
+                "name": "Scene Tester",
+            },
+        )
+        assert response.status_code == 200, f"scene test login failed: {response.text}"
+
+        # Scene composing is premium-gated — upgrade the test user.
+        user_id = response.json().get("user", {}).get("user_id", "")
+        web_server._db_user_repository().update_subscription(user_id, status="premium")
 
     def tearDown(self):
-        self._patcher.stop()
+        reset_web_server_db_singletons(web_server)
+        self._patch_scene.stop()
+        self._patch_store.stop()
+        self._patch_env.stop()
+        self._tmp.cleanup()
         shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
     def test_get_templates_returns_all_five(self):

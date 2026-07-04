@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import math
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from sleep_tracking.wake_optimizer import WakeOptimizer
 
 
 def _ts(second: int) -> datetime:
-    return datetime(2026, 5, 5, 22, 0, second, tzinfo=timezone.utc)
+    return datetime(2026, 5, 5, 22, 0, 0, tzinfo=timezone.utc) + timedelta(seconds=second)
 
 
 def _feed(optimizer: WakeOptimizer, values: list[float]) -> None:

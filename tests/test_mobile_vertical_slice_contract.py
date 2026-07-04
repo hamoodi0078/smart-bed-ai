@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from Storage.subscription_store import SubscriptionStore
 import web_server
+from env_isolation import reset_auth_service_singleton
 
 
 def _legacy_sha256(password: str) -> str:
@@ -17,7 +18,7 @@ def _legacy_sha256(password: str) -> str:
 
 class TestMobileVerticalSliceContract(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
+        self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self._subscription_db_path = Path(self._tmp.name) / "subscription_db.json"
         self._profile_path = Path(self._tmp.name) / "user_profile.json"
         self._sqlite_path = Path(self._tmp.name) / "mobile_vertical_slice.sqlite3"
@@ -76,6 +77,7 @@ class TestMobileVerticalSliceContract(unittest.TestCase):
         self._patch_profile.stop()
         self._patch_store.stop()
         self._env_patch.stop()
+        reset_auth_service_singleton()
         self._tmp.cleanup()
 
     def test_signup_dashboard_quick_action_scene_preview_timeline_contract(self):
