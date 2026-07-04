@@ -28,17 +28,22 @@ secrets.*
 output_audio/
 *.log
 
-# Local app data
+# Local app data — never commit runtime state or user data
 runtime_data/**
 !runtime_data/.gitkeep
 user_profile.json
+data/*.db
+data/*.sqlite
+data/*.sqlite3
 data/subscription_db.json
 data/long_term_memory.json
-data/cache.db
 data/spotify_tokens.json
 data/*_db.json
+!data/subscription_db.example.json
+data/idempotency_store.json
+data/scenes_store.json
 data/.scenes_store.json.lock
-data/manues_kilo*.db
+data/.idempotency_store.json.lock
 
 # Testing / coverage
 .tmp/

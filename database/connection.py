@@ -46,9 +46,13 @@ class DatabaseConnection:
         if database_url is None:
             env_url = str(os.getenv("DATABASE_URL", "")).strip()
             if not env_url:
-                import sys
-                is_production = str(os.getenv("ENVIRONMENT", "")).strip().lower() in ("production", "prod")
-                if is_production:
+                # The deployment stack sets DANAH_ENV (Dockerfile, compose);
+                # ENVIRONMENT is kept for backwards compatibility. Without this
+                # guard a missing DATABASE_URL silently falls back to SQLite.
+                env_name = str(
+                    os.getenv("DANAH_ENV") or os.getenv("ENVIRONMENT") or ""
+                ).strip().lower()
+                if env_name in ("production", "prod"):
                     raise RuntimeError(
                         "DATABASE_URL is required in production. "
                         "Set it via the DATABASE_URL environment variable."

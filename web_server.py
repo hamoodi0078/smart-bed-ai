@@ -1285,8 +1285,14 @@ def _otp_hmac_digest(*, phone_number: str, request_id: str, otp_code: str) -> st
         or str(settings.secret_key or "").strip()
     )
     if not secret or secret in {"change-me-in-production", "secret", "changeme", "development"}:
-        logger.warning("MOBILE_OTP_SECRET not set — OTP HMAC uses weak fallback")
-        secret = settings.secret_key or "change-me-in-production"
+        # A guessable HMAC key would let an attacker forge OTP verifications.
+        if os.getenv("DANAH_ENV", "development").lower() == "production":
+            raise RuntimeError(
+                "OTP signing requires MOBILE_OTP_SECRET (or a strong SECRET_KEY) "
+                "in production. Refusing to fall back to a known default."
+            )
+        logger.warning("MOBILE_OTP_SECRET not set — using dev-only OTP secret")
+        secret = "dev-only-otp-secret"
     message = f"{phone_number}|{request_id}|{otp_code}".encode("utf-8")
     return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 

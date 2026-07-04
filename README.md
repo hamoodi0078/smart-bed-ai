@@ -75,7 +75,7 @@ python main.py
 
 ### 5) Start web runtime API
 ```powershell
-python -m uvicorn web_server:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn api.app_factory:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ### 6) Validate core health
@@ -102,7 +102,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-pi.txt
 python main.py
-python -m uvicorn web_server:app --host 0.0.0.0 --port 8000
+python -m uvicorn api.app_factory:app --host 0.0.0.0 --port 8000
 ```
 
 Pi-specific notes:
