@@ -17,7 +17,12 @@
       "Read(//c/flutter/**)",
       "Read(//c/src/flutter/**)",
       "Bash(.venv/Scripts/alembic revision *)",
-      "Bash(.venv/Scripts/alembic upgrade *)"
+      "Bash(.venv/Scripts/alembic upgrade *)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -q --collect-only)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ --collect-only)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_web_auth_flows.py -q --tb=line)",
+      "Bash(python -)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_scene_endpoints.py tests/test_mobile_vertical_slice_contract.py tests/test_admin_mobile_beta_acceptance.py tests/test_mobile_timeline_db_first.py -q --tb=no -p no:cacheprovider)"
     ]
   }
 }
