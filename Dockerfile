@@ -27,7 +27,7 @@ COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 
-ARG GUNICORN_WORKERS=4
+ARG GUNICORN_WORKERS=1
 ARG GUNICORN_TIMEOUT=120
 
 
