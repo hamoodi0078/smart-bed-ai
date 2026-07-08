@@ -100,5 +100,64 @@ class AuthWalkTests(AppFactoryContractCase):
         self.assertEqual(resp.status_code, 200, resp.text)
 
 
+class AlarmContractTests(AppFactoryContractCase):
+    """The Flutter contract — mirrors AlarmSchedule.toJson()/fromJson() and
+    api_client.dart upsertAlarm(), which expects {"alarms": [...]} back."""
+
+    APP_PAYLOAD = {
+        "alarm_id": "",
+        "time": "06:30",
+        "days": [1, 2, 3],  # ISO weekdays: Mon, Tue, Wed
+        "enabled": True,
+        "label": "Fajr",
+        "sound": "default",
+        "vibrate": True,
+    }
+
+    def test_create_list_edit_toggle_delete_roundtrip(self):
+        auth = self.register("alarm-tester@example.com")
+        headers = self.bearer(auth)
+
+        # Create — app expects the FULL refreshed list back
+        resp = self.client.post("/v1/mobile/alarms", json=self.APP_PAYLOAD, headers=headers)
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+        self.assertIn("alarms", body, f"POST must return the alarm list, got: {body}")
+        self.assertEqual(len(body["alarms"]), 1)
+        alarm = body["alarms"][0]
+        self.assertTrue(alarm["alarm_id"], "alarm_id must be non-empty")
+        self.assertEqual(alarm["days"], [1, 2, 3])
+        self.assertEqual(alarm["sound"], "default")
+        self.assertTrue(alarm["vibrate"])
+        alarm_id = alarm["alarm_id"]
+
+        resp = self.client.get("/v1/mobile/alarms", headers=headers)
+        self.assertEqual(resp.json()["alarms"][0]["alarm_id"], alarm_id)
+
+        # Edit via POST upsert (the app always POSTs) — must NOT duplicate
+        edited = {**self.APP_PAYLOAD, "alarm_id": alarm_id, "label": "Fajr prayer"}
+        resp = self.client.post("/v1/mobile/alarms", json=edited, headers=headers)
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+        self.assertEqual(len(body["alarms"]), 1, "edit must not create a duplicate")
+        self.assertEqual(body["alarms"][0]["label"], "Fajr prayer")
+
+        resp = self.client.post(
+            f"/v1/mobile/alarms/{alarm_id}/toggle", json={"enabled": False}, headers=headers
+        )
+        self.assertEqual(resp.status_code, 200, resp.text)
+
+        resp = self.client.delete(f"/v1/mobile/alarms/{alarm_id}", headers=headers)
+        self.assertEqual(resp.status_code, 200, resp.text)
+        resp = self.client.get("/v1/mobile/alarms", headers=headers)
+        self.assertEqual(resp.json()["alarms"], [])
+
+    def test_unknown_alarm_id_is_404_not_duplicate(self):
+        auth = self.register("alarm-tester-2@example.com")
+        payload = {**self.APP_PAYLOAD, "alarm_id": "no-such-alarm"}
+        resp = self.client.post("/v1/mobile/alarms", json=payload, headers=self.bearer(auth))
+        self.assertEqual(resp.status_code, 404, resp.text)
+
+
 if __name__ == "__main__":
     unittest.main()
