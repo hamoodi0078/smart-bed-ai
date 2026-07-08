@@ -559,6 +559,8 @@ class Alarm(Base):
     smart_window_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
     )  # 0 = disabled
+    sound: Mapped[str] = mapped_column(String(64), nullable=False, default="default")
+    vibrate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

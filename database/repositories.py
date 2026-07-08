@@ -2113,6 +2113,8 @@ class AlarmRepository:
         days_of_week: list[int] | None = None,
         wake_style: str = "gentle_light",
         smart_window_minutes: int = 0,
+        sound: str = "default",
+        vibrate: bool = True,
     ) -> Alarm:
         with self.db.get_session() as session:
             count = session.execute(
@@ -2128,6 +2130,8 @@ class AlarmRepository:
                 days_of_week=days_of_week or [],
                 wake_style=wake_style,
                 smart_window_minutes=smart_window_minutes,
+                sound=sound,
+                vibrate=vibrate,
             )
             session.add(alarm)
             session.flush()
@@ -2153,6 +2157,8 @@ class AlarmRepository:
                 "days_of_week",
                 "wake_style",
                 "smart_window_minutes",
+                "sound",
+                "vibrate",
             }
             for key, val in fields.items():
                 if key in allowed:
