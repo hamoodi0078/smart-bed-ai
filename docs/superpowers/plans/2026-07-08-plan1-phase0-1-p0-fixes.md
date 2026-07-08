@@ -232,12 +232,9 @@ class AlarmContractTests(AppFactoryContractCase):
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py::AlarmContractTests -v`
 Expected: FAIL — `KeyError`/assertion on `"alarms"` (router returns `{"ok": True, "alarm": {...}}`) and `days` mismatch (router ignores the `days` field, expects `days_of_week`).
 
-- [ ] **Step 3: Commit the red test (it documents the bug)**
+- [ ] **Step 3: Leave the red test in the working tree (do NOT commit)**
 
-```bash
-git add tests/test_app_factory_contract.py
-git commit -m "test: failing alarm contract test capturing P0-1 (app dialect vs router dialect)"
-```
+Per the global constraint "never commit red", this test file is committed together with the fix in Task 4. Task 3's commit must also NOT include `tests/test_app_factory_contract.py`.
 
 ---
 
@@ -495,9 +492,11 @@ Run: `venv/Scripts/python.exe -m pytest`
 Expected: green (legacy alarm tests target web_server's JSON handlers, untouched).
 
 ```bash
-git add api/routers/alarms.py
+git add api/routers/alarms.py tests/test_app_factory_contract.py
 git commit -m "fix(alarms): adopt the app contract — alarm_id/days 1-7/sound/vibrate, POST upsert returns list (P0-1)"
 ```
+
+(The test file rides in this commit — it was deliberately left uncommitted in Task 2 so main never holds a red suite.)
 
 ---
 
