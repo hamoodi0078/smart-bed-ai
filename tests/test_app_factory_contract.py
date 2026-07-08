@@ -159,6 +159,16 @@ class AlarmContractTests(AppFactoryContractCase):
         self.assertEqual(resp.status_code, 404, resp.text)
 
 
+class SharedConnectionTests(AppFactoryContractCase):
+    def test_repositories_share_one_engine(self):
+        from database import AlarmRepository
+        from database.connection import get_shared_connection
+
+        a, b = AlarmRepository(), AlarmRepository()
+        self.assertIs(a.db.engine, b.db.engine)
+        self.assertIs(a.db.engine, get_shared_connection().engine)
+
+
 class AdminContractTests(AppFactoryContractCase):
     """The web panel authenticates with the sb_admin_token cookie
     (web/assets/app.js sends credentials:"include", never a Bearer header)."""

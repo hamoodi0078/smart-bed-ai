@@ -30,9 +30,9 @@ def readyz() -> dict[str, Any]:
 
     # Database
     try:
-        from database.connection import DatabaseConnection
+        from database.connection import get_shared_connection
 
-        db_conn = DatabaseConnection()
+        db_conn = get_shared_connection()
         db_ok = db_conn.health_check()
         checks["database"] = {"ok": db_ok}
         if not db_ok:
@@ -65,9 +65,9 @@ def healthz_detailed() -> dict[str, Any]:
     checks: dict[str, Any] = {"service": "web_runtime"}
 
     try:
-        from database.connection import DatabaseConnection
+        from database.connection import get_shared_connection
 
-        db_conn = DatabaseConnection()
+        db_conn = get_shared_connection()
         checks["database"] = {"ok": db_conn.health_check(), "version": db_conn.schema_version()}
     except Exception as exc:
         checks["database"] = {"ok": False, "error": type(exc).__name__}

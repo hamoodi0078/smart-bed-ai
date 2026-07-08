@@ -471,3 +471,29 @@ class AsyncDatabaseConnection:
             raise RuntimeError("Call await db.initialize() first.")
         async with self._engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+
+
+_SHARED_CONNECTION: DatabaseConnection | None = None
+
+
+def get_shared_connection() -> DatabaseConnection:
+    """Process-wide DatabaseConnection.
+
+    Repositories default to this instead of building a fresh engine + pool +
+    SELECT-1 probe per instantiation (the audit's engine-per-request leak).
+    Tests that repoint DATABASE_URL must call reset_shared_connection().
+    """
+    global _SHARED_CONNECTION
+    if _SHARED_CONNECTION is None:
+        _SHARED_CONNECTION = DatabaseConnection()
+    return _SHARED_CONNECTION
+
+
+def reset_shared_connection() -> None:
+    global _SHARED_CONNECTION
+    if _SHARED_CONNECTION is not None:
+        try:
+            _SHARED_CONNECTION.engine.dispose()
+        except Exception:
+            pass
+    _SHARED_CONNECTION = None

@@ -55,6 +55,10 @@ def reset_web_server_db_singletons(web_server) -> None:
     web_server._DB_MOBILE_AUTH_REPOSITORY = None
     reset_auth_service_singleton()
 
+    from database.connection import reset_shared_connection
+
+    reset_shared_connection()
+
 
 class IsolatedWebAuthTestCase(unittest.TestCase):
     """Base class for web_server endpoint tests that need a logged-in cookie user.

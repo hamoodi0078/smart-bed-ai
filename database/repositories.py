@@ -11,7 +11,7 @@ from sqlalchemy import delete, func, select
 
 from time_utils import ensure_utc, from_iso, to_iso, utcnow
 
-from .connection import AsyncDatabaseConnection, DatabaseConnection
+from .connection import AsyncDatabaseConnection, DatabaseConnection, get_shared_connection
 from .models import (
     Alarm,
     AppVersion,
@@ -73,7 +73,7 @@ _FIRST_3_NIGHTS_STEP_FIELD_MAP = {
 
 class UserRepository:
     def __init__(self, db: DatabaseConnection | None = None):
-        self.db = db or DatabaseConnection()
+        self.db = db or get_shared_connection()
         self.db.create_tables()
 
     def create_user(
@@ -171,7 +171,7 @@ class UserRepository:
 
 class EventRepository:
     def __init__(self, db: DatabaseConnection | None = None):
-        self.db = db or DatabaseConnection()
+        self.db = db or get_shared_connection()
         self.db.create_tables()
 
     def log_event(
@@ -282,7 +282,7 @@ class EventRepository:
 
 class SleepSessionRepository:
     def __init__(self, db: DatabaseConnection | None = None):
-        self.db = db or DatabaseConnection()
+        self.db = db or get_shared_connection()
         self.db.create_tables()
 
     def create_or_update_session(
@@ -381,7 +381,7 @@ class SleepSessionRepository:
 
 class MobileCommandRepository:
     def __init__(self, db: DatabaseConnection | None = None):
-        self.db = db or DatabaseConnection()
+        self.db = db or get_shared_connection()
         self.db.create_tables()
 
     @staticmethod
@@ -755,7 +755,7 @@ class MobileCommandRepository:
 
 class MobileAuthRepository:
     def __init__(self, db: DatabaseConnection | None = None):
-        self.db = db or DatabaseConnection()
+        self.db = db or get_shared_connection()
         self.db.create_tables()
 
     @staticmethod
@@ -993,7 +993,7 @@ class MobileAuthRepository:
 
 class BetaProgressRepository:
     def __init__(self, db: DatabaseConnection | None = None):
-        self.db = db or DatabaseConnection()
+        self.db = db or get_shared_connection()
         self.db.create_tables()
 
     @staticmethod
@@ -1423,7 +1423,7 @@ class BetaProgressRepository:
 
 class UpdateRepository:
     def __init__(self, db: DatabaseConnection | None = None):
-        self.db = db or DatabaseConnection()
+        self.db = db or get_shared_connection()
         self.db.create_tables()
 
     # ── App Versions ──────────────────────────────────────────────────────────
@@ -1628,7 +1628,7 @@ class UpdateRepository:
 
 class FeatureFlagRepository:
     def __init__(self, db: DatabaseConnection | None = None):
-        self.db = db or DatabaseConnection()
+        self.db = db or get_shared_connection()
         self.db.create_tables()
 
     def upsert_flag(
@@ -2086,7 +2086,7 @@ class AlarmRepository:
     _MAX_ALARMS_PER_USER = 20
 
     def __init__(self, db: DatabaseConnection | None = None):
-        self.db = db or DatabaseConnection()
+        self.db = db or get_shared_connection()
 
     def list_alarms(self, user_id: str) -> list[Alarm]:
         with self.db.get_session() as session:
@@ -2212,7 +2212,7 @@ class ProfileRepository:
     """
 
     def __init__(self, db: DatabaseConnection | None = None) -> None:
-        self.db = db or DatabaseConnection()
+        self.db = db or get_shared_connection()
 
     # ── Profile prefs ─────────────────────────────────────────────────────────
 

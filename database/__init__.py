@@ -1,4 +1,9 @@
-from .connection import AsyncDatabaseConnection, DatabaseConnection
+from .connection import (
+    AsyncDatabaseConnection,
+    DatabaseConnection,
+    get_shared_connection,
+    reset_shared_connection,
+)
 from .models import (
     Alarm,
     AppVersion,
