@@ -305,7 +305,7 @@ def create_app() -> FastAPI:
     from api.routers.subscriptions import router as subscriptions_router
     from api.routers.chat import router as chat_router
     from api.routers.spotify import router as spotify_router
-    from api.routers.admin import router as admin_router, public_router as admin_public_router
+    from api.routers.admin import router as admin_router
     from api.routers.reports import router as reports_router
     from api.routers.integrations import router as integrations_router
 
@@ -313,7 +313,6 @@ def create_app() -> FastAPI:
     application.include_router(subscriptions_router)
     application.include_router(chat_router)
     application.include_router(spotify_router)
-    application.include_router(admin_public_router)
     application.include_router(admin_router)
     application.include_router(reports_router)
     application.include_router(integrations_router)

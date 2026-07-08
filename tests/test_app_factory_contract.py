@@ -159,5 +159,35 @@ class AlarmContractTests(AppFactoryContractCase):
         self.assertEqual(resp.status_code, 404, resp.text)
 
 
+class AdminContractTests(AppFactoryContractCase):
+    """The web panel authenticates with the sb_admin_token cookie
+    (web/assets/app.js sends credentials:"include", never a Bearer header)."""
+
+    def test_cookie_login_then_protected_endpoints(self):
+        auth = self.register("admin-tester@example.com")
+        user_id = auth["user"]["user_id"]
+        # Admin role records live in the subscription store today
+        self._web_server.store.upsert_admin_user(
+            user_id, "admin-tester@example.com", role="admin"
+        )
+        resp = self.client.post(
+            "/v1/admin/auth/login",
+            json={"email": "admin-tester@example.com", "password": self.test_password},
+        )
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertEqual(resp.json()["admin"]["role"], "admin")
+
+        # The cookie session must now open protected admin routes (P0-2:
+        # today these 401 because the router demands a Bearer role JWT)
+        resp = self.client.get("/v1/admin/overview")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        resp = self.client.get("/v1/admin/auth/me")
+        self.assertEqual(resp.status_code, 200, resp.text)
+
+    def test_anonymous_admin_calls_are_rejected(self):
+        resp = self.client.get("/v1/admin/overview")
+        self.assertEqual(resp.status_code, 401, resp.text)
+
+
 if __name__ == "__main__":
     unittest.main()

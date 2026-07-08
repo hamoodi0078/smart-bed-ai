@@ -1,11 +1,12 @@
 """Admin-only routes — migrated from web_server.py.
 
-All endpoints require admin authentication. Complex handlers are
-delegated to web_server functions as a transitional step.
+All endpoints require an authenticated admin session: the web panel's
+sb_admin_token cookie, or a Bearer JWT carrying an admin role claim.
+Login and /auth/me live in api/routers/auth.py (cookie-based).
+Complex handlers are delegated to web_server functions as a
+transitional step.
 
 Routes:
-  POST  /v1/admin/auth/login
-  GET   /v1/admin/auth/me
   GET   /v1/admin/observability
   GET   /v1/admin/diagnostics
   GET   /v1/admin/overview
@@ -39,38 +40,41 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from auth.middleware import require_role
 
-# Public router — login only; no auth dependency
-public_router = APIRouter(prefix="/v1/admin", tags=["admin"])
+def require_admin_session(request: Request) -> dict[str, Any]:
+    """Admin guard: cookie session (web panel) first, Bearer JWT role fallback.
 
-# Protected router — every endpoint requires an admin JWT
+    The panel sends the sb_admin_token cookie (credentials:"include"); JWTs
+    carrying a role claim are accepted for non-browser API clients.
+    """
+    from web_server import _cookie_admin
+
+    admin = _cookie_admin(request)
+    if admin:
+        return admin
+
+    auth_header = str(request.headers.get("authorization", "") or "")
+    if auth_header.lower().startswith("bearer "):
+        from auth.jwt_handler import JWTError, decode_access_token
+
+        try:
+            claims = decode_access_token(auth_header[7:].strip())
+        except JWTError:
+            claims = {}
+        if claims.get("type") == "access" and claims.get("role") in ("admin", "owner"):
+            return {"user_id": str(claims.get("sub", "")), "role": str(claims.get("role"))}
+
+    raise HTTPException(status_code=401, detail="Admin auth required")
+
+
+# Every endpoint requires an authenticated admin session
 router = APIRouter(
     prefix="/v1/admin",
     tags=["admin"],
-    dependencies=[Depends(require_role("admin"))],
+    dependencies=[Depends(require_admin_session)],
 )
-
-
-# ── Auth ─────────────────────────────────────────────────────────────────────
-
-
-@public_router.post("/auth/login")
-async def admin_login(request: Request, response: Response) -> dict[str, Any]:
-    from web_server import LoginRequest, admin_auth_login as _ws
-
-    body = await request.json()
-    payload = LoginRequest(**body)
-    return _ws(payload=payload, response=response, request=request)
-
-
-@router.get("/auth/me")
-def admin_me(request: Request) -> dict[str, Any]:
-    from web_server import admin_auth_me as _ws
-
-    return _ws(request=request)
 
 
 # ── Observability & diagnostics ──────────────────────────────────────────────
