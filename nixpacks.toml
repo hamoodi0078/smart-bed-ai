@@ -5,4 +5,5 @@ nixPkgs = ["python312", "gcc", "portaudio"]
 cmds = ["pip install -r requirements.txt", "pip install gunicorn"]
 
 [start]
-cmd = "gunicorn api.app_factory:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120"
+# TEMP (audit P1-4): single worker until Phase 2 moves sessions to the DB
+cmd = "gunicorn api.app_factory:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120"

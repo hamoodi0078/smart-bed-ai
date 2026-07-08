@@ -27,7 +27,9 @@ services:
       DATABASE_URL: postgresql://smartbed:${POSTGRES_PASSWORD:-smartbed_dev}@db:5432/smartbed
       REDIS_URL: redis://redis:6379/0
       ARQ_REDIS_URL: redis://redis:6379/2
-      GUNICORN_WORKERS: "4"
+      # TEMP (audit P1-4): JSON stores are per-process; sessions/billing corrupt
+      # under >1 worker. Restore "4" after Phase 2 moves state to the DB.
+      GUNICORN_WORKERS: "1"
     volumes:
       - runtime_data:/app/runtime_data
       - output_audio:/app/output_audio
