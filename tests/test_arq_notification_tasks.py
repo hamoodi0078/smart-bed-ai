@@ -10,7 +10,8 @@ import asyncio
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # asyncio.get_event_loop() no longer creates a loop on Python >= 3.14
+    return asyncio.run(coro)
 
 
 CTX: dict = {}
