@@ -414,4 +414,14 @@ class SmartBedRepository {
   Future<Map<String, dynamic>> loadAchievements() {
     return _auth.performAuthorized(_api.getAchievements);
   }
+
+  Future<Map<String, dynamic>> loadHydrationToday() {
+    return _auth.performAuthorized(_api.getHydrationToday);
+  }
+
+  Future<Map<String, dynamic>> logHydration(int ml) {
+    return _auth.performAuthorized(
+      (accessToken) => _api.logHydration(accessToken: accessToken, ml: ml),
+    );
+  }
 }

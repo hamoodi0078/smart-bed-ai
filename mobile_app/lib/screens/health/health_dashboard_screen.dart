@@ -1,22 +1,72 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
+import '../../src/state/mobile_data.dart';
 
-class HealthDashboardScreen extends StatefulWidget {
+class HealthDashboardScreen extends ConsumerStatefulWidget {
   const HealthDashboardScreen({super.key});
 
   @override
-  State<HealthDashboardScreen> createState() => _HealthDashboardScreenState();
+  ConsumerState<HealthDashboardScreen> createState() =>
+      _HealthDashboardScreenState();
 }
 
-class _HealthDashboardScreenState extends State<HealthDashboardScreen>
+class _HealthDashboardScreenState extends ConsumerState<HealthDashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  int _waterGlasses = 4;
+
+  // Hydration is backed by /v1/automation/health/hydration/* (real persistence).
+  int _intakeMl = 0;
+  int _goalMl = 2000;
+  bool _hydrationLoaded = false;
+  bool _loggingGlass = false;
+
+  static const int _glassMl = 250; // one glass ≈ 250 ml
+  int get _goalGlasses => (_goalMl / _glassMl).round().clamp(1, 12);
+  int get _waterGlasses => (_intakeMl / _glassMl).floor();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadHydration());
+  }
+
+  Future<void> _loadHydration() async {
+    try {
+      final today =
+          await ref.read(smartBedRepositoryProvider).loadHydrationToday();
+      if (!mounted) return;
+      setState(() {
+        _intakeMl = (today['intake_ml'] as num?)?.toInt() ?? 0;
+        _goalMl = (today['goal_ml'] as num?)?.toInt() ?? 2000;
+        _hydrationLoaded = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _hydrationLoaded = true);
+    }
+  }
+
+  Future<void> _logGlass() async {
+    if (_loggingGlass) return;
+    setState(() => _loggingGlass = true);
+    try {
+      final result =
+          await ref.read(smartBedRepositoryProvider).logHydration(_glassMl);
+      if (!mounted) return;
+      setState(() {
+        _intakeMl = (result['total_today_ml'] as num?)?.toInt() ??
+            (_intakeMl + _glassMl);
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not log water — try again')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loggingGlass = false);
+    }
   }
 
   @override
@@ -312,8 +362,9 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
   }
 
   Widget _buildHydrationCard() {
-    const goal = 8;
-    final percent = _waterGlasses / goal;
+    final goal = _goalGlasses;
+    final filled = _waterGlasses.clamp(0, goal);
+    final percent = goal > 0 ? (filled / goal).clamp(0.0, 1.0) : 0.0;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -346,7 +397,9 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
                 ),
               ),
               Text(
-                '$_waterGlasses / $goal glasses',
+                _hydrationLoaded
+                    ? '$filled / $goal glasses'
+                    : '…',
                 style: const TextStyle(
                   color: Color(0xFF4FC3F7),
                   fontSize: 13,
@@ -369,15 +422,12 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: List.generate(goal, (i) {
-              return GestureDetector(
-                onTap: () => setState(() => _waterGlasses = i + 1),
-                child: Icon(
-                  Icons.water_drop_rounded,
-                  size: 28,
-                  color: i < _waterGlasses
-                      ? const Color(0xFF4FC3F7)
-                      : AppColors.softWhite.withValues(alpha: 0.2),
-                ),
+              return Icon(
+                Icons.water_drop_rounded,
+                size: 28,
+                color: i < filled
+                    ? const Color(0xFF4FC3F7)
+                    : AppColors.softWhite.withValues(alpha: 0.2),
               );
             }),
           ),
@@ -385,11 +435,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () {
-                if (_waterGlasses < goal) {
-                  setState(() => _waterGlasses++);
-                }
-              },
+              onPressed: _loggingGlass ? null : _logGlass,
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFF4FC3F7),
                 side: const BorderSide(color: Color(0xFF4FC3F7)),
@@ -397,7 +443,16 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              icon: const Icon(Icons.add_rounded),
+              icon: _loggingGlass
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF4FC3F7),
+                      ),
+                    )
+                  : const Icon(Icons.add_rounded),
               label: const Text('Log a Glass'),
             ),
           ),
