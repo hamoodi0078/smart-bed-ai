@@ -3,6 +3,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../l10n/app_localizations.dart';
+
 import '../screens/main_shell.dart';
 import '../screens/winddown/winddown_journey_screen.dart';
 import '../screens/achievements/achievements_screen.dart';
@@ -230,8 +232,9 @@ class SmartBedApp extends ConsumerWidget {
       darkTheme: buildSmartBedTheme(brightness: Brightness.dark),
       themeMode: themeMode,
       locale: locale,
-      supportedLocales: const [Locale('en'), Locale('ar')],
+      supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
+        AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
