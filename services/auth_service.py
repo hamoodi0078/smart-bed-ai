@@ -40,23 +40,37 @@ class BruteForceGuard:
     def __init__(self, redis_url: str = "") -> None:
         self._url = redis_url or os.environ.get("REDIS_URL", "")
         self._client: Any = None
+        self._unavailable = False  # sticky: once Redis is proven down, stop retrying
         self._lock = threading.Lock()
 
     def _redis(self) -> Any:
         if self._client is not None:
             return self._client
+        if self._unavailable or not self._url:
+            return None
         with self._lock:
             if self._client is not None:
                 return self._client
-            if not self._url:
+            if self._unavailable:
                 return None
             try:
                 import redis as _r
 
-                client = _r.from_url(self._url, decode_responses=True, socket_timeout=1.0)
+                # Fail fast: a missing Redis must not add seconds to every login.
+                # Without connect timeout + no retries, redis-py retries 5x with
+                # backoff on a dead host (multi-second stall per call).
+                client = _r.from_url(
+                    self._url,
+                    decode_responses=True,
+                    socket_timeout=0.5,
+                    socket_connect_timeout=0.5,
+                    retry_on_timeout=False,
+                )
                 client.ping()
                 self._client = client
             except Exception:
+                # Cache the failure so subsequent logins skip Redis entirely.
+                self._unavailable = True
                 return None
         return self._client
 

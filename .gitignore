@@ -73,3 +73,6 @@ mobile_app/.venv/
 
 # Repo-packing artifacts
 repomix-output.txt
+
+data/dev.sqlite3
+data/dev.sqlite3*

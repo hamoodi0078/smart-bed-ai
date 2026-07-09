@@ -102,7 +102,16 @@ async def _get_counter() -> _RedisCounter | _InMemoryCounter:
         try:
             import redis.asyncio as aioredis
 
-            client = aioredis.from_url(redis_url, encoding="utf-8", decode_responses=True)
+            # Fail fast when Redis is down so startup/first-request isn't stalled
+            # by redis-py's default connect retries.
+            client = aioredis.from_url(
+                redis_url,
+                encoding="utf-8",
+                decode_responses=True,
+                socket_connect_timeout=0.5,
+                socket_timeout=0.5,
+                retry_on_timeout=False,
+            )
             await client.ping()
             _counter = _RedisCounter(client)
             logger.info("Rate limiter: using Redis backend ({})", redis_url.split("@")[-1])
