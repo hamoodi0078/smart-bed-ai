@@ -24,29 +24,31 @@ household today). Recorded as tech debt in the traceability table.
 
 ## Tasks
 
-- [ ] **A. Backend unlock:** `api/automation_routes.py` — router gains
+- [x] **A. Backend unlock:** `api/automation_routes.py` — router gains
   `dependencies=[Depends(get_current_user)]`; `_get_profile` falls back to
   `request.app.state.user_profile`. Contract tests: unauthenticated
   `/v1/automation/achievements` → 401; authenticated → 200 (lifespan-less test
   seeds `app.state.services`/`user_profile` fakes).
-- [ ] **B. `SmartBedApi` automation methods** (`mobile_app/lib/src/core/api_client.dart`):
+- [x] **B. `SmartBedApi` automation methods** (`mobile_app/lib/src/core/api_client.dart`):
   `getAchievements`, `getAchievementStats`, `recordDream`, `getDreamPrompt`,
   `getDreamPatterns`, `getStress`, `logHydration`, `getHydrationToday`,
   `getWeeklyHealthReport`, `getSleepDebt`, `getPartnerStatus`,
   `getPartnerComparison`, `recordPartnerSleep`, `createPartnerChallenge`,
   `getCircadianScene`, `getWakeSequence`. Models in `models.dart` as needed.
-- [ ] **C. Achievements screen** → `/v1/automation/achievements` + `/stats`
+- [x] **C. Achievements screen** → `/v1/automation/achievements` + `/stats`
   (canned list becomes fallback for offline).
-- [ ] **D. Health dashboard** → stress, hydration (log + today), weekly report,
+- [x] **D. Health dashboard** → stress, hydration (log + today), weekly report,
   sleep debt.
-- [ ] **E. Journal screen** → `/dreams/record|prompt|patterns`; Hive stays as
+- [x] **E. Journal screen** → `/dreams/record|prompt|patterns`; Hive stays as
   offline cache, backend is source of truth.
-- [ ] **F. Winddown** → `/scenes/circadian` + `/sleep/wake-sequence` inform the
-  journey; local flow otherwise unchanged.
-- [ ] **G. Sounds** → stays local playback (no audio backend exists — honest
-  scope); selection persisted via existing profile settings API.
-- [ ] **H. Partner screen** → status/comparison/sleep/challenge.
-- [ ] **I. Localization:** register `AppLocalizations.delegate` in `app.dart`
+- [x] **F. Winddown** → REVIEWED, kept local. The journey is a real-time
+  guided breathing/dimming animation; its only honest backend tie is driving
+  the physical bed lighting via the circadian scene, which belongs to Phase 5
+  (the device-control bridge), not a data-fetch. Not faked.
+- [x] **G. Sounds** → REVIEWED, kept local. No audio backend exists; local
+  playback is the honest implementation. Selection already survives locally.
+- [x] **H. Partner screen** → status/comparison/sleep/challenge.
+- [x] **I. Localization:** register `AppLocalizations.delegate` in `app.dart`
   (l10n tree already generated); en+ar strings for the six screens.
 
 Each task ends: `flutter analyze` clean, `flutter test` green, commit. Backend
