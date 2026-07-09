@@ -199,5 +199,23 @@ class AdminContractTests(AppFactoryContractCase):
         self.assertEqual(resp.status_code, 401, resp.text)
 
 
+class TokenRevocationTests(AppFactoryContractCase):
+    def test_logout_revokes_access_token_on_migrated_routes(self):
+        auth = self.register("revoke-tester@example.com")
+        headers = self.bearer(auth)
+        self.assertEqual(self.client.get("/v1/mobile/auth/me", headers=headers).status_code, 200)
+
+        resp = self.client.post(
+            "/v1/mobile/auth/logout",
+            json={"refresh_token": auth["refresh_token"]},
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200, resp.text)
+
+        # The old access token must now be rejected on every migrated route
+        self.assertEqual(self.client.get("/v1/mobile/auth/me", headers=headers).status_code, 401)
+        self.assertEqual(self.client.get("/v1/mobile/alarms", headers=headers).status_code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()

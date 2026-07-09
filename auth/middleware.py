@@ -59,6 +59,19 @@ async def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        # DB revocation check: logout sets revoked=True on the session row;
+        # signature-only validation would honor the token for up to 60 more
+        # minutes (audit P1-6). validate_access_token maps JWT -> JTI row.
+        from database import MobileAuthRepository
+
+        if not MobileAuthRepository().validate_access_token(token):
+            logger.info("Revoked or unknown access token presented")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         logger.debug("User authenticated: user_id={}", user_id)
         return payload
 
