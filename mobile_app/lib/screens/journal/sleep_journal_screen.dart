@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/journal_store.dart';
+import '../../src/state/mobile_data.dart';
 import '../../theme/app_theme.dart';
 
-class SleepJournalScreen extends StatefulWidget {
+class SleepJournalScreen extends ConsumerStatefulWidget {
   const SleepJournalScreen({super.key});
 
   @override
-  State<SleepJournalScreen> createState() => _SleepJournalScreenState();
+  ConsumerState<SleepJournalScreen> createState() => _SleepJournalScreenState();
 }
 
-class _SleepJournalScreenState extends State<SleepJournalScreen> {
+class _SleepJournalScreenState extends ConsumerState<SleepJournalScreen> {
   List<_JournalEntry> _entries = [];
 
   static final List<_JournalEntry> _seedEntries = [
@@ -235,6 +237,15 @@ class _SleepJournalScreenState extends State<SleepJournalScreen> {
         setState(() {
           _entries.insert(0, result);
         });
+        // Persist the reflection text server-side too (cross-device); the
+        // rich entry stays in the local Hive cache. Best-effort — a failed
+        // sync never blocks the local save.
+        if (result.notes.trim().isNotEmpty) {
+          ref
+              .read(smartBedRepositoryProvider)
+              .recordDream(text: result.notes.trim())
+              .catchError((_) => <String, dynamic>{});
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Journal entry saved!'),

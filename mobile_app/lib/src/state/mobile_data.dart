@@ -424,4 +424,31 @@ class SmartBedRepository {
       (accessToken) => _api.logHydration(accessToken: accessToken, ml: ml),
     );
   }
+
+  Future<Map<String, dynamic>> loadDreamPrompt() {
+    return _auth.performAuthorized(_api.getDreamPrompt);
+  }
+
+  Future<Map<String, dynamic>> recordDream({
+    required String text,
+    bool vivid = false,
+    bool lucid = false,
+  }) {
+    return _auth.performAuthorized(
+      (accessToken) => _api.recordDream(
+        accessToken: accessToken,
+        text: text,
+        vivid: vivid,
+        lucid: lucid,
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>> loadPartnerStatus() {
+    return _auth.performAuthorized(_api.getPartnerStatus);
+  }
+
+  Future<Map<String, dynamic>> loadPartnerComparison() {
+    return _auth.performAuthorized(_api.getPartnerComparison);
+  }
 }
