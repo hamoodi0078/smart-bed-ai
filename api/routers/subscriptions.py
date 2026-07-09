@@ -18,6 +18,7 @@ Routes:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -31,7 +32,7 @@ async def start_trial(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = TrialStartRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.get("/v1/subscriptions/status")
@@ -68,7 +69,7 @@ async def mobile_checkout(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = MobileSubscriptionCheckoutRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.post("/v1/mobile/subscription/capture")
@@ -77,7 +78,7 @@ async def mobile_capture(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = MobileSubscriptionCaptureRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.post("/v1/mobile/subscription/cancel")
@@ -86,7 +87,7 @@ async def mobile_cancel(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = MobileSubscriptionCancelRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.post("/v1/mobile/subscription/pause")
@@ -95,7 +96,7 @@ async def mobile_pause(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = MobileSubscriptionActionRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.post("/v1/mobile/subscription/cancel-active")
@@ -104,7 +105,7 @@ async def mobile_cancel_active(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = MobileSubscriptionActionRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.get("/billing/paypal/approve")

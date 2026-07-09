@@ -16,6 +16,7 @@ Routes:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -46,7 +47,8 @@ async def register_push_token(
 
     body = await request.json()
     payload = RegisterPushTokenRequest(**body)
-    return _ws(payload=payload, request=request)
+    # _ws is sync monolith code — run it off the event loop (audit P1-7)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 # ── Timeline ──────────────────────────────────────────────────────────────────
@@ -81,7 +83,7 @@ async def first_3_nights_complete(
 
     body = await request.json()
     payload = FirstThreeNightsStepRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 # ── Feedback ──────────────────────────────────────────────────────────────────
@@ -95,7 +97,7 @@ async def nightly_summary_feedback(
 
     body = await request.json()
     payload = NightlySummaryFeedbackRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 # ── Beta metrics ──────────────────────────────────────────────────────────────
@@ -121,7 +123,7 @@ async def mobile_user_actions(
 
     body = await request.json()
     payload = UserActionRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 # ── App version check ─────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ Routes:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -40,7 +41,8 @@ async def compose_scene(request: Request) -> Any:
 
     body = await request.json()
     payload = SceneComposeRequest(**body)
-    return _ws(payload=payload, request=request)
+    # _ws is sync monolith code — run it off the event loop (audit P1-7)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.post("/v1/mobile/scenes/preview")
@@ -49,7 +51,7 @@ async def mobile_scene_preview(request: Request) -> Any:
 
     body = await request.json()
     payload = SceneSelectionRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.post("/v1/mobile/scenes/save-tonight")
@@ -58,4 +60,4 @@ async def mobile_scene_save_tonight(request: Request) -> Any:
 
     body = await request.json()
     payload = SceneSelectionRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)

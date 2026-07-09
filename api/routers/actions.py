@@ -9,6 +9,7 @@ Routes:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -24,7 +25,8 @@ async def undo_last_action(request: Request, current_user: dict = Depends(get_cu
 
     body = await request.json()
     payload = UndoActionRequest(**body)
-    return _ws(payload=payload, request=request)
+    # _ws is sync monolith code — run it off the event loop (audit P1-7)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.get("/v1/actions/undo/status")
@@ -51,4 +53,4 @@ async def mobile_undo_last_action(
 ) -> Any:
     from web_server import mobile_undo_last_action as _ws
 
-    return _ws(request=request)
+    return await asyncio.to_thread(_ws, request=request)

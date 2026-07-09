@@ -38,6 +38,7 @@ Routes:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -169,7 +170,7 @@ async def beta_enroll(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = BetaCohortEnrollRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 # ── Admin actions ────────────────────────────────────────────────────────────
@@ -181,7 +182,7 @@ async def admin_actions(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = AdminActionRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.post("/voice/circuit-breaker/reset")
@@ -207,7 +208,7 @@ async def publish_app_version(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = PublishAppVersionRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.post("/versions/firmware")
@@ -216,7 +217,7 @@ async def publish_firmware_version(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = PublishFirmwareVersionRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.patch("/versions/{version_id}")
@@ -225,7 +226,7 @@ async def patch_version(version_id: str, request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = PatchVersionRequest(**body)
-    return _ws(version_id=version_id, payload=payload, request=request)
+    return await asyncio.to_thread(_ws, version_id=version_id, payload=payload, request=request)
 
 
 # ── Feature flags ────────────────────────────────────────────────────────────
@@ -244,7 +245,7 @@ async def upsert_feature_flag(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = UpsertFeatureFlagRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.patch("/feature-flags/{flag_key}")
@@ -253,7 +254,7 @@ async def patch_feature_flag(flag_key: str, request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = PatchFeatureFlagRequest(**body)
-    return _ws(flag_key=flag_key, payload=payload, request=request)
+    return await asyncio.to_thread(_ws, flag_key=flag_key, payload=payload, request=request)
 
 
 # ── User feature overrides ───────────────────────────────────────────────────
@@ -272,7 +273,7 @@ async def set_user_feature(user_id: str, request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = SetUserFeatureOverrideRequest(**body)
-    return _ws(user_id=user_id, payload=payload, request=request)
+    return await asyncio.to_thread(_ws, user_id=user_id, payload=payload, request=request)
 
 
 @router.delete("/users/{user_id}/features/{flag_key}")

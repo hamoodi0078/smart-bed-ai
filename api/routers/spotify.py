@@ -12,6 +12,7 @@ Routes:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -67,4 +68,4 @@ async def spotify_playback(request: Request) -> dict[str, Any]:
 
     body = await request.json()
     payload = SpotifyPlaybackRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)

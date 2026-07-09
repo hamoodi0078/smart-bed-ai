@@ -20,6 +20,7 @@ Routes:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -90,7 +91,7 @@ async def upsert_device_controls(
 
     body = await request.json()
     payload = UserDeviceControlRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 # ── Bed pairing ──────────────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ async def bed_pair(
 
     body = await request.json()
     payload = MobileBedPairRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.post("/v1/mobile/bed/unpair")
@@ -124,7 +125,7 @@ async def bed_unpair(
 
     body = await request.json()
     payload = MobileBedUnpairRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 # ── Mobile devices ───────────────────────────────────────────────────────────
@@ -150,7 +151,7 @@ async def create_device_command(
 
     body = await request.json()
     payload = UserDeviceCommandRequest(**body)
-    return _ws(payload=payload, request=request)
+    return await asyncio.to_thread(_ws, payload=payload, request=request)
 
 
 @router.get("/v1/mobile/device-commands/{command_id}")
@@ -170,7 +171,7 @@ async def device_command_feedback(
 
     body = await request.json()
     payload = DeviceCommandFeedbackRequest(**body)
-    return _ws(command_id=command_id, payload=payload, request=request)
+    return await asyncio.to_thread(_ws, command_id=command_id, payload=payload, request=request)
 
 
 # ── Live sensor data ─────────────────────────────────────────────────────────
