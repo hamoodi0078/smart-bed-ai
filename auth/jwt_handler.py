@@ -57,6 +57,7 @@ def create_access_token(
     exp: datetime,
     email: str = "",
     client_name: str = "",
+    role: str = "",
 ) -> str:
     """Return a signed HS256 JWT. The JTI is the DB revocation key."""
     now = datetime.now(timezone.utc)
@@ -71,6 +72,8 @@ def create_access_token(
         claims["email"] = email
     if client_name:
         claims["client"] = client_name
+    if role:
+        claims["role"] = role
     token_bytes: bytes = _jwt.encode({"alg": _ALGORITHM}, claims, _key())
     return token_bytes.decode("utf-8")
 

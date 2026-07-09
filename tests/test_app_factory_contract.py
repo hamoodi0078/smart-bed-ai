@@ -262,5 +262,19 @@ class ProfileReadThroughTests(AppFactoryContractCase):
         self.assertEqual(resp.status_code, 200, resp.text)
 
 
+class JwtRoleClaimTests(unittest.TestCase):
+    def test_role_claim_roundtrip(self):
+        from datetime import datetime, timedelta, timezone
+
+        from auth.jwt_handler import create_access_token, decode_access_token
+
+        exp = datetime.now(timezone.utc) + timedelta(minutes=5)
+        token = create_access_token(user_id="u1", jti="j1", exp=exp, role="admin")
+        self.assertEqual(decode_access_token(token)["role"], "admin")
+
+        token = create_access_token(user_id="u1", jti="j2", exp=exp)
+        self.assertNotIn("role", decode_access_token(token))
+
+
 if __name__ == "__main__":
     unittest.main()
