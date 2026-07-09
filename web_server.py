@@ -2271,6 +2271,19 @@ def _chat_profile_prefs_for_user(profile: dict[str, Any], user: dict[str, Any]) 
             "theme_mode": "system",
         }
     )
+    # DB is the source of truth (POST /v1/mobile/profile writes there); the
+    # legacy JSON section only serves pre-migration data (audit P0-3).
+    user_id = str(user.get("user_id", "") or "").strip()
+    if user_id:
+        try:
+            from database import ProfileRepository
+
+            db_prefs = ProfileRepository().get_profile_prefs_if_exists(user_id)
+        except Exception as exc:
+            _event("warning", "profile_db_read_failed", error=str(exc))
+            db_prefs = None
+        if db_prefs:
+            return _normalize_user_profile_prefs({**defaults, **db_prefs})
     key = _user_profile_key(user)
     section = _get_scoped_profile_section(profile, "web_profile_prefs")
     scoped = section.get(key, {}) if key and isinstance(section.get(key, {}), dict) else {}

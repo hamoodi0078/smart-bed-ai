@@ -2229,6 +2229,18 @@ class ProfileRepository:
                 return dict(_DEFAULT_PREFS)
             return self._prefs_to_dict(row)
 
+    def get_profile_prefs_if_exists(self, user_id: str) -> dict[str, Any] | None:
+        """Like get_profile_prefs, but None when the user has no saved row —
+        callers use this to fall back to legacy JSON prefs."""
+        uid = _clean_user_id(user_id)
+        if not uid:
+            return None
+        with self.db.get_session() as session:
+            row = session.execute(
+                select(UserProfilePrefs).where(UserProfilePrefs.user_id == uid).limit(1)
+            ).scalar_one_or_none()
+            return None if row is None else self._prefs_to_dict(row)
+
     def upsert_profile_prefs(self, user_id: str, **fields: Any) -> dict[str, Any]:
         """Create or update the UserProfilePrefs row for user_id."""
         uid = _clean_user_id(user_id)

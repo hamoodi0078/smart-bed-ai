@@ -217,5 +217,50 @@ class TokenRevocationTests(AppFactoryContractCase):
         self.assertEqual(self.client.get("/v1/mobile/alarms", headers=headers).status_code, 401)
 
 
+class ProfileReadThroughTests(AppFactoryContractCase):
+    """P0-3: what the app saves via POST /v1/mobile/profile must drive
+    prayer times, dashboard identity, and chat context — not the legacy
+    JSON that nothing writes anymore."""
+
+    PROFILE = {
+        "display_name": "Danah",
+        "location_mode": "auto",
+        "latitude": 29.3759,
+        "longitude": 47.9774,
+        "city": "Kuwait City",
+        "country_code": "KW",
+    }
+
+    def _save_profile(self, email: str) -> dict:
+        auth = self.register(email)
+        resp = self.client.post("/v1/mobile/profile", json=self.PROFILE, headers=self.bearer(auth))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        return auth
+
+    def test_saved_profile_drives_prayer_location(self):
+        auth = self._save_profile("profile-tester@example.com")
+        from api.routers.islamic import _prayer_location
+
+        loc = _prayer_location({"user_id": auth["user"]["user_id"]}, profile={})
+        self.assertEqual(loc["latitude"], 29.3759)
+        self.assertEqual(loc["longitude"], 47.9774)
+        self.assertEqual(loc["mode"], "auto")
+
+    def test_chat_prefs_read_db_first(self):
+        auth = self._save_profile("profile-tester-2@example.com")
+        prefs = self._web_server._chat_profile_prefs_for_user(
+            {}, {"user_id": auth["user"]["user_id"]}
+        )
+        self.assertEqual(prefs["display_name"], "Danah")
+
+    def test_islamic_overview_not_premium_gated(self):
+        auth = self.register("free-tester@example.com")
+        with patch.object(
+            self._web_server, "_mobile_islamic_overview_payload", return_value={"islamic": {}}
+        ):
+            resp = self.client.get("/v1/mobile/islamic/overview", headers=self.bearer(auth))
+        self.assertEqual(resp.status_code, 200, resp.text)
+
+
 if __name__ == "__main__":
     unittest.main()
