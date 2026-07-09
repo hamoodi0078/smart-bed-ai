@@ -789,7 +789,13 @@ async def churn_risk(request: Request):
 async def achievements_list(request: Request):
     ae = _get_service(request, "achievement_engine")
     profile = _get_profile(request)
-    return ae.get_all_progress(profile)
+    # Wrapped response (list + stats in one round trip) — this surface had
+    # zero working consumers before Phase 4, so the shape is ours to define.
+    return {
+        "ok": True,
+        "achievements": ae.get_all_progress(profile),
+        "stats": ae.get_stats(profile),
+    }
 
 
 @router.get("/achievements/stats")

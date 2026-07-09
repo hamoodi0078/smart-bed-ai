@@ -1,83 +1,67 @@
 import 'package:flutter/material.dart';
 import 'package:confetti/confetti.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
+import '../../src/state/mobile_data.dart';
 
-class AchievementsScreen extends StatefulWidget {
+/// Maps a backend achievement category to an icon + accent colour so the
+/// visual language survives even though the engine only returns a category.
+class _CategoryStyle {
+  const _CategoryStyle(this.icon, this.color);
+  final IconData icon;
+  final Color color;
+}
+
+const Map<String, _CategoryStyle> _categoryStyles = {
+  'sleep': _CategoryStyle(Icons.nightlight_round, AppColors.purple),
+  'wake': _CategoryStyle(Icons.wb_sunny_rounded, AppColors.orange),
+  'streak': _CategoryStyle(Icons.local_fire_department_rounded, AppColors.orange),
+  'dana': _CategoryStyle(Icons.chat_bubble_rounded, AppColors.accent),
+  'chat': _CategoryStyle(Icons.chat_bubble_rounded, AppColors.accent),
+  'islamic': _CategoryStyle(Icons.mosque_rounded, Colors.green),
+  'prayer': _CategoryStyle(Icons.mosque_rounded, Colors.green),
+  'health': _CategoryStyle(Icons.favorite_rounded, Colors.pinkAccent),
+  'milestone': _CategoryStyle(Icons.star_rounded, AppColors.gold),
+};
+
+_CategoryStyle _styleFor(String category) =>
+    _categoryStyles[category.toLowerCase()] ??
+    const _CategoryStyle(Icons.emoji_events_rounded, AppColors.gold);
+
+/// Fallback list shown only when the backend is unreachable (offline demo).
+final List<_Achievement> _fallbackAchievements = [
+  _Achievement(
+    id: '1',
+    title: 'First Night',
+    description: 'Complete your first wind-down journey',
+    icon: Icons.nightlight_round,
+    color: AppColors.purple,
+    isUnlocked: true,
+    unlockedAt: DateTime.now().subtract(const Duration(days: 2)),
+    points: 10,
+  ),
+  const _Achievement(
+    id: '3',
+    title: 'Perfect Week',
+    description: 'Complete all wind-down sessions for a week',
+    icon: Icons.star_rounded,
+    color: AppColors.gold,
+    isUnlocked: false,
+    progress: 5,
+    maxProgress: 7,
+    points: 50,
+  ),
+];
+
+class AchievementsScreen extends ConsumerStatefulWidget {
   const AchievementsScreen({super.key});
 
   @override
-  State<AchievementsScreen> createState() => _AchievementsScreenState();
+  ConsumerState<AchievementsScreen> createState() => _AchievementsScreenState();
 }
 
-class _AchievementsScreenState extends State<AchievementsScreen> {
+class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
   late ConfettiController _confettiController;
-  
-  final List<_Achievement> _achievements = [
-    _Achievement(
-      id: '1',
-      title: 'First Night',
-      description: 'Complete your first wind-down journey',
-      icon: Icons.nightlight_round,
-      color: AppColors.purple,
-      isUnlocked: true,
-      unlockedAt: DateTime.now().subtract(const Duration(days: 2)),
-      points: 10,
-    ),
-    _Achievement(
-      id: '2',
-      title: 'Early Bird',
-      description: 'Wake up before 6 AM for 7 days straight',
-      icon: Icons.wb_sunny_rounded,
-      color: AppColors.orange,
-      isUnlocked: true,
-      unlockedAt: DateTime.now().subtract(const Duration(days: 1)),
-      points: 25,
-    ),
-    const _Achievement(
-      id: '3',
-      title: 'Perfect Week',
-      description: 'Complete all wind-down sessions for a week',
-      icon: Icons.star_rounded,
-      color: AppColors.gold,
-      isUnlocked: false,
-      progress: 5,
-      maxProgress: 7,
-      points: 50,
-    ),
-    const _Achievement(
-      id: '4',
-      title: 'Dana\'s Friend',
-      description: 'Have 50 conversations with Dana',
-      icon: Icons.chat_bubble_rounded,
-      color: AppColors.accent,
-      isUnlocked: false,
-      progress: 23,
-      maxProgress: 50,
-      points: 30,
-    ),
-    const _Achievement(
-      id: '5',
-      title: 'Prayer Master',
-      description: 'Never miss a prayer for 30 days',
-      icon: Icons.mosque_rounded,
-      color: Colors.green,
-      isUnlocked: false,
-      progress: 12,
-      maxProgress: 30,
-      points: 100,
-    ),
-    const _Achievement(
-      id: '6',
-      title: 'Sleep Scholar',
-      description: 'Maintain 85+ sleep score for a month',
-      icon: Icons.school_rounded,
-      color: AppColors.purple,
-      isUnlocked: false,
-      progress: 0,
-      maxProgress: 30,
-      points: 75,
-    ),
-  ];
 
   @override
   void initState() {
@@ -93,29 +77,36 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
     super.dispose();
   }
 
-  void _unlockAchievement(_Achievement achievement) {
-    _confettiController.play();
-    
-    showDialog(
-      context: context,
-      builder: (context) => _AchievementUnlockedDialog(
-        achievement: achievement,
-      ),
+  /// Convert one backend achievement dict into the view model.
+  _Achievement _fromJson(Map<String, dynamic> json) {
+    final style = _styleFor((json['category'] ?? '').toString());
+    final threshold = (json['threshold'] as num?)?.toInt() ?? 0;
+    final current = (json['current'] as num?)?.toInt() ?? 0;
+    final unlocked = json['unlocked'] == true;
+    return _Achievement(
+      id: (json['id'] ?? '').toString(),
+      title: (json['name'] ?? '').toString(),
+      description: (json['description'] ?? '').toString(),
+      icon: style.icon,
+      color: style.color,
+      isUnlocked: unlocked,
+      points: (json['reward'] as num?)?.toInt() ?? 0,
+      progress: current,
+      maxProgress: unlocked ? 0 : threshold,
     );
   }
 
-  int get _totalPoints {
-    return _achievements
-        .where((a) => a.isUnlocked)
-        .fold(0, (sum, a) => sum + a.points);
-  }
-
-  int get _unlockedCount {
-    return _achievements.where((a) => a.isUnlocked).length;
+  void _celebrate(_Achievement achievement) {
+    _confettiController.play();
+    showDialog(
+      context: context,
+      builder: (context) => _AchievementUnlockedDialog(achievement: achievement),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final asyncAchievements = ref.watch(achievementsProvider);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -127,50 +118,87 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              _buildStatsHeader(),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _achievements.length,
-                  itemBuilder: (context, index) {
-                    return _AchievementCard(
-                      achievement: _achievements[index],
-                      onTap: _achievements[index].isUnlocked
-                          ? null
-                          : () => _unlockAchievement(_achievements[index]),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-          Align(
-            alignment: Alignment.topCenter,
-            child: ConfettiWidget(
-              confettiController: _confettiController,
-              blastDirectionality: BlastDirectionality.explosive,
-              particleDrag: 0.05,
-              emissionFrequency: 0.05,
-              numberOfParticles: 50,
-              gravity: 0.2,
-              colors: const [
-                AppColors.accent,
-                AppColors.purple,
-                AppColors.orange,
-                AppColors.gold,
-              ],
-            ),
-          ),
-        ],
+      body: asyncAchievements.when(
+        loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.accent),
+        ),
+        error: (_, _) => _buildContent(_fallbackAchievements, offline: true),
+        data: (payload) {
+          final raw = payload['achievements'];
+          final list = raw is List
+              ? raw
+                  .whereType<Map<String, dynamic>>()
+                  .map(_fromJson)
+                  .toList()
+              : _fallbackAchievements;
+          return _buildContent(list, offline: false);
+        },
       ),
     );
   }
 
-  Widget _buildStatsHeader() {
+  Widget _buildContent(List<_Achievement> achievements, {required bool offline}) {
+    final totalPoints = achievements
+        .where((a) => a.isUnlocked)
+        .fold(0, (sum, a) => sum + a.points);
+    final unlockedCount = achievements.where((a) => a.isUnlocked).length;
+    return Stack(
+      children: [
+        Column(
+          children: [
+            if (offline)
+              Container(
+                width: double.infinity,
+                color: AppColors.orange.withValues(alpha: 0.15),
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+                child: const Text(
+                  'Offline — showing sample achievements',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.orange, fontSize: 12),
+                ),
+              ),
+            _buildStatsHeader(totalPoints, unlockedCount, achievements.length),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async => ref.refresh(achievementsProvider.future),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: achievements.length,
+                  itemBuilder: (context, index) {
+                    return _AchievementCard(
+                      achievement: achievements[index],
+                      onTap: achievements[index].isUnlocked
+                          ? () => _celebrate(achievements[index])
+                          : null,
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+        Align(
+          alignment: Alignment.topCenter,
+          child: ConfettiWidget(
+            confettiController: _confettiController,
+            blastDirectionality: BlastDirectionality.explosive,
+            particleDrag: 0.05,
+            emissionFrequency: 0.05,
+            numberOfParticles: 50,
+            gravity: 0.2,
+            colors: const [
+              AppColors.accent,
+              AppColors.purple,
+              AppColors.orange,
+              AppColors.gold,
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatsHeader(int totalPoints, int unlockedCount, int total) {
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
@@ -204,7 +232,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '$_totalPoints',
+                  '$totalPoints',
                   style: const TextStyle(
                     color: AppColors.gold,
                     fontSize: 32,
@@ -234,7 +262,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '$_unlockedCount / ${_achievements.length}',
+                  '$unlockedCount / $total',
                   style: const TextStyle(
                     color: AppColors.accent,
                     fontSize: 32,

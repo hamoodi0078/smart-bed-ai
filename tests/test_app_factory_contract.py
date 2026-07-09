@@ -278,7 +278,29 @@ class JwtRoleClaimTests(unittest.TestCase):
 
 class _FakeAchievementEngine:
     def get_all_progress(self, profile):
-        return {"ok": True, "achievements": [{"id": "first_night", "unlocked": True}]}
+        return [
+            {
+                "id": "first_night",
+                "name": "First Night",
+                "description": "",
+                "category": "sleep",
+                "current": 1,
+                "threshold": 1,
+                "progress_pct": 100,
+                "unlocked": True,
+                "reward": 10,
+            }
+        ]
+
+    def get_stats(self, profile):
+        return {
+            "total_achievements": 1,
+            "unlocked": 1,
+            "locked": 0,
+            "completion_pct": 100.0,
+            "total_points": 10,
+            "level": 1,
+        }
 
 
 class AutomationSurfaceTests(AppFactoryContractCase):
@@ -318,7 +340,9 @@ class AutomationSurfaceTests(AppFactoryContractCase):
         resp = self.client.get("/v1/automation/achievements", headers=self.bearer(auth))
         self.assertEqual(resp.status_code, 200, resp.text)
         body = resp.json()
+        self.assertTrue(body["ok"])
         self.assertEqual(body["achievements"][0]["id"], "first_night")
+        self.assertEqual(body["stats"]["total_points"], 10)
 
 
 if __name__ == "__main__":

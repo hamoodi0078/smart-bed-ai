@@ -84,6 +84,10 @@ final mobileDeviceInfoProvider = FutureProvider<MobileDeviceInfo>((ref) async {
   return ref.read(smartBedRepositoryProvider).loadMobileDeviceInfo();
 });
 
+final achievementsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  return ref.read(smartBedRepositoryProvider).loadAchievements();
+});
+
 class SmartBedRepository {
   SmartBedRepository(this.ref);
 
@@ -405,5 +409,9 @@ class SmartBedRepository {
 
   Future<MobileDeviceInfo> loadMobileDeviceInfo() {
     return _auth.performAuthorized(_api.getMobileDeviceInfo);
+  }
+
+  Future<Map<String, dynamic>> loadAchievements() {
+    return _auth.performAuthorized(_api.getAchievements);
   }
 }
