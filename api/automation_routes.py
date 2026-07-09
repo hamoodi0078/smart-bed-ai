@@ -67,14 +67,31 @@ def _get_service(request: Request, service_name: str) -> Any:
 
 
 def _get_profile(request: Request) -> Any:
-    """Retrieve the current user profile from request state."""
+    """Retrieve the profile driving the automation engines.
+
+    Nothing ever set request.state.user_profile (every profile-using route
+    401'd since the day it shipped). The engines are bed-level, so fall back
+    to app.state.user_profile (set by api.service_registry). The per-request
+    slot is kept as an override hook for per-user profiles (Phase 2/3 debt).
+    """
     profile = getattr(request.state, "user_profile", None)
     if profile is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        profile = getattr(request.app.state, "user_profile", None)
+    if profile is None:
+        raise HTTPException(status_code=503, detail="Bed profile not initialized")
     return profile
 
 
-router = APIRouter(prefix="/v1/automation", tags=["automation"])
+# Bearer auth for the whole surface — these routes shipped unauthenticated
+# (and simultaneously unusable, see _get_profile). One bed = one household,
+# so any authenticated user of this bed may use its automation engines.
+from auth.middleware import get_current_user  # noqa: E402
+
+router = APIRouter(
+    prefix="/v1/automation",
+    tags=["automation"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 # ---------------------------------------------------------------------------

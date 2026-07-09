@@ -276,5 +276,50 @@ class JwtRoleClaimTests(unittest.TestCase):
         self.assertNotIn("role", decode_access_token(token))
 
 
+class _FakeAchievementEngine:
+    def get_all_progress(self, profile):
+        return {"ok": True, "achievements": [{"id": "first_night", "unlocked": True}]}
+
+
+class AutomationSurfaceTests(AppFactoryContractCase):
+    """Phase 4 Task A: the automation surface requires Bearer auth and serves
+    the bed-level profile (request.state slot was never populated by anything,
+    so every profile-using route 401'd since it shipped)."""
+
+    def setUp(self):
+        super().setUp()
+        from api.app_factory import app
+
+        self._app = app
+        self._prev_services = getattr(app.state, "services", None)
+        self._prev_profile = getattr(app.state, "user_profile", None)
+        app.state.services = {"achievement_engine": _FakeAchievementEngine()}
+        app.state.user_profile = {"name": "bed"}
+
+    def tearDown(self):
+        if self._prev_services is None:
+            if hasattr(self._app.state, "services"):
+                delattr(self._app.state, "services")
+        else:
+            self._app.state.services = self._prev_services
+        if self._prev_profile is None:
+            if hasattr(self._app.state, "user_profile"):
+                delattr(self._app.state, "user_profile")
+        else:
+            self._app.state.user_profile = self._prev_profile
+        super().tearDown()
+
+    def test_unauthenticated_is_rejected(self):
+        resp = self.client.get("/v1/automation/achievements")
+        self.assertEqual(resp.status_code, 401, resp.text)
+
+    def test_authenticated_reaches_engine_with_bed_profile(self):
+        auth = self.register("automation-tester@example.com")
+        resp = self.client.get("/v1/automation/achievements", headers=self.bearer(auth))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+        self.assertEqual(body["achievements"][0]["id"], "first_night")
+
+
 if __name__ == "__main__":
     unittest.main()
