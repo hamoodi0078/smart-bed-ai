@@ -645,6 +645,95 @@ class SmartBedApi {
     return MobileDeviceInfo.fromJson(json);
   }
 
+  // ── Automation surface (/v1/automation/*) ──────────────────────────────
+  // Engine payloads are heterogeneous dicts; callers read the raw map.
+
+  Future<Map<String, dynamic>> getAchievements(String accessToken) =>
+      _get('/v1/automation/achievements', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> getAchievementStats(String accessToken) =>
+      _get('/v1/automation/achievements/stats', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> recordDream({
+    required String accessToken,
+    required String text,
+    bool vivid = false,
+    bool lucid = false,
+  }) =>
+      _post(
+        '/v1/automation/dreams/record',
+        data: <String, Object>{'text': text, 'vivid': vivid, 'lucid': lucid},
+        accessToken: accessToken,
+      );
+
+  Future<Map<String, dynamic>> getDreamPrompt(String accessToken) =>
+      _get('/v1/automation/dreams/prompt', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> getDreamPatterns(String accessToken) =>
+      _get('/v1/automation/dreams/patterns', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> getStress(String accessToken) =>
+      _get('/v1/automation/health/stress', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> logHydration({
+    required String accessToken,
+    required int ml,
+  }) =>
+      _post(
+        '/v1/automation/health/hydration/log',
+        data: <String, Object>{'ml': ml},
+        accessToken: accessToken,
+      );
+
+  Future<Map<String, dynamic>> getHydrationToday(String accessToken) =>
+      _get('/v1/automation/health/hydration/today', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> getWeeklyHealthReport(String accessToken) =>
+      _get('/v1/automation/health/weekly-report', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> getSleepDebt(String accessToken) =>
+      _get('/v1/automation/sleep/debt', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> getPartnerStatus(String accessToken) =>
+      _get('/v1/automation/partner/status', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> getPartnerComparison(String accessToken) =>
+      _get('/v1/automation/partner/comparison', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> recordPartnerSleep({
+    required String accessToken,
+    required String partner,
+    required double hours,
+    required int score,
+  }) =>
+      _post(
+        '/v1/automation/partner/sleep',
+        data: <String, Object>{'partner': partner, 'hours': hours, 'score': score},
+        accessToken: accessToken,
+      );
+
+  Future<Map<String, dynamic>> createPartnerChallenge({
+    required String accessToken,
+    required String name,
+    String description = '',
+    int targetDays = 7,
+  }) =>
+      _post(
+        '/v1/automation/partner/challenge',
+        data: <String, Object>{
+          'name': name,
+          'description': description,
+          'target_days': targetDays,
+        },
+        accessToken: accessToken,
+      );
+
+  Future<Map<String, dynamic>> getCircadianScene(String accessToken) =>
+      _get('/v1/automation/scenes/circadian', accessToken: accessToken);
+
+  Future<Map<String, dynamic>> getWakeSequence(String accessToken) =>
+      _get('/v1/automation/sleep/wake-sequence', accessToken: accessToken);
+
   Future<Map<String, dynamic>> _get(
     String path, {
     Map<String, Object>? queryParameters,
