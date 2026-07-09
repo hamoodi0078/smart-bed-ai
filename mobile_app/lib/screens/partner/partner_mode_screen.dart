@@ -1,20 +1,24 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../src/state/mobile_data.dart';
 import '../../theme/app_theme.dart';
 
-class PartnerModeScreen extends StatefulWidget {
+class PartnerModeScreen extends ConsumerStatefulWidget {
   const PartnerModeScreen({super.key});
 
   @override
-  State<PartnerModeScreen> createState() => _PartnerModeScreenState();
+  ConsumerState<PartnerModeScreen> createState() => _PartnerModeScreenState();
 }
 
-class _PartnerModeScreenState extends State<PartnerModeScreen> {
+class _PartnerModeScreenState extends ConsumerState<PartnerModeScreen> {
   bool _partnerLinked = false;
   String _activeUser = 'You';
   String _partnerName = '';
+  Map<String, dynamic>? _comparison;
+  bool _loadingComparison = false;
   final TextEditingController _partnerController = TextEditingController();
 
   static const List<_PresetData> _presets = [
@@ -56,6 +60,22 @@ class _PartnerModeScreenState extends State<PartnerModeScreen> {
       _activeUser = 'You';
     });
     FocusScope.of(context).unfocus();
+    _loadComparison();
+  }
+
+  Future<void> _loadComparison() async {
+    setState(() => _loadingComparison = true);
+    try {
+      final data =
+          await ref.read(smartBedRepositoryProvider).loadPartnerComparison();
+      if (mounted) setState(() => _comparison = data);
+    } catch (_) {
+      // Comparison needs real sleep history on both sides; absence is not an
+      // error — the banner falls back to the linked-only message.
+      if (mounted) setState(() => _comparison = null);
+    } finally {
+      if (mounted) setState(() => _loadingComparison = false);
+    }
   }
 
   void _activatePreset(String presetName) {
@@ -450,13 +470,37 @@ class _PartnerModeScreenState extends State<PartnerModeScreen> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              '$_partnerName is linked to your bed! You can now switch profiles using the cards above.',
-              style: const TextStyle(
-                color: AppColors.white,
-                fontSize: 13,
-                height: 1.4,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$_partnerName is linked to your bed! You can now switch profiles using the cards above.',
+                  style: const TextStyle(
+                    color: AppColors.white,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+                if (_loadingComparison) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Loading shared sleep stats…',
+                    style: TextStyle(color: AppColors.softWhite, fontSize: 12),
+                  ),
+                ] else if (_comparison != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Combined sleep score (last ${_comparison!['period_days'] ?? 7}d): '
+                    '${_comparison!['combined_avg_score'] ?? '—'}'
+                    '${_comparison!['both_met_goal'] == true ? '  •  both on target 🎯' : ''}',
+                    style: const TextStyle(
+                      color: Color(0xFF4CAF50),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
