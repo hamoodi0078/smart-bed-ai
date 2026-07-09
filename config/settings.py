@@ -24,6 +24,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # project root
 
+# Load .env into os.environ as early as possible. pydantic-settings reads .env
+# for the Settings object, but code that calls os.getenv() directly — notably
+# database.connection.DatabaseConnection reading DATABASE_URL — would otherwise
+# silently fall back to sqlite while the app "thinks" it is on Postgres. This
+# single load keeps every consumer (app, alembic, scripts) on the same DB.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(BASE_DIR / ".env")
+except ImportError:
+    pass
+
 
 def _is_relative_to(path: Path, base: Path) -> bool:
     try:

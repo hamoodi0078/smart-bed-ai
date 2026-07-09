@@ -11,6 +11,16 @@ from sqlalchemy import engine_from_config, pool
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Load .env so `alembic` targets the same DATABASE_URL as the app. Without this
+# alembic ran against the sqlite fallback while the app used Postgres, so
+# migrations never reached the real database (schema drift the audit warned of).
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+except ImportError:
+    pass
+
 from database.models import Base  # noqa: E402
 
 config = context.config
