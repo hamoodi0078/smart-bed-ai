@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any, AsyncIterator, Iterator
@@ -63,6 +64,7 @@ class DatabaseConnection:
         self.database_url = env_url or self.SQLITE_FALLBACK_URL
         self._retry_attempts = max(1, retry_attempts)
         self._retry_delay = max(0.1, retry_delay)
+        self._tables_ready = False
         self.engine: Engine = self._create_engine_with_retry()
         self._session_factory = sessionmaker(
             bind=self.engine,
@@ -155,9 +157,15 @@ class DatabaseConnection:
             session.close()
 
     def create_tables(self) -> None:
+        # Repositories call this from __init__; without the flag every
+        # request-scoped repo construction re-runs table reflection and the
+        # schema-version probe against the shared engine.
+        if self._tables_ready:
+            return
         Base.metadata.create_all(bind=self.engine)
         self._ensure_schema_version()
         self._assert_required_tables_present()
+        self._tables_ready = True
 
     def _ensure_schema_version(self) -> None:
         with self.engine.begin() as connection:
@@ -474,6 +482,7 @@ class AsyncDatabaseConnection:
 
 
 _SHARED_CONNECTION: DatabaseConnection | None = None
+_SHARED_CONNECTION_LOCK = threading.Lock()
 
 
 def get_shared_connection() -> DatabaseConnection:
@@ -485,15 +494,19 @@ def get_shared_connection() -> DatabaseConnection:
     """
     global _SHARED_CONNECTION
     if _SHARED_CONNECTION is None:
-        _SHARED_CONNECTION = DatabaseConnection()
+        # FastAPI runs sync handlers in a threadpool — guard first-request races
+        with _SHARED_CONNECTION_LOCK:
+            if _SHARED_CONNECTION is None:
+                _SHARED_CONNECTION = DatabaseConnection()
     return _SHARED_CONNECTION
 
 
 def reset_shared_connection() -> None:
     global _SHARED_CONNECTION
-    if _SHARED_CONNECTION is not None:
-        try:
-            _SHARED_CONNECTION.engine.dispose()
-        except Exception:
-            pass
-    _SHARED_CONNECTION = None
+    with _SHARED_CONNECTION_LOCK:
+        if _SHARED_CONNECTION is not None:
+            try:
+                _SHARED_CONNECTION.engine.dispose()
+            except Exception:
+                pass
+        _SHARED_CONNECTION = None

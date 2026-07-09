@@ -76,6 +76,8 @@ __all__ = [
     "SpotifyToken",
     # Sync DB + repositories
     "DatabaseConnection",
+    "get_shared_connection",
+    "reset_shared_connection",
     "AlarmRepository",
     "OtpRepository",
     "ProfileRepository",

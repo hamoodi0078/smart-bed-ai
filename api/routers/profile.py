@@ -21,6 +21,7 @@ from database import ProfileRepository
 
 router = APIRouter(tags=["profile"])
 
+
 def _profile_repo() -> ProfileRepository:
     # Per-request construction is cheap now that the connection is shared;
     # an import-time global would pin whatever DATABASE_URL was set first.

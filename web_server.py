@@ -848,11 +848,11 @@ def _device_health_status(profile: dict[str, Any]) -> dict[str, Any]:
     runtime_flags = profile.get("runtime_flags", {}) if isinstance(profile, dict) else {}
 
     try:
-        from database.connection import DatabaseConnection
+        from database.connection import get_shared_connection
         from database.models import SpotifyToken
         from sqlalchemy import func, select
 
-        with DatabaseConnection().get_session() as _s:
+        with get_shared_connection().get_session() as _s:
             _spotify_count = _s.scalar(select(func.count()).select_from(SpotifyToken)) or 0
     except Exception:
         _spotify_count = 0
@@ -5624,9 +5624,9 @@ def healthz_detailed() -> dict[str, Any]:
     checks: dict[str, Any] = {"service": "web_runtime"}
 
     try:
-        from database.connection import DatabaseConnection
+        from database.connection import get_shared_connection
 
-        db_conn = DatabaseConnection()
+        db_conn = get_shared_connection()
         checks["database"] = {"ok": db_conn.health_check(), "version": db_conn.schema_version()}
     except Exception as exc:
         checks["database"] = {"ok": False, "error": type(exc).__name__}

@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Request
+from loguru import logger
 
 router = APIRouter(prefix="/v1/mobile/islamic", tags=["islamic"])
 
@@ -26,7 +27,10 @@ def _prayer_location(user: dict[str, Any], profile: dict[str, Any]) -> dict[str,
             from database import ProfileRepository
 
             db_prefs = ProfileRepository().get_profile_prefs_if_exists(user_id)
-        except Exception:
+        except Exception as exc:
+            # Fall back to legacy JSON, but never silently: a systemic DB
+            # failure here would quietly reset everyone to Kuwait City.
+            logger.warning("profile DB read failed for prayer location: {}", exc)
             db_prefs = None
 
     legacy = (profile.get("users") or {}).get(user_id, {}) or {}
