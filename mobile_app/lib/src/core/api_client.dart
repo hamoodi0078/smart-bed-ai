@@ -798,7 +798,14 @@ class SmartBedApi {
       return json;
     }
 
-    final error = _asMap(json['error'], 'error');
+    // Error bodies come in two dialects: FastAPI's plain HTTPException
+    // {"detail": "..."} and the error middleware's {"ok": false, "error":
+    // {...}}. _asMap would throw on the former (json['error'] is null),
+    // masking the real message behind "Unexpected error payload from API."
+    final rawError = json['error'];
+    final error = rawError is Map
+        ? rawError.map((key, item) => MapEntry(key.toString(), item))
+        : <String, dynamic>{};
     final fallbackDetail = _string(json['detail'], fallback: 'Request failed.');
     final message = _string(error['message'], fallback: fallbackDetail);
     final code = _string(error['code']);
