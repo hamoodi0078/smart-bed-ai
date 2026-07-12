@@ -6,6 +6,7 @@ import '../../core/models.dart';
 import '../../state/mobile_data.dart';
 import '../theme.dart';
 import '../widgets/panel_card.dart';
+import '../widgets/prayer_arc.dart';
 import '../widgets/status_pill.dart';
 
 class IslamicScreen extends ConsumerWidget {
@@ -45,11 +46,28 @@ class IslamicScreen extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text('Islamic Mode', style: Theme.of(context).textTheme.headlineMedium),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Live prayer timings are resolved from ${overview.location.label}. Dana keeps the bed calm around prayer time.',
-                            style: Theme.of(context).textTheme.bodyLarge,
+                          const SizedBox(height: 4),
+                          PrayerArc(
+                            prayers: overview.prayers,
+                            nextPrayer: overview.nextPrayer,
                           ),
+                          const SizedBox(height: 10),
+                          if (overview.nextPrayer.minutesUntil >= 0)
+                            Center(
+                              child: Text(
+                                '${overview.nextPrayer.name} in '
+                                '${overview.nextPrayer.minutesUntil ~/ 60 > 0 ? '${overview.nextPrayer.minutesUntil ~/ 60}h ' : ''}'
+                                '${overview.nextPrayer.minutesUntil % 60}m',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                              ),
+                            ),
                           const SizedBox(height: 14),
                           Wrap(
                             spacing: 10,

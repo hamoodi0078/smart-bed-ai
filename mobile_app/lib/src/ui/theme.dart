@@ -37,6 +37,56 @@ class SmartBedPalette {
       brightness == Brightness.dark ? Colors.white : lightText;
 }
 
+/// Semantic hues for the five daily prayer windows — the sky's own colors.
+/// Reserved for the Prayer Arc and sacred moments (Ramadan, celebrations);
+/// never used for buttons or generic accents.
+class PrayerWindowPalette {
+  PrayerWindowPalette._();
+
+  static const Color fajr = Color(0xFF6366F1); // pre-dawn indigo
+  static const Color dhuhr = Color(0xFFE8F1FF); // midday light
+  static const Color asr = Color(0xFFF4B860); // afternoon gold
+  static const Color maghrib = Color(0xFFE86A33); // sunset ember
+  static const Color isha = Color(0xFF312E81); // night violet
+
+  static const List<String> canonicalOrder = <String>[
+    'Fajr',
+    'Dhuhr',
+    'Asr',
+    'Maghrib',
+    'Isha',
+  ];
+
+  static Color forName(String name) {
+    switch (name.trim().toLowerCase()) {
+      case 'fajr':
+        return fajr;
+      case 'dhuhr':
+      case 'duhr':
+      case 'zuhr':
+        return dhuhr;
+      case 'asr':
+        return asr;
+      case 'maghrib':
+        return maghrib;
+      case 'isha':
+      case "isha'a":
+        return isha;
+      default:
+        return dhuhr;
+    }
+  }
+}
+
+/// Shared animation durations — one vocabulary for the whole app.
+class MotionTokens {
+  MotionTokens._();
+
+  static const Duration fast = Duration(milliseconds: 150);
+  static const Duration medium = Duration(milliseconds: 300);
+  static const Duration slow = Duration(milliseconds: 600);
+}
+
 ThemeData buildSmartBedTheme({Brightness brightness = Brightness.dark}) {
   final isDark = brightness == Brightness.dark;
   final scheme = ColorScheme.fromSeed(
