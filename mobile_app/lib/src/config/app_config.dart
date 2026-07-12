@@ -41,8 +41,11 @@ class AppConfig {
     // ── DEBUG / DEV builds ──────────────────────────────────────────────────
 
     if (kIsWeb) {
-      // Web debug: use Cloudflare tunnel so it works from any browser
-      return _productionUrl;
+      // Web debug: hit the LOCAL backend on the same machine. The browser
+      // reaches the host's loopback directly (no 10.0.2.2 rewrite needed).
+      // To point web at the deployed tunnel instead:
+      //   --dart-define=SMART_BED_API_BASE_URL=https://app.danaabuhalifa.com
+      return 'http://localhost:8000';
     }
 
     if (defaultTargetPlatform == TargetPlatform.android) {

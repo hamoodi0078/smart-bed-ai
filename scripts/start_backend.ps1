@@ -3,7 +3,9 @@ $repoRoot = Resolve-Path (Join-Path $scriptDir "..")
 Set-Location $repoRoot
 
 if (-not $env:WEB_ALLOWED_ORIGINS) {
-    $env:WEB_ALLOWED_ORIGINS = "http://127.0.0.1:8000,http://localhost:8000"
+    # Includes :5001 = the Flutter web dev server (flutter run -d web-server),
+    # so the browser app can call this backend cross-origin without CORS errors.
+    $env:WEB_ALLOWED_ORIGINS = "http://127.0.0.1:8000,http://localhost:8000,http://127.0.0.1:5001,http://localhost:5001"
 }
 
 # Local dev DEFAULTS to a fast on-disk sqlite. The .env DATABASE_URL points at
