@@ -1,8 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/device_location_service.dart';
 import '../core/models.dart';
 import 'auth_controller.dart';
+
+/// Outcome of a user-initiated "use my location" request.
+enum LocationSyncStatus { updated, unchanged, permissionDenied, serviceDisabled, failed }
+
+class LocationSyncResult {
+  const LocationSyncResult(this.status, {this.locationLabel = ''});
+
+  final LocationSyncStatus status;
+  final String locationLabel;
+}
 
 final smartBedRepositoryProvider = Provider<SmartBedRepository>(
   SmartBedRepository.new,
@@ -442,6 +453,60 @@ class SmartBedRepository {
         lucid: lucid,
       ),
     );
+  }
+
+  /// User-initiated location sync: triggers the OS permission dialog when
+  /// needed, saves the captured coordinates to the profile (switching back to
+  /// auto mode — the one recovery path after a past denial locked the profile
+  /// to manual), so prayer times and schedules follow the real location.
+  Future<LocationSyncResult> syncDeviceLocation() async {
+    try {
+      final capture = await ref
+          .read(deviceLocationServiceProvider)
+          .captureCurrentLocation()
+          .timeout(const Duration(seconds: 15));
+      if (capture.permissionDenied) {
+        return const LocationSyncResult(LocationSyncStatus.permissionDenied);
+      }
+      if (capture.serviceDisabled) {
+        return const LocationSyncResult(LocationSyncStatus.serviceDisabled);
+      }
+      final snapshot = capture.snapshot;
+      if (snapshot == null) {
+        return const LocationSyncResult(LocationSyncStatus.failed);
+      }
+
+      return _auth.performAuthorized((accessToken) async {
+        final profile = await _api.getProfile(accessToken);
+        final moved =
+            profile.latitude == null ||
+            profile.longitude == null ||
+            (profile.latitude! - snapshot.latitude).abs() > 0.0005 ||
+            (profile.longitude! - snapshot.longitude).abs() > 0.0005;
+        if (!moved && profile.locationMode.toLowerCase() == 'auto') {
+          return LocationSyncResult(
+            LocationSyncStatus.unchanged,
+            locationLabel: profile.city,
+          );
+        }
+        final saved = await _api.updateProfile(
+          accessToken: accessToken,
+          profile: profile.copyWith(
+            locationMode: 'auto',
+            latitude: snapshot.latitude,
+            longitude: snapshot.longitude,
+          ),
+        );
+        return LocationSyncResult(
+          LocationSyncStatus.updated,
+          locationLabel: saved.city,
+        );
+      });
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      return const LocationSyncResult(LocationSyncStatus.failed);
+    }
   }
 
   Future<Map<String, dynamic>> loadPartnerStatus() {

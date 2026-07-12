@@ -54,6 +54,7 @@ class IslamicScreen extends ConsumerWidget {
                           Wrap(
                             spacing: 10,
                             runSpacing: 10,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: <Widget>[
                               StatusPill(
                                 label: overview.location.label,
@@ -69,6 +70,7 @@ class IslamicScreen extends ConsumerWidget {
                                     ? StatusTone.success
                                     : StatusTone.neutral,
                               ),
+                              const _UseMyLocationButton(),
                             ],
                           ),
                         ],
@@ -176,6 +178,87 @@ class IslamicScreen extends ConsumerWidget {
     );
   }
 }
+
+class _UseMyLocationButton extends ConsumerStatefulWidget {
+  const _UseMyLocationButton();
+
+  @override
+  ConsumerState<_UseMyLocationButton> createState() =>
+      _UseMyLocationButtonState();
+}
+
+class _UseMyLocationButtonState extends ConsumerState<_UseMyLocationButton> {
+  bool _syncing = false;
+
+  Future<void> _sync() async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result =
+          await ref.read(smartBedRepositoryProvider).syncDeviceLocation();
+      if (!mounted) return;
+      switch (result.status) {
+        case LocationSyncStatus.updated:
+          ref.invalidate(islamicOverviewProvider);
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Prayer times now follow your location.'),
+            ),
+          );
+        case LocationSyncStatus.unchanged:
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Location already up to date.'),
+            ),
+          );
+        case LocationSyncStatus.permissionDenied:
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Location permission is off. Allow it in your device settings '
+                'so prayer times match where you are.',
+              ),
+            ),
+          );
+        case LocationSyncStatus.serviceDisabled:
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Turn on location services to use this.'),
+            ),
+          );
+        case LocationSyncStatus.failed:
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Could not read your location — try again.'),
+            ),
+          );
+      }
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: _syncing ? null : _sync,
+      icon: _syncing
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.my_location_rounded, size: 16),
+      label: const Text('Use my location'),
+      style: OutlinedButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      ),
+    );
+  }
+}
+
 
 class _PrayerTimesCard extends StatelessWidget {
   const _PrayerTimesCard({required this.overview});
