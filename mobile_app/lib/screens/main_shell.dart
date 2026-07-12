@@ -2,8 +2,11 @@
 import 'package:permission_handler/permission_handler.dart';
 import 'home/home_screen.dart';
 import '../src/ui/screens/islamic_screen.dart';
-import 'report/sleep_report_screen.dart';
-import 'settings/settings_screen.dart';
+// Live (API-wired) screens — NOT the decorative twins in lib/screens/*.
+// The twins showed hardcoded data ("Hamoud", "Premium Member") regardless
+// of who was signed in (audit §3: duplicate UI trees).
+import '../src/ui/screens/report_screen.dart';
+import '../src/ui/screens/settings_screen.dart';
 import 'dana/dana_screen.dart';
 import 'dana/dana_chat_screen.dart';
 
@@ -23,7 +26,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     HomeScreen(),
     DanaScreen(),
     IslamicScreen(),
-    SleepReportScreen(),
+    ReportScreen(),
     SettingsScreen(),
   ];
 
