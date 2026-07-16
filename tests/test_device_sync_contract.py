@@ -66,7 +66,8 @@ class DeviceBridgeContractCase(AppFactoryContractCase):
         profile = web_server._safe_profile()
         links = web_server._get_scoped_profile_section(profile, "mobile_bed_links")
         for key, row in links.items():
-            if isinstance(row, dict) and str(row.get("device_id", "")) == device_id:
+            # Pairing canonicalizes device ids (uppercase) — match that form.
+            if isinstance(row, dict) and str(row.get("device_id", "")).upper() == device_id.upper():
                 return str(key)
         raise AssertionError("pairing did not create a bed link")
 
@@ -106,4 +107,75 @@ class DeviceAuthTests(DeviceBridgeContractCase):
     def test_device_token_rejected_on_mobile_route(self):
         bundle = self.device_token("bed-test-003")
         resp = self.client.get("/v1/mobile/dashboard", headers=self.device_bearer(bundle))
+        self.assertEqual(resp.status_code, 401)
+
+
+class DeviceSyncTests(DeviceBridgeContractCase):
+    def test_sync_unpaired_device_returns_empty(self):
+        bundle = self.device_token("bed-sync-000")
+        resp = self.client.get("/v1/device/sync", headers=self.device_bearer(bundle))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["commands"], [])
+        self.assertIsNone(body["desired_state"])
+        self.assertEqual(body["state_version"], "")
+
+    def test_sync_returns_queued_command_once_and_marks_dispatched(self):
+        auth = self.register("sync-cmd@example.com")
+        device_id = "bed-sync-001"
+        self.pair_bed(auth, device_id)
+        bundle = self.device_token(device_id)
+
+        create = self.client.post(
+            "/v1/mobile/device-commands",
+            json={"action": "winddown"},
+            headers=self.bearer(auth),
+        )
+        self.assertEqual(create.status_code, 200, create.text)
+        command_id = create.json()["command_id"]
+        self.assertTrue(command_id)
+
+        first = self.client.get("/v1/device/sync", headers=self.device_bearer(bundle))
+        self.assertEqual(first.status_code, 200)
+        actions = {c["id"]: c["action"] for c in first.json()["commands"]}
+        self.assertEqual(actions.get(command_id), "winddown")
+
+        second = self.client.get("/v1/device/sync", headers=self.device_bearer(bundle))
+        self.assertEqual(
+            [c["id"] for c in second.json()["commands"]],
+            [],
+            "already-dispatched command must not be re-offered within 30s",
+        )
+
+    def test_sync_desired_state_reflects_controls_and_alarms(self):
+        auth = self.register("sync-state@example.com")
+        device_id = "bed-sync-002"
+        self.pair_bed(auth, device_id)
+        bundle = self.device_token(device_id)
+
+        controls = self.client.post(
+            "/v1/mobile/device-controls",
+            json={"lights_on": True, "audio_on": False, "alarm_on": True, "light_level": 33},
+            headers=self.bearer(auth),
+        )
+        self.assertEqual(controls.status_code, 200, controls.text)
+        alarm = self.client.post(
+            "/v1/mobile/alarms",
+            json={"time": "06:45", "days": [1, 2, 3], "label": "Fajr", "enabled": True},
+            headers=self.bearer(auth),
+        )
+        self.assertEqual(alarm.status_code, 200, alarm.text)
+
+        resp = self.client.get("/v1/device/sync", headers=self.device_bearer(bundle))
+        body = resp.json()
+        state = body["desired_state"]
+        self.assertEqual(state["lighting"]["light_level"], 33)
+        self.assertTrue(state["lighting"]["lights_on"])
+        times = [a["time"] for a in state["alarms"]]
+        self.assertIn("06:45", times)
+        self.assertTrue(body["state_version"])
+
+    def test_user_jwt_rejected_on_sync(self):
+        auth = self.register("sync-boundary@example.com")
+        resp = self.client.get("/v1/device/sync", headers=self.bearer(auth))
         self.assertEqual(resp.status_code, 401)

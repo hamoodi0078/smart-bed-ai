@@ -25,7 +25,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
-from auth.middleware import get_current_user
+from auth.middleware import get_current_device, get_current_user
 
 router = APIRouter(tags=["devices"])
 
@@ -193,6 +193,13 @@ async def device_token_refresh_route(request: Request) -> dict[str, Any]:
     body = await request.json()
     payload = DeviceTokenRefreshRequest(**body)
     return await asyncio.to_thread(_bridge, payload)
+
+
+@router.get("/v1/device/sync")
+async def device_sync_route(device: dict = Depends(get_current_device)) -> dict[str, Any]:
+    from api.device_bridge import device_sync as _bridge
+
+    return await asyncio.to_thread(_bridge, device)
 
 
 # ── Live sensor data ─────────────────────────────────────────────────────────

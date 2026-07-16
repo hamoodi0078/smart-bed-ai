@@ -88,8 +88,12 @@ Desired state is assembled from the existing profile sections:
 `web_device_controls` supplies `lights_on`/`light_level` (its only lighting
 fields today); `color` and `animation` come from the active scene when one is
 set, else the profile's saved preferences, else omitted (Pi keeps current).
-`mobile_alarm_schedules` supplies alarms; the saved scene selection supplies
-`scene`. Unpaired device → empty commands, null desired_state.
+Alarms come from the DB `AlarmRepository` (the mobile source of truth since
+Plan 1), with the legacy `mobile_alarm_schedules` profile section as fallback;
+the saved scene selection supplies `scene`. Device ids are canonicalized
+(uppercase, `[A-Za-z0-9._-]` only — same rule as QR pairing) so the JWT sub,
+session keys, and bed-link lookups always agree. Unpaired device → empty
+commands, null desired_state.
 
 ### `POST /v1/device/commands/{id}/result` (device token)
 
