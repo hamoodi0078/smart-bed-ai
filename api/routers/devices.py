@@ -202,6 +202,17 @@ async def device_sync_route(device: dict = Depends(get_current_device)) -> dict[
     return await asyncio.to_thread(_bridge, device)
 
 
+@router.post("/v1/device/commands/{command_id}/result")
+async def device_command_result_route(
+    command_id: str, request: Request, device: dict = Depends(get_current_device)
+) -> dict[str, Any]:
+    from api.device_bridge import DeviceCommandResultRequest, device_command_result as _bridge
+
+    body = await request.json()
+    payload = DeviceCommandResultRequest(**body)
+    return await asyncio.to_thread(_bridge, device, command_id, payload)
+
+
 # ── Live sensor data ─────────────────────────────────────────────────────────
 
 

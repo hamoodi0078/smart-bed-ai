@@ -15,10 +15,10 @@ import os
 import re
 import secrets
 from datetime import timedelta
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from auth.jwt_handler import create_access_token
 from time_utils import to_iso, utcnow
@@ -280,3 +280,57 @@ def device_sync(device: dict[str, Any]) -> dict[str, Any]:
         "desired_state": desired_state,
         "state_version": _state_version(desired_state),
     }
+
+
+# ── Result: the bed reports what really happened ─────────────────────────────
+
+
+class DeviceCommandResultRequest(BaseModel):
+    status: Literal["completed", "failed"]
+    detail: str = ""
+    actual_state: dict = Field(default_factory=dict)
+
+
+def device_command_result(
+    device: dict[str, Any], command_id: str, payload: DeviceCommandResultRequest
+) -> dict[str, Any]:
+    import web_server as ws
+
+    device_id = str(device.get("device_id", "") or "")
+    profile = ws._safe_profile()
+    if not isinstance(profile, dict):
+        profile = {}
+    key = _find_user_key_for_device(ws, profile, device_id)
+    if not key:
+        raise HTTPException(status_code=404, detail="Device is not paired")
+
+    cmd_section = ws._get_scoped_profile_section(profile, "web_device_commands")
+    raw_rows = cmd_section.get(key, [])
+    raw_rows = raw_rows if isinstance(raw_rows, list) else []
+    target: dict[str, Any] | None = None
+    out_rows: list[dict[str, Any]] = []
+    for row in raw_rows:
+        cmd = ws._normalize_command_item(row if isinstance(row, dict) else {})
+        if str(cmd.get("id", "") or "") == str(command_id):
+            cmd["status"] = payload.status
+            cmd["updated_at"] = ws._now_utc_iso()
+            if payload.status == "completed":
+                cmd["completed_at"] = ws._now_utc_iso()
+            if payload.detail:
+                cmd["message"] = str(payload.detail)[:200]
+            target = cmd
+        out_rows.append(cmd)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Command not found")
+
+    cmd_section[key] = out_rows
+    profile["web_device_commands"] = cmd_section
+    ws._store_last_command_result(profile, key, ws._build_last_command_result_from_command(target))
+    ws._save_profile(profile)
+
+    links = ws._get_scoped_profile_section(profile, "mobile_bed_links")
+    link_row = links.get(key, {}) if isinstance(links.get(key, {}), dict) else {}
+    ws._persist_mobile_command_record(
+        user_id=str(link_row.get("user_id", "") or key), command=target
+    )
+    return {"ok": True, "command": target}

@@ -3175,6 +3175,27 @@ def _store_last_command_result(
     return normalized
 
 
+def _bed_is_live(profile: dict[str, Any], key: str) -> bool:
+    """True when the user's paired bed has polled /v1/device/sync recently.
+
+    While live, the wall-clock command simulator must not advance statuses —
+    the bed reports real results via /v1/device/commands/{id}/result.
+    """
+    from api.device_bridge import LIVE_WINDOW_SECONDS
+
+    links = _get_scoped_profile_section(profile, "mobile_bed_links")
+    link_row = links.get(key, {}) if isinstance(links.get(key, {}), dict) else {}
+    device_id = str(link_row.get("device_id", "") or "").strip()
+    if not device_id:
+        return False
+    sessions = _get_scoped_profile_section(profile, "device_sessions")
+    session = sessions.get(device_id, {}) if isinstance(sessions.get(device_id, {}), dict) else {}
+    last_seen = _parse_iso_timestamp(str(session.get("last_seen", "") or ""))
+    if last_seen is None:
+        return False
+    return (utcnow() - last_seen).total_seconds() <= LIVE_WINDOW_SECONDS
+
+
 def _progress_command_state(command: dict[str, Any], now: datetime) -> tuple[dict[str, Any], bool]:
     cmd = _normalize_command_item(command)
     created_at = _parse_iso_timestamp(cmd.get("created_at", "")) or now
@@ -3205,6 +3226,11 @@ def _progress_user_commands(
     raw_rows = (
         commands_section.get(key, []) if isinstance(commands_section.get(key, []), list) else []
     )
+    if _bed_is_live(profile, key):
+        # A real bed is polling: statuses advance only via its reported
+        # results, never on wall-clock time.
+        out = [_normalize_command_item(r if isinstance(r, dict) else {}) for r in raw_rows]
+        return out[:60], False
     now = utcnow()
     out: list[dict[str, Any]] = []
     changed_any = False
@@ -7911,6 +7937,7 @@ def mobile_bed_pair(payload: MobileBedPairRequest, request: Request) -> dict[str
     links = _get_scoped_profile_section(profile, "mobile_bed_links")
     links[key] = {
         "device_id": device_id,
+        "user_id": user_id,
         "bed_location": str(status_payload.get("bed_location", "") or bed_location),
         "paired_at": str(status_payload.get("paired_at", "") or _now_utc_iso()),
         "provisioning_verified": True,

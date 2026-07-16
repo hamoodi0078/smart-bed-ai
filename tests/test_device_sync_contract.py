@@ -7,8 +7,11 @@ device JWT (role="device"), never the mobile user JWT.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
+
+from time_utils import to_iso, utcnow
 
 from tests.test_app_factory_contract import AppFactoryContractCase
 
@@ -179,3 +182,117 @@ class DeviceSyncTests(DeviceBridgeContractCase):
         auth = self.register("sync-boundary@example.com")
         resp = self.client.get("/v1/device/sync", headers=self.bearer(auth))
         self.assertEqual(resp.status_code, 401)
+
+
+class DeviceResultAndToggleTests(DeviceBridgeContractCase):
+    def _seed_old_command(self, key: str, command_id: str, seconds_ago: int = 10) -> None:
+        import web_server
+
+        profile = web_server._safe_profile()
+        old_iso = to_iso(utcnow() - timedelta(seconds=seconds_ago))
+        section = web_server._get_scoped_profile_section(profile, "web_device_commands")
+        section[key] = [
+            {
+                "id": command_id,
+                "action": "winddown",
+                "event": "Wind-down autopilot started",
+                "message": "Wind-down autopilot is now active.",
+                "status": "queued",
+                "trace_id": "",
+                "created_at": old_iso,
+                "updated_at": old_iso,
+                "completed_at": "",
+            }
+        ]
+        profile["web_device_commands"] = section
+        web_server._save_profile(profile)
+
+    def test_real_result_reaches_mobile_status(self):
+        auth = self.register("loop@example.com")
+        device_id = "bed-loop-001"
+        self.pair_bed(auth, device_id)
+        bundle = self.device_token(device_id)
+
+        create = self.client.post(
+            "/v1/mobile/device-commands",
+            json={"action": "optimize_room"},
+            headers=self.bearer(auth),
+        )
+        command_id = create.json()["command_id"]
+
+        sync = self.client.get("/v1/device/sync", headers=self.device_bearer(bundle))
+        self.assertIn(command_id, [c["id"] for c in sync.json()["commands"]])
+
+        result = self.client.post(
+            f"/v1/device/commands/{command_id}/result",
+            json={"status": "completed", "detail": "Scene applied on bed.", "actual_state": {}},
+            headers=self.device_bearer(bundle),
+        )
+        self.assertEqual(result.status_code, 200, result.text)
+
+        status = self.client.get(
+            f"/v1/mobile/device-commands/{command_id}", headers=self.bearer(auth)
+        )
+        self.assertEqual(status.json()["command"]["status"], "completed")
+
+    def test_failed_result_marks_failed(self):
+        auth = self.register("loop-fail@example.com")
+        device_id = "bed-loop-002"
+        self.pair_bed(auth, device_id)
+        bundle = self.device_token(device_id)
+        create = self.client.post(
+            "/v1/mobile/device-commands",
+            json={"action": "winddown"},
+            headers=self.bearer(auth),
+        )
+        command_id = create.json()["command_id"]
+        self.client.get("/v1/device/sync", headers=self.device_bearer(bundle))
+        self.client.post(
+            f"/v1/device/commands/{command_id}/result",
+            json={"status": "failed", "detail": "LED bus unavailable"},
+            headers=self.device_bearer(bundle),
+        )
+        status = self.client.get(
+            f"/v1/mobile/device-commands/{command_id}", headers=self.bearer(auth)
+        )
+        self.assertEqual(status.json()["command"]["status"], "failed")
+
+    def test_simulator_suppressed_while_bed_live(self):
+        auth = self.register("toggle-live@example.com")
+        device_id = "bed-toggle-001"
+        key = self.pair_bed(auth, device_id)
+        bundle = self.device_token(device_id)
+        self.client.get("/v1/device/sync", headers=self.device_bearer(bundle))  # last_seen = now
+
+        self._seed_old_command(key, "cmd_toggle_live_1", seconds_ago=10)
+        status = self.client.get(
+            "/v1/mobile/device-commands/cmd_toggle_live_1", headers=self.bearer(auth)
+        )
+        self.assertNotIn(
+            status.json()["command"]["status"],
+            {"completed", "running"},
+            "wall-clock simulator must not advance while the bed is live",
+        )
+
+    def test_simulator_advances_when_no_bed_live(self):
+        auth = self.register("toggle-stale@example.com")
+        device_id = "bed-toggle-002"
+        key = self.pair_bed(auth, device_id)
+        # No device sync — last_seen never stamped.
+        self._seed_old_command(key, "cmd_toggle_stale_1", seconds_ago=10)
+        status = self.client.get(
+            "/v1/mobile/device-commands/cmd_toggle_stale_1", headers=self.bearer(auth)
+        )
+        self.assertEqual(status.json()["command"]["status"], "completed")
+
+    def test_result_unknown_command_404(self):
+        auth = self.register("loop-404@example.com")
+        device_id = "bed-loop-404"
+        self.pair_bed(auth, device_id)
+        bundle = self.device_token(device_id)
+        resp = self.client.post(
+            "/v1/device/commands/cmd_does_not_exist/result",
+            json={"status": "completed"},
+            headers=self.device_bearer(bundle),
+        )
+        self.assertEqual(resp.status_code, 404)
