@@ -170,6 +170,31 @@ class BedBackendClient:
         )
         return bool(features.get(feature_key, False))
 
+    def fetch_sync(self) -> tuple[bool, dict, str]:
+        """Poll the backend for pending commands + desired state."""
+        ok, body, message = self._authorized_request("GET", "/v1/device/sync")
+        if not ok or not isinstance(body, dict):
+            return False, {}, message
+        return True, body, "ok"
+
+    def report_command_result(
+        self,
+        command_id: str,
+        status: str,
+        detail: str = "",
+        actual_state: Optional[dict] = None,
+    ) -> tuple[bool, str]:
+        """Report a command's real outcome ("completed" or "failed")."""
+        payload = {
+            "status": status,
+            "detail": detail,
+            "actual_state": actual_state or {},
+        }
+        ok, _body, message = self._authorized_request(
+            "POST", f"/v1/device/commands/{command_id}/result", json=payload
+        )
+        return ok, message
+
     def status_line(self) -> str:
         if not self.is_configured():
             return "Cloud runtime: disabled (missing APP_BACKEND_BASE_URL or BED_DEVICE_ID)."
