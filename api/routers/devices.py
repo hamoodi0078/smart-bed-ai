@@ -174,6 +174,27 @@ async def device_command_feedback(
     return await asyncio.to_thread(_ws, command_id=command_id, payload=payload, request=request)
 
 
+# ── Device bridge: auth (app→cloud→bed, Plan 6) ──────────────────────────────
+
+
+@router.post("/v1/device/auth")
+async def device_auth_route(request: Request) -> dict[str, Any]:
+    from api.device_bridge import DeviceAuthRequest, device_auth as _bridge
+
+    body = await request.json()
+    payload = DeviceAuthRequest(**body)
+    return await asyncio.to_thread(_bridge, payload)
+
+
+@router.post("/v1/device/token/refresh")
+async def device_token_refresh_route(request: Request) -> dict[str, Any]:
+    from api.device_bridge import DeviceTokenRefreshRequest, device_token_refresh as _bridge
+
+    body = await request.json()
+    payload = DeviceTokenRefreshRequest(**body)
+    return await asyncio.to_thread(_bridge, payload)
+
+
 # ── Live sensor data ─────────────────────────────────────────────────────────
 
 

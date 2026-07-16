@@ -53,9 +53,10 @@ runs `workers=1`, so long-poll/WebSockets would tie up the lone worker.
 
 ### Auth: `get_current_device` dependency
 
-Validates the existing device Bearer token (from `/v1/device/auth`) and
-resolves the paired user by reverse lookup in the `mobile_bed_links` profile
-section (the row whose `device_id` matches the token's device). Single-tenant
+Validates the device Bearer token issued by `/v1/device/auth` (built in this
+phase — the endpoint did not previously exist; the Pi client called it but got
+404) and resolves the paired user by reverse lookup in the `mobile_bed_links`
+profile section (the row whose `device_id` matches the token's device). Single-tenant
 today; the lookup generalizes later. Mobile-user JWTs are rejected on
 device-facing routes and vice versa.
 

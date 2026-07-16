@@ -151,7 +151,55 @@ def require_role(*allowed_roles: str):
     return role_checker
 
 
+async def get_current_device(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict:
+    """Verify a device JWT (role="device") and return {"device_id": ...}.
+
+    Device tokens are minted by /v1/device/auth with sub=device_id. They are
+    not in the mobile session table, so get_current_user rejects them — and
+    this dependency rejects user tokens (no device role claim), keeping the
+    two token audiences strictly separated.
+    """
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Device authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        payload = decode_access_token(credentials.credentials)
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Device token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid device token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if payload.get("type") != "access" or payload.get("role") != "device":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Device token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    device_id = str(payload.get("sub", "") or "").strip()
+    if not device_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid device token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return {"device_id": device_id}
+
+
 __all__ = [
+    "get_current_device",
     "get_current_user",
     "get_current_user_optional",
     "require_role",
