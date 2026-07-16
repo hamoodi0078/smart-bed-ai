@@ -536,6 +536,32 @@ def main():
     except Exception as _ring_api_exc:
         logger.warning("Could not register ring client with API router: {}", _ring_api_exc)
 
+    # ── App→bed command bridge: poll the backend for mobile commands ────
+    command_poller = None
+    try:
+        from ai.bed_command_poller import BedCommandPoller
+
+        if backend_client.is_configured():
+            command_poller = BedCommandPoller(
+                backend_client=backend_client,
+                led=led,
+                schedule=schedule,
+                environment_orchestrator=environment_orchestrator,
+                profile=profile,
+            )
+            command_poller.start()
+            logger.info(
+                "Bed command poller started (every {}s).",
+                command_poller.poll_interval_seconds,
+            )
+        else:
+            logger.info(
+                "Bed command poller disabled: set APP_BACKEND_BASE_URL and "
+                "BED_DEVICE_ID to receive app commands."
+            )
+    except Exception as _poller_exc:
+        logger.warning("Bed command poller could not start: {}", _poller_exc)
+
     stt.language_hint = str(profile.get("preferences", {}).get("language", "auto") or "auto")
     output_ok, _ = audio_output.ensure_output(profile)
     if not output_ok:
