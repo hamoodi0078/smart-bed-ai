@@ -5,6 +5,7 @@ import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any, AsyncIterator, Iterator
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from loguru import logger
 from sqlalchemy import create_engine, event, inspect, text
@@ -303,7 +304,14 @@ class AsyncDatabaseConnection:
                 "asyncpg does not support SQLite."
             )
         self._dsn = self._to_asyncpg_dsn(raw_url)
-        self._engine_url = self._to_async_engine_url(raw_url)
+        # Transaction-pooled endpoints (Neon/PgBouncer "-pooler" hosts) hand each
+        # transaction to an arbitrary backend, so cached prepared statements may
+        # reference a statement the backend never saw. Disable both statement
+        # caches (asyncpg's and the SQLAlchemy dialect's) on such endpoints.
+        self._transaction_pooled = "-pooler." in self._dsn
+        self._engine_url = self._sanitize_engine_url(
+            self._to_async_engine_url(raw_url), self._transaction_pooled
+        )
 
         try:
             from config.settings import settings as _s
@@ -352,6 +360,28 @@ class AsyncDatabaseConnection:
             return url.replace("postgres://", "postgresql+asyncpg://", 1)
         return url  # already postgresql+asyncpg://
 
+    @staticmethod
+    def _sanitize_engine_url(url: str, transaction_pooled: bool) -> str:
+        """Make a postgresql+asyncpg:// URL safe for SQLAlchemy.
+
+        SQLAlchemy forwards URL query params to ``asyncpg.connect()`` as keyword
+        arguments. libpq-style params such as ``channel_binding`` are valid in a
+        raw DSN (the asyncpg pool path parses them itself) but are unknown
+        kwargs to ``connect()`` — every engine connection died with a TypeError
+        before this. On transaction-pooled endpoints the dialect's prepared-
+        statement cache is also disabled (see ``_transaction_pooled``).
+        """
+        parts = urlsplit(url)
+        query = dict(parse_qsl(parts.query))
+        query.pop("channel_binding", None)
+        # asyncpg spells libpq's sslmode as ssl= and accepts the same values.
+        sslmode = query.pop("sslmode", None)
+        if sslmode and "ssl" not in query:
+            query["ssl"] = sslmode
+        if transaction_pooled:
+            query.setdefault("prepared_statement_cache_size", "0")
+        return urlunsplit(parts._replace(query=urlencode(query)))
+
     def _safe_url(self) -> str:
         url = self._dsn
         if "@" in url:
@@ -372,12 +402,15 @@ class AsyncDatabaseConnection:
         """
         if self._initialized:
             return
-        self._pool = await _asyncpg.create_pool(  # type: ignore[union-attr]
-            dsn=self._dsn,
-            min_size=self._min_size,
-            max_size=self._max_size,
-            command_timeout=self._command_timeout,
-        )
+        pool_kwargs: dict[str, Any] = {
+            "dsn": self._dsn,
+            "min_size": self._min_size,
+            "max_size": self._max_size,
+            "command_timeout": self._command_timeout,
+        }
+        if self._transaction_pooled:
+            pool_kwargs["statement_cache_size"] = 0
+        self._pool = await _asyncpg.create_pool(**pool_kwargs)  # type: ignore[union-attr]
         self._engine = create_async_engine(
             self._engine_url,
             future=True,
