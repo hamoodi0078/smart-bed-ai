@@ -33,7 +33,7 @@
 - Produces: `AppFactoryContractCase` (unittest base with `self.client`, `self.register(email=None) -> dict`, `self.bearer(auth) -> dict`, `self._web_server` module handle). All later tasks' tests subclass this.
 - Consumes: `tests/env_isolation.py::reset_web_server_db_singletons`, `Storage/subscription_store.py::SubscriptionStore(db_path=...)`.
 
-- [ ] **Step 1: Write the scaffolding and the (passing) auth-walk test**
+- [x] **Step 1: Write the scaffolding and the (passing) auth-walk test**
 
 ```python
 """Contract tests against the PRODUCTION app (api.app_factory:app).
@@ -142,12 +142,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run it — must PASS (auth is the known-working flow)**
+- [x] **Step 2: Run it — must PASS (auth is the known-working flow)**
 
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py -v`
 Expected: `AuthWalkTests::test_register_login_me_dashboard PASSED`. If it fails, STOP — the scaffolding assumptions are wrong; debug before proceeding (check `auth["user"]["user_id"]` shape against `services/auth_service.py::build_auth_response`).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/test_app_factory_contract.py
@@ -165,7 +165,7 @@ git commit -m "test: contract suite scaffolding against api.app_factory (Phase 0
 - Consumes: `AppFactoryContractCase` from Task 1.
 - Produces: `AlarmContractTests` — the executable definition of the alarm contract. Task 4 makes it pass.
 
-- [ ] **Step 1: Append the failing test class**
+- [x] **Step 1: Append the failing test class**
 
 ```python
 class AlarmContractTests(AppFactoryContractCase):
@@ -227,12 +227,12 @@ class AlarmContractTests(AppFactoryContractCase):
         self.assertEqual(resp.status_code, 404, resp.text)
 ```
 
-- [ ] **Step 2: Run to verify it FAILS for the right reason**
+- [x] **Step 2: Run to verify it FAILS for the right reason**
 
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py::AlarmContractTests -v`
 Expected: FAIL — `KeyError`/assertion on `"alarms"` (router returns `{"ok": True, "alarm": {...}}`) and `days` mismatch (router ignores the `days` field, expects `days_of_week`).
 
-- [ ] **Step 3: Leave the red test in the working tree (do NOT commit)**
+- [x] **Step 3: Leave the red test in the working tree (do NOT commit)**
 
 Per the global constraint "never commit red", this test file is committed together with the fix in Task 4. Task 3's commit must also NOT include `tests/test_app_factory_contract.py`.
 
@@ -248,7 +248,7 @@ Per the global constraint "never commit red", this test file is committed togeth
 **Interfaces:**
 - Produces: `Alarm.sound: str` (default `"default"`), `Alarm.vibrate: bool` (default `True`); `AlarmRepository.create_alarm(..., sound="default", vibrate=True)`; `update_alarm` accepts `sound`/`vibrate` in `**fields`.
 
-- [ ] **Step 1: Add columns to the ORM model**
+- [x] **Step 1: Add columns to the ORM model**
 
 In `database/models.py`, inside `class Alarm(Base)` after `smart_window_minutes`:
 
@@ -257,11 +257,11 @@ In `database/models.py`, inside `class Alarm(Base)` after `smart_window_minutes`
     vibrate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 ```
 
-- [ ] **Step 2: Extend the repository**
+- [x] **Step 2: Extend the repository**
 
 In `database/repositories.py`, `create_alarm` signature gains `sound: str = "default", vibrate: bool = True` (after `smart_window_minutes`), and the `Alarm(...)` constructor call gains `sound=sound, vibrate=vibrate`. In `update_alarm`, extend the `allowed` set with `"sound", "vibrate"`.
 
-- [ ] **Step 3: Generate + fill the Alembic migration**
+- [x] **Step 3: Generate + fill the Alembic migration**
 
 Run: `venv/Scripts/python.exe -m alembic heads` — confirm the single head is `084855be2828` (if different, use whatever it prints as `down_revision`).
 Run: `venv/Scripts/python.exe -m alembic revision -m "add alarm sound vibrate"`
@@ -284,14 +284,14 @@ def downgrade() -> None:
     op.drop_column("alarms", "sound")
 ```
 
-- [ ] **Step 4: Apply to the dev DB and run the full suite**
+- [x] **Step 4: Apply to the dev DB and run the full suite**
 
 Run: `venv/Scripts/python.exe -m alembic upgrade head`
 Expected: `Running upgrade 084855be2828 -> <newid>` with no error.
 Run: `venv/Scripts/python.exe -m pytest`
 Expected: same failures as before this task (only the red AlarmContractTests) — no new breakage. Test DBs get the columns automatically via `create_tables()`/`Base.metadata`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add database/models.py database/repositories.py alembic/versions/
@@ -309,7 +309,7 @@ git commit -m "feat(db): alarm sound + vibrate columns (app contract fields)"
 - Consumes: `AlarmRepository` with `sound`/`vibrate` (Task 3).
 - Produces: routes speaking the app dialect. `PUT /v1/mobile/alarms/{id}` is REMOVED (no caller: the app always POSTs; audit found no other client). Toggle/DELETE keep their paths and reply shapes.
 
-- [ ] **Step 1: Replace the file content**
+- [x] **Step 1: Replace the file content**
 
 ```python
 """Alarm routes — DB-backed, speaking the Flutter app's contract.
@@ -481,12 +481,12 @@ def delete_alarm(alarm_id: str, current_user: dict = Depends(get_current_user)) 
     return {"ok": True, "deleted_alarm_id": alarm_id}
 ```
 
-- [ ] **Step 2: Run the contract test — now green**
+- [x] **Step 2: Run the contract test — now green**
 
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py -v`
 Expected: ALL PASS, including both `AlarmContractTests`.
 
-- [ ] **Step 3: Full suite + commit**
+- [x] **Step 3: Full suite + commit**
 
 Run: `venv/Scripts/python.exe -m pytest`
 Expected: green (legacy alarm tests target web_server's JSON handlers, untouched).
@@ -511,7 +511,7 @@ git commit -m "fix(alarms): adopt the app contract — alarm_id/days 1-7/sound/v
 - Consumes: `web_server._cookie_admin(request)` (validates `sb_admin_token` against `store`), `auth.jwt_handler.decode_access_token`.
 - Produces: `require_admin_session(request) -> dict` in `api/routers/admin.py` — cookie-first, JWT-role fallback. The ONLY admin login/me implementation left registered is `api/routers/auth.py:181/303` (cookie-based; it registers first today and is the live one).
 
-- [ ] **Step 1: Append the failing test**
+- [x] **Step 1: Append the failing test**
 
 ```python
 class AdminContractTests(AppFactoryContractCase):
@@ -544,12 +544,12 @@ class AdminContractTests(AppFactoryContractCase):
         self.assertEqual(resp.status_code, 401, resp.text)
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py::AdminContractTests -v`
 Expected: `test_cookie_login_then_protected_endpoints` FAILS at `/v1/admin/overview` with 401 (login itself succeeds — auth.py's cookie login registers first and works). `test_anonymous...` passes already.
 
-- [ ] **Step 3: Fix `api/routers/admin.py`**
+- [x] **Step 3: Fix `api/routers/admin.py`**
 
 Replace lines 38-73 (imports, routers, and the duplicate auth endpoints) with:
 
@@ -595,11 +595,11 @@ router = APIRouter(
 
 Delete from this file: `public_router` and its `admin_login` endpoint (dead duplicate — `auth.py:181` registers first and is cookie-correct), the `admin_me` endpoint (same — `auth.py:303`), and the now-unused `Response`/`require_role` imports. Update the module docstring route list accordingly.
 
-- [ ] **Step 4: Fix `api/app_factory.py`**
+- [x] **Step 4: Fix `api/app_factory.py`**
 
 Remove the `admin_public_router` import and its `include_router` call (line ~316). Keep `application.include_router(admin_router)`.
 
-- [ ] **Step 5: Run tests, full suite, commit**
+- [x] **Step 5: Run tests, full suite, commit**
 
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py -v` → all green.
 Run: `venv/Scripts/python.exe -m pytest` → green.
@@ -620,7 +620,7 @@ git commit -m "fix(admin): cookie-session guard on admin router; drop dead dupli
 **Interfaces:**
 - Produces: `database.connection.get_shared_connection() -> DatabaseConnection`, `database.connection.reset_shared_connection() -> None` (also exported from `database`). All repositories default to the shared connection. Task 7 depends on this (per-request revocation checks must not build engines).
 
-- [ ] **Step 1: Append the failing test**
+- [x] **Step 1: Append the failing test**
 
 ```python
 class SharedConnectionTests(AppFactoryContractCase):
@@ -636,7 +636,7 @@ class SharedConnectionTests(AppFactoryContractCase):
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py::SharedConnectionTests -v`
 Expected: FAIL — `ImportError: cannot import name 'get_shared_connection'`.
 
-- [ ] **Step 2: Add the singleton to `database/connection.py`** (append at end of file)
+- [x] **Step 2: Add the singleton to `database/connection.py`** (append at end of file)
 
 ```python
 _SHARED_CONNECTION: DatabaseConnection | None = None
@@ -667,7 +667,7 @@ def reset_shared_connection() -> None:
 
 Export both names from `database/__init__.py` (add to the existing import-from-connection line and `__all__` if present).
 
-- [ ] **Step 3: Point everything at it**
+- [x] **Step 3: Point everything at it**
 
 - `database/repositories.py`: replace ALL 10 occurrences of `self.db = db or DatabaseConnection()` with `self.db = db or get_shared_connection()`; add `get_shared_connection` to the module's `from .connection import ...` line.
 - `api/routers/profile.py:24`: replace the import-time global `_profile_repo = ProfileRepository()` with a function, and update all `_profile_repo.` call sites to `_profile_repo().`:
@@ -688,7 +688,7 @@ def _profile_repo() -> ProfileRepository:
     reset_shared_connection()
 ```
 
-- [ ] **Step 4: Run tests, full suite, commit**
+- [x] **Step 4: Run tests, full suite, commit**
 
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py -v` → green.
 Run: `venv/Scripts/python.exe -m pytest` → green (watch specifically for Windows sqlite file-lock errors in teardown — if any appear, a singleton reset is missing in that test's isolation path).
@@ -709,7 +709,7 @@ git commit -m "fix(db): process-wide shared engine; kill engine-per-request in r
 **Interfaces:**
 - Consumes: `MobileAuthRepository.validate_access_token(token) -> dict` (returns `{}` for revoked/expired/unknown; JWT fast-path checks the JTI revocation row), shared connection from Task 6.
 
-- [ ] **Step 1: Append the failing test**
+- [x] **Step 1: Append the failing test**
 
 ```python
 class TokenRevocationTests(AppFactoryContractCase):
@@ -733,7 +733,7 @@ class TokenRevocationTests(AppFactoryContractCase):
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py::TokenRevocationTests -v`
 Expected: FAIL — the post-logout requests return 200 (get_current_user only checks signature/expiry).
 
-- [ ] **Step 2: Add the DB revocation check to `get_current_user`**
+- [x] **Step 2: Add the DB revocation check to `get_current_user`**
 
 In `auth/middleware.py`, inside the `try:` block, immediately after the `user_id`/`sub` check (after line ~60) and before `return payload`:
 
@@ -754,7 +754,7 @@ In `auth/middleware.py`, inside the `try:` block, immediately after the `user_id
 
 (One indexed query per authenticated request — accepted in the spec; the shared connection from Task 6 makes it pool-reusing.)
 
-- [ ] **Step 3: Run tests, full suite, commit**
+- [x] **Step 3: Run tests, full suite, commit**
 
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py -v` → green.
 Run: `venv/Scripts/python.exe -m pytest` → green. If legacy tests fail with 401s here, they are minting JWTs without DB session rows — fix the test setup to register through the API rather than weakening this check.
@@ -777,7 +777,7 @@ git commit -m "fix(auth): get_current_user enforces DB revocation — logout kil
 **Interfaces:**
 - Produces: `ProfileRepository.get_profile_prefs_if_exists(user_id) -> dict | None`; `api.routers.islamic._prayer_location(user, profile) -> dict` with keys `mode, latitude, longitude, city, country, method`.
 
-- [ ] **Step 1: Append the failing tests**
+- [x] **Step 1: Append the failing tests**
 
 ```python
 class ProfileReadThroughTests(AppFactoryContractCase):
@@ -828,7 +828,7 @@ class ProfileReadThroughTests(AppFactoryContractCase):
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py::ProfileReadThroughTests -v`
 Expected: FAIL — `_prayer_location` doesn't exist; chat prefs return `""`; overview returns 403.
 
-- [ ] **Step 2: Add `get_profile_prefs_if_exists` to ProfileRepository** (after `get_profile_prefs`)
+- [x] **Step 2: Add `get_profile_prefs_if_exists` to ProfileRepository** (after `get_profile_prefs`)
 
 ```python
     def get_profile_prefs_if_exists(self, user_id: str) -> dict[str, Any] | None:
@@ -844,7 +844,7 @@ Expected: FAIL — `_prayer_location` doesn't exist; chat prefs return `""`; ove
             return None if row is None else self._prefs_to_dict(row)
 ```
 
-- [ ] **Step 3: Rework `api/routers/islamic.py`**
+- [x] **Step 3: Rework `api/routers/islamic.py`**
 
 Replace `_resolve_prayer_service` with a testable location resolver + thin service builder, and drop the premium gate (spec P2: prayer times are free-tier — a demo account must not 403):
 
@@ -902,7 +902,7 @@ def _resolve_prayer_service(user: dict[str, Any], profile: dict[str, Any]):
 
 In all three handlers (`overview`, `prayer-times`, `next-prayer`): change the lazy import `_require_premium_plan` → `_require_user` and the call accordingly. Update the module docstring.
 
-- [ ] **Step 4: Make `web_server._chat_profile_prefs_for_user` read the DB first**
+- [x] **Step 4: Make `web_server._chat_profile_prefs_for_user` read the DB first**
 
 Replace the function body (web_server.py:2261-2277) with:
 
@@ -939,7 +939,7 @@ def _chat_profile_prefs_for_user(profile: dict[str, Any], user: dict[str, Any]) 
     return _normalize_user_profile_prefs({**defaults, **scoped})
 ```
 
-- [ ] **Step 5: Run tests, full suite, commit**
+- [x] **Step 5: Run tests, full suite, commit**
 
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py -v` → green.
 Run: `venv/Scripts/python.exe -m pytest` → green. (Legacy web tests that exercise `_chat_profile_prefs_for_user` with JSON-only users still pass via the fallback branch; if one fails, check whether it asserts the JSON value while a DB row exists for that user id.)
@@ -959,7 +959,7 @@ git commit -m "fix(profile): DB read-through for prayer location + chat prefs; i
 **Interfaces:**
 - No interface changes — same routes, same responses. Sync handler calls move off the event loop via `asyncio.to_thread`.
 
-- [ ] **Step 1: Apply the same mechanical change at every listed site**
+- [x] **Step 1: Apply the same mechanical change at every listed site**
 
 Add `import asyncio` to each file's imports. Then, in each `async def` wrapper that ends with a direct call to a sync `_ws` function, change the return line. Example (chat.py `v1_command`):
 
@@ -978,12 +978,12 @@ Exact sites (each currently `return _ws(...)` inside an `async def`):
 
 Do NOT touch: `ai_chat`/`ai_chat_stream` (they await an async `_ws`), the sync `def` handlers (FastAPI already runs them in the threadpool), or websockets.
 
-- [ ] **Step 2: Verify no stragglers**
+- [x] **Step 2: Verify no stragglers**
 
 Run: `grep -n "return _ws(" api/routers/*.py`
 Expected: every remaining hit is inside a plain `def` handler (check each hit's enclosing function signature).
 
-- [ ] **Step 3: Full suite + commit**
+- [x] **Step 3: Full suite + commit**
 
 Run: `venv/Scripts/python.exe -m pytest`
 Expected: green — behavior is identical, only the executing thread changes.
@@ -1000,7 +1000,7 @@ git commit -m "fix(perf): move sync web_server handlers off the event loop via a
 **Files:**
 - Modify: `docker-compose.yml:30`, `nixpacks.toml:8`
 
-- [ ] **Step 1: docker-compose.yml** — change line 30:
+- [x] **Step 1: docker-compose.yml** — change line 30:
 
 ```yaml
       # TEMP (audit P1-4): JSON stores are per-process; sessions/billing corrupt
@@ -1008,13 +1008,13 @@ git commit -m "fix(perf): move sync web_server handlers off the event loop via a
       GUNICORN_WORKERS: "1"
 ```
 
-- [ ] **Step 2: nixpacks.toml** — change `--workers 2` to `--workers 1` on line 8 and add above it:
+- [x] **Step 2: nixpacks.toml** — change `--workers 2` to `--workers 1` on line 8 and add above it:
 
 ```toml
 # TEMP (audit P1-4): single worker until Phase 2 moves sessions to the DB
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docker-compose.yml nixpacks.toml
@@ -1032,7 +1032,7 @@ git commit -m "fix(deploy): single gunicorn worker until sessions move to the DB
 **Interfaces:**
 - Produces: `create_access_token(..., role: str = "")` — emits a `role` claim when non-empty. Consumed today by `require_admin_session`'s JWT fallback (Task 5) and `require_role` (`auth/middleware.py:117` already reads `payload.get("role")`). Issuance of admin-role JWTs at login is deliberately deferred to Phase 2 (admin sessions move to the DB there; wiring role sources twice would be throwaway).
 
-- [ ] **Step 1: Append the failing test**
+- [x] **Step 1: Append the failing test**
 
 ```python
 class JwtRoleClaimTests(unittest.TestCase):
@@ -1052,7 +1052,7 @@ class JwtRoleClaimTests(unittest.TestCase):
 Run: `venv/Scripts/python.exe -m pytest tests/test_app_factory_contract.py::JwtRoleClaimTests -v`
 Expected: FAIL — `TypeError: create_access_token() got an unexpected keyword argument 'role'`.
 
-- [ ] **Step 2: Add the parameter**
+- [x] **Step 2: Add the parameter**
 
 In `create_access_token`, add `role: str = ""` after `client_name`, and after the `client_name` claim block add:
 
@@ -1061,7 +1061,7 @@ In `create_access_token`, add `role: str = ""` after `client_name`, and after th
         claims["role"] = role
 ```
 
-- [ ] **Step 3: Run tests, full suite, commit**
+- [x] **Step 3: Run tests, full suite, commit**
 
 ```bash
 git add auth/jwt_handler.py tests/test_app_factory_contract.py
@@ -1074,22 +1074,22 @@ git commit -m "feat(auth): optional role claim in access tokens (admin API clien
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Full test suite**
+- [x] **Step 1: Full test suite**
 
 Run: `venv/Scripts/python.exe -m pytest`
 Expected: everything green, including all 6 contract-test classes.
 
-- [ ] **Step 2: Lint**
+- [x] **Step 2: Lint**
 
 Run: `venv/Scripts/python.exe -m ruff check .`
 Expected: clean. Fix anything it flags in files this plan touched.
 
-- [ ] **Step 3: Boot smoke — the production app imports and serves**
+- [x] **Step 3: Boot smoke — the production app imports and serves**
 
 Run: `venv/Scripts/python.exe -c "from fastapi.testclient import TestClient; from api.app_factory import app; c = TestClient(app); r = c.get('/healthz'); print(r.status_code, r.json())"`
 Expected: `200 {'ok': True, 'service': 'web_runtime'}`
 
-- [ ] **Step 4: Update the plan checkboxes, commit, push**
+- [x] **Step 4: Update the plan checkboxes, commit, push**
 
 ```bash
 git add docs/superpowers/plans/2026-07-08-plan1-phase0-1-p0-fixes.md
