@@ -76,3 +76,8 @@ repomix-output.txt
 
 data/dev.sqlite3
 data/dev.sqlite3*
+
+# Generated analysis/test artifacts — never commit
+repomix-output.txt
+test_results.txt
+test_audit_unittest.log
