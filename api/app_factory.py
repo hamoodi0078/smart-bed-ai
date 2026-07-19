@@ -36,15 +36,12 @@ async def _lifespan(app: FastAPI):
     from config.settings import settings
     from core.logger import logger
 
-    # Validate production secrets on startup
-    try:
-        from config.settings import validate_production_secrets
+    # Validate production secrets on startup — warns in dev, refuses to boot
+    # in production (deliberately NOT wrapped in try/except).
+    from config.settings import enforce_production_secrets
 
-        secret_warnings = validate_production_secrets()
-        for w in secret_warnings:
-            logger.warning("Secret config: %s", w)
-    except Exception as exc:
-        logger.warning("Secret validation error (non-fatal): %s", exc)
+    for w in enforce_production_secrets():
+        logger.warning("Secret config: %s", w)
 
     # Service registry (automations, health monitor, etc.)
     try:

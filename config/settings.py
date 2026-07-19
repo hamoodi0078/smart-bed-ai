@@ -567,6 +567,21 @@ def validate_production_secrets() -> list[str]:
     return warnings
 
 
+def enforce_production_secrets() -> list[str]:
+    """Fail-fast wrapper around validate_production_secrets.
+
+    Dev: returns the warnings for the caller to log. Production
+    (DANAH_ENV=production): raises so the app refuses to boot half-configured
+    — the audit found warnings were logged and then ignored.
+    """
+    warnings = validate_production_secrets()
+    if warnings and os.getenv("DANAH_ENV", "development").lower() == "production":
+        raise RuntimeError(
+            "Refusing to start with missing production secrets: " + "; ".join(warnings)
+        )
+    return warnings
+
+
 enforce_sensitive_data_path_guard()
 
 # Backward-compat module-level shims
