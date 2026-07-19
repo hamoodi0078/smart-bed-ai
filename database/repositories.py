@@ -2379,9 +2379,10 @@ class OtpRepository:
     """DB-backed OTP storage — replaces the profile JSON 'mobile_phone_otp_requests' section."""
 
     def __init__(self, db: DatabaseConnection | None = None) -> None:
-        from config.settings import settings
-
-        self._db = db or DatabaseConnection(database_url=settings.database_url)
+        # Must use the process-wide shared connection like every other repo:
+        # settings.database_url freezes DATABASE_URL at first import, and a
+        # per-instance DatabaseConnection builds a new engine on every request.
+        self._db = db or get_shared_connection()
 
     def create(
         self,
@@ -2455,9 +2456,9 @@ class SpotifyTokenRepository:
     """DB-backed Spotify token storage — replaces profile JSON 'spotify_tokens' section."""
 
     def __init__(self, db: DatabaseConnection | None = None) -> None:
-        from config.settings import settings
-
-        self._db = db or DatabaseConnection(database_url=settings.database_url)
+        # Same rationale as OtpRepository: shared connection, never a frozen
+        # settings URL or a per-instance engine.
+        self._db = db or get_shared_connection()
 
     def get(self, user_key: str) -> dict[str, Any] | None:
         with self._db.get_session() as session:
@@ -2582,9 +2583,7 @@ class BillingStateRepository:
         if not key:
             return None
         with self._db.get_session() as session:
-            record = session.scalars(
-                select(CheckoutSessionRecord).where(column == key)
-            ).first()
+            record = session.scalars(select(CheckoutSessionRecord).where(column == key)).first()
             return self._checkout_to_dict(record) if record is not None else None
 
     def get_checkout(self, session_id: str) -> dict[str, Any] | None:
