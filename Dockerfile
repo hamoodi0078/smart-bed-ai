@@ -42,7 +42,7 @@ EXPOSE ${PORT:-8000}
 
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=20s \
-    CMD curl -f http://localhost:${PORT:-8000}/healthz || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/readyz || exit 1
 
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
