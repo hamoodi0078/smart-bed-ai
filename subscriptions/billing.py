@@ -118,8 +118,7 @@ class BillingService:
             checkout["provider_environment"] = "local_fallback"
             checkout["provider_status"] = "LOCAL_FALLBACK"
             checkout["provider_plan_id"] = plan_id
-            self.store.save()
-            return checkout
+            return self._persist_checkout(checkout)
 
         assert self.paypal_provider is not None
         subscription = self.paypal_provider.create_subscription(
@@ -136,8 +135,7 @@ class BillingService:
         checkout["provider_currency"] = self.paypal_provider.currency_code
         checkout["provider_status"] = subscription.status
         checkout["status"] = "approval_pending"
-        self.store.save()
-        return checkout
+        return self._persist_checkout(checkout)
 
     def capture_checkout_session(
         self,
@@ -192,8 +190,7 @@ class BillingService:
                 payment_provider="paypal",
                 raw_payload=payload,
             )
-            self.store.save()
-            return checkout
+            return self._persist_checkout(checkout)
 
         if str(checkout.get("provider_subscription_id", "") or "").strip():
             raise BillingServiceError("This checkout requires a PayPal subscription approval.")
@@ -220,8 +217,7 @@ class BillingService:
         checkout["provider_status"] = "CANCELLED"
         checkout["cancelled_at"] = self._now_iso()
         checkout["cancel_reason"] = str(reason or "cancelled").strip()
-        self.store.save()
-        return checkout
+        return self._persist_checkout(checkout)
 
     def pause_active_subscription(
         self,
@@ -413,7 +409,7 @@ class BillingService:
                 checkout["cancelled_at"] = self._now_iso()
             elif normalized_type in self._approval_events():
                 checkout["status"] = "approved"
-            self.store.save()
+            checkout = self._persist_checkout(checkout)
 
         self.store.apply_billing_webhook(
             event_type=event_type,
@@ -467,8 +463,15 @@ class BillingService:
             payment_provider="paypal",
             raw_payload=dict(raw_payload or {}),
         )
-        self.store.save()
-        return checkout
+        return self._persist_checkout(checkout)
+
+    def _persist_checkout(self, checkout: dict[str, Any]) -> dict[str, Any]:
+        """Persist a locally mutated checkout dict through the store's explicit
+        update API. get_checkout_session may serve a DB copy (Plan 8), so
+        in-place mutation + store.save() no longer reaches storage."""
+        session_id = str(checkout.get("session_id", "") or "")
+        fields = {k: v for k, v in checkout.items() if k != "session_id"}
+        return self.store.update_checkout_session(session_id, **fields) or checkout
 
     def _require_checkout(self, *, session_id: str, user_id: str) -> dict[str, Any]:
         checkout = self.store.get_checkout_session(session_id)

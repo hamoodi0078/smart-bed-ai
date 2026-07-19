@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -116,8 +117,9 @@ class WebhookReceiptPersistenceTests(BillingDbPersistenceCase):
 
         # ...and a prune that treats everything as expired removes them from
         # the DB too — a THIRD store must not resurrect them.
+        far_future = datetime(2099, 1, 1, tzinfo=timezone.utc)
         with patch.object(
-            SubscriptionStore, "_now_iso", return_value="2099-01-01T00:00:00+00:00"
+            SubscriptionStore, "_utc_now", new=staticmethod(lambda: far_future)
         ):
             store_b.prune_billing_webhook_memory(max_age_seconds=60)
         store_c = self.fresh_store("c")

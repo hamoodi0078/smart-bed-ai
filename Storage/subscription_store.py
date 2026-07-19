@@ -139,6 +139,33 @@ class SubscriptionStore:
         self._io_lock = threading.RLock()
         self.db = self._load()
 
+    def _billing_repo(self):
+        """DB-first billing storage; None when no DATABASE_URL (JSON-only mode).
+
+        Not cached: the shared connection can be repointed by tests, and repo
+        construction is just an attribute lookup on the shared singleton.
+        """
+        if not str(os.getenv("DATABASE_URL", "") or "").strip():
+            return None
+        try:
+            from database.repositories import BillingStateRepository
+
+            return BillingStateRepository()
+        except Exception:
+            _log.debug("Billing DB repository unavailable", exc_info=True)
+            return None
+
+    def _admin_session_repo(self):
+        if not str(os.getenv("DATABASE_URL", "") or "").strip():
+            return None
+        try:
+            from database.repositories import AdminSessionRepository
+
+            return AdminSessionRepository()
+        except Exception:
+            _log.debug("Admin session DB repository unavailable", exc_info=True)
+            return None
+
     @staticmethod
     def _utc_now() -> datetime:
         return utcnow()
@@ -751,6 +778,14 @@ class SubscriptionStore:
         session_key = str(session_id or "").strip()
         if not session_key:
             return None
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                found = repo.get_checkout(session_key)
+                if found is not None:
+                    return found
+            except Exception:
+                _log.debug("Checkout DB read failed; falling back to JSON", exc_info=True)
         for row in self.db.get("checkout_sessions", []):
             if not isinstance(row, dict):
                 continue
@@ -762,6 +797,14 @@ class SubscriptionStore:
         order_key = str(provider_order_id or "").strip()
         if not order_key:
             return None
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                found = repo.get_checkout_by_order_id(order_key)
+                if found is not None:
+                    return found
+            except Exception:
+                _log.debug("Checkout DB read failed; falling back to JSON", exc_info=True)
         for row in self.db.get("checkout_sessions", []):
             if not isinstance(row, dict):
                 continue
@@ -775,12 +818,47 @@ class SubscriptionStore:
         subscription_key = str(provider_subscription_id or "").strip()
         if not subscription_key:
             return None
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                found = repo.get_checkout_by_subscription_id(subscription_key)
+                if found is not None:
+                    return found
+            except Exception:
+                _log.debug("Checkout DB read failed; falling back to JSON", exc_info=True)
         for row in self.db.get("checkout_sessions", []):
             if not isinstance(row, dict):
                 continue
             if str(row.get("provider_subscription_id", "") or "").strip() == subscription_key:
                 return row
         return None
+
+    def update_checkout_session(self, session_id: str, **fields) -> Optional[dict]:
+        """Explicit checkout mutation — replaces the live-dict-then-save pattern.
+
+        Updates the DB row (durable authority) and the JSON mirror, and
+        returns the merged row. Returns None if the session is unknown to both.
+        """
+        session_key = str(session_id or "").strip()
+        if not session_key:
+            return None
+        db_row: Optional[dict] = None
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                db_row = repo.update_checkout(session_key, **fields)
+            except Exception:
+                _log.warning("Checkout DB update failed (JSON mirror still applied)")
+        json_row: Optional[dict] = None
+        for row in self.db.get("checkout_sessions", []):
+            if isinstance(row, dict) and str(row.get("session_id", "") or "").strip() == session_key:
+                row.update(fields)
+                json_row = row
+                break
+        if json_row is not None:
+            self.save()
+            return json_row
+        return db_row
 
     def create_checkout_session(
         self,
@@ -831,6 +909,12 @@ class SubscriptionStore:
             "captured_at": "",
             "cancelled_at": "",
         }
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                repo.create_checkout(checkout)
+            except Exception:
+                _log.warning("Checkout DB write failed (JSON store still updated)")
         self.db["checkout_sessions"].append(checkout)
         self.save()
         return checkout
@@ -868,6 +952,12 @@ class SubscriptionStore:
             "provider_plan_id": metadata.get("provider_plan_id", ""),
             "raw": raw_payload or {},
         }
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                repo.add_payment_event(event)
+            except Exception:
+                _log.warning("Payment event DB write failed (JSON store still updated)")
         self.db["payment_events"].append(event)
 
         typ = (event_type or "").strip().lower()
@@ -1036,10 +1126,22 @@ class SubscriptionStore:
         self.save()
         return sub
 
+    def _payment_event_rows(self, user_id: str = "") -> list:
+        """Event rows for the listing projections — DB-first, JSON fallback."""
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                rows = repo.list_payment_events(user_id=user_id, limit=500)
+                if rows:
+                    return rows
+            except Exception:
+                _log.debug("Payment event DB read failed; falling back to JSON", exc_info=True)
+        return list(self.db.get("payment_events", []))
+
     def list_payment_events(self, user_id: str, limit: int = 12) -> list[dict]:
         user_key = str(user_id or "").strip()
         items = []
-        for row in self.db.get("payment_events", []):
+        for row in self._payment_event_rows(user_key):
             if not isinstance(row, dict):
                 continue
             if str(row.get("user_id", "") or "").strip() != user_key:
@@ -1087,7 +1189,7 @@ class SubscriptionStore:
         }
 
         out: list[dict] = []
-        for row in self.db.get("payment_events", []):
+        for row in self._payment_event_rows():
             if not isinstance(row, dict):
                 continue
             event_type = str(row.get("event_type", "") or "").strip()
@@ -1155,6 +1257,14 @@ class SubscriptionStore:
         key = str(idempotency_key or "").strip()
         if not key:
             return None
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                found = repo.get_receipt("idempotency", key)
+                if found is not None:
+                    return found
+            except Exception:
+                _log.debug("Receipt DB read failed; falling back to JSON", exc_info=True)
         row = self.db.get("billing_webhook_idempotency", {}).get(key)
         return dict(row) if isinstance(row, dict) else None
 
@@ -1179,6 +1289,12 @@ class SubscriptionStore:
             "event_id": str(event_id or "").strip(),
             "processed_at": now_iso,
         }
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                repo.remember_receipt("idempotency", key, row)
+            except Exception:
+                _log.warning("Receipt DB write failed (JSON store still updated)")
         self.db["billing_webhook_idempotency"][key] = row
         self.save()
         return dict(row)
@@ -1187,6 +1303,14 @@ class SubscriptionStore:
         key = str(replay_key or "").strip()
         if not key:
             return None
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                found = repo.get_receipt("replay", key)
+                if found is not None:
+                    return found
+            except Exception:
+                _log.debug("Receipt DB read failed; falling back to JSON", exc_info=True)
         row = self.db.get("billing_webhook_replay", {}).get(key)
         return dict(row) if isinstance(row, dict) else None
 
@@ -1209,6 +1333,12 @@ class SubscriptionStore:
             "idempotency_key": str(idempotency_key or "").strip(),
             "processed_at": now_iso,
         }
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                repo.remember_receipt("replay", key, row)
+            except Exception:
+                _log.warning("Receipt DB write failed (JSON store still updated)")
         self.db["billing_webhook_replay"][key] = row
         self.save()
         return dict(row)
@@ -1220,6 +1350,15 @@ class SubscriptionStore:
         removed_idempotency = 0
         removed_replay = 0
         changed = False
+
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                cutoff_iso = to_iso(cutoff)
+                removed_idempotency += repo.prune_receipts("idempotency", cutoff_iso)
+                removed_replay += repo.prune_receipts("replay", cutoff_iso)
+            except Exception:
+                _log.warning("Receipt DB prune failed (JSON prune still runs)")
 
         for key, row in list(self.db.get("billing_webhook_idempotency", {}).items()):
             if not isinstance(row, dict):
@@ -2025,6 +2164,21 @@ class SubscriptionStore:
             if isinstance(session, dict) and session.get("user_id") == user_key:
                 del self.db["device_refresh_sessions"][token]
                 deleted["device_refresh_sessions"] += 1
+
+        repo = self._billing_repo()
+        if repo is not None:
+            try:
+                db_counts = repo.delete_user_billing(user_key)
+                for key, count in db_counts.items():
+                    deleted[key] = deleted.get(key, 0) + int(count)
+            except Exception:
+                _log.warning("Billing DB delete failed for user %s", user_key)
+        admin_repo = self._admin_session_repo()
+        if admin_repo is not None:
+            try:
+                deleted["admin_sessions"] += admin_repo.delete_for_user(user_key)
+            except Exception:
+                _log.warning("Admin session DB delete failed for user %s", user_key)
 
         deleted["total"] = sum(int(v) for v in deleted.values())
         if deleted["total"] > 0:
