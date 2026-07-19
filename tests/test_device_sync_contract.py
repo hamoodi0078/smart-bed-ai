@@ -7,6 +7,7 @@ device JWT (role="device"), never the mobile user JWT.
 
 from __future__ import annotations
 
+import concurrent.futures
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -296,3 +297,67 @@ class DeviceResultAndToggleTests(DeviceBridgeContractCase):
             headers=self.device_bearer(bundle),
         )
         self.assertEqual(resp.status_code, 404)
+
+
+class DeviceSyncLockingTests(DeviceBridgeContractCase):
+    """NEW-P0-A: the bridge's profile read-modify-write cycles must hold
+    web_server._PROFILE_RW_LOCK — a bed polls every 2.5s and used to race
+    every concurrent mobile profile write."""
+
+    def test_sync_holds_profile_rw_lock_for_full_cycle(self):
+        import web_server
+
+        auth = self.register("bridge-lock@example.com")
+        self.pair_bed(auth, "BED-LOCK-01")
+        bundle = self.device_token("BED-LOCK-01")
+
+        # Queue a command so the sync definitely persists (dispatch transition)
+        resp = self.client.post(
+            "/v1/mobile/device-commands",
+            json={"action": "winddown"},
+            headers=self.bearer(auth),
+        )
+        self.assertEqual(resp.status_code, 200, resp.text)
+
+        real_save = web_server._save_profile
+        probe_results: list[bool] = []
+
+        def probing_save(payload):
+            # Try to take the profile lock from ANOTHER thread mid-cycle.
+            # If device_sync correctly wraps its cycle in _profile_rw(),
+            # the lock is held and this acquire must fail.
+            def try_acquire() -> bool:
+                got = web_server._PROFILE_RW_LOCK.acquire(blocking=False)
+                if got:
+                    web_server._PROFILE_RW_LOCK.release()
+                return got
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                probe_results.append(pool.submit(try_acquire).result())
+            return real_save(payload)
+
+        with patch.object(web_server, "_save_profile", side_effect=probing_save):
+            resp = self.client.get("/v1/device/sync", headers=self.device_bearer(bundle))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertTrue(probe_results, "sync with a queued command must persist the profile")
+        self.assertTrue(
+            all(r is False for r in probe_results),
+            "profile lock must be held across the whole read-modify-write cycle",
+        )
+
+    def test_sync_skips_redundant_profile_writes(self):
+        import web_server
+
+        auth = self.register("bridge-churn@example.com")
+        self.pair_bed(auth, "BED-CHURN-01")
+        bundle = self.device_token("BED-CHURN-01")
+        headers = self.device_bearer(bundle)
+
+        # First sync right after auth: last_seen is fresh, nothing queued.
+        self.assertEqual(self.client.get("/v1/device/sync", headers=headers).status_code, 200)
+
+        # Second sync seconds later: nothing changed -> must NOT rewrite the profile.
+        with patch.object(web_server, "_save_profile") as save_spy:
+            resp = self.client.get("/v1/device/sync", headers=headers)
+        self.assertEqual(resp.status_code, 200, resp.text)
+        save_spy.assert_not_called()

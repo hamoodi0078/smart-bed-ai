@@ -27,6 +27,11 @@ DEVICE_TOKEN_TTL_MINUTES = 60
 REDELIVER_SECONDS = 30
 LIVE_WINDOW_SECONDS = 15
 
+# device_sync persists last_seen at most this often; dispatch transitions
+# always persist. Keeps the 2.5s bed poll from rewriting the profile JSON
+# on every tick (audit 2026-07-18 NEW-P0-A).
+LAST_SEEN_PERSIST_SECONDS = 30
+
 
 class DeviceAuthRequest(BaseModel):
     device_id: str
@@ -108,10 +113,11 @@ def device_auth(payload: DeviceAuthRequest) -> dict[str, Any]:
     if not bool(status_payload.get("success", False)):
         raise HTTPException(status_code=404, detail="Device is not provisioned")
 
-    profile = ws._safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-    return _issue_device_bundle(ws, profile, device_id, payload.firmware_version)
+    with ws._profile_rw():
+        profile = ws._safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        return _issue_device_bundle(ws, profile, device_id, payload.firmware_version)
 
 
 def device_token_refresh(payload: DeviceTokenRefreshRequest) -> dict[str, Any]:
@@ -122,15 +128,18 @@ def device_token_refresh(payload: DeviceTokenRefreshRequest) -> dict[str, Any]:
     if not device_id or not presented:
         raise HTTPException(status_code=422, detail="device_id and refresh_token are required")
 
-    profile = ws._safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-    sessions = ws._get_scoped_profile_section(profile, "device_sessions")
-    row = sessions.get(device_id, {}) if isinstance(sessions.get(device_id, {}), dict) else {}
-    stored_hash = str(row.get("refresh_token_hash", "") or "")
-    if not stored_hash or not hmac.compare_digest(stored_hash, _hash_refresh_token(presented)):
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
-    return _issue_device_bundle(ws, profile, device_id, str(row.get("firmware_version", "") or ""))
+    with ws._profile_rw():
+        profile = ws._safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        sessions = ws._get_scoped_profile_section(profile, "device_sessions")
+        row = sessions.get(device_id, {}) if isinstance(sessions.get(device_id, {}), dict) else {}
+        stored_hash = str(row.get("refresh_token_hash", "") or "")
+        if not stored_hash or not hmac.compare_digest(stored_hash, _hash_refresh_token(presented)):
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+        return _issue_device_bundle(
+            ws, profile, device_id, str(row.get("firmware_version", "") or "")
+        )
 
 
 # ── Sync: commands + desired state down to the bed ───────────────────────────
@@ -223,57 +232,64 @@ def device_sync(device: dict[str, Any]) -> dict[str, Any]:
 
     device_id = str(device.get("device_id", "") or "")
     now = utcnow()
-    profile = ws._safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
+    with ws._profile_rw():
+        profile = ws._safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
 
-    sessions = ws._get_scoped_profile_section(profile, "device_sessions")
-    session_row = (
-        sessions.get(device_id, {}) if isinstance(sessions.get(device_id, {}), dict) else {}
-    )
-    session_row["last_seen"] = to_iso(now)
-    sessions[device_id] = session_row
-    profile["device_sessions"] = sessions
-
-    key = _find_user_key_for_device(ws, profile, device_id)
-    if not key:
-        ws._save_profile(profile)
-        return {
-            "server_time": to_iso(now),
-            "commands": [],
-            "desired_state": None,
-            "state_version": "",
-        }
-
-    cmd_section = ws._get_scoped_profile_section(profile, "web_device_commands")
-    raw_rows = cmd_section.get(key, [])
-    raw_rows = raw_rows if isinstance(raw_rows, list) else []
-    out_rows: list[dict[str, Any]] = []
-    to_dispatch: list[dict[str, Any]] = []
-    for row in raw_rows:
-        cmd = ws._normalize_command_item(row if isinstance(row, dict) else {})
-        status = str(cmd.get("status", "queued") or "queued")
-        updated = ws._parse_iso_timestamp(str(cmd.get("updated_at", "") or "")) or now
-        stale_dispatch = (
-            status == "dispatched" and (now - updated).total_seconds() >= REDELIVER_SECONDS
+        sessions = ws._get_scoped_profile_section(profile, "device_sessions")
+        session_row = (
+            sessions.get(device_id, {}) if isinstance(sessions.get(device_id, {}), dict) else {}
         )
-        if status == "queued" or stale_dispatch:
-            cmd["status"] = "dispatched"
-            cmd["updated_at"] = to_iso(now)
-            to_dispatch.append(
-                {
-                    "id": str(cmd.get("id", "") or ""),
-                    "action": str(cmd.get("action", "") or ""),
-                    "params": {},
-                    "created_at": str(cmd.get("created_at", "") or ""),
-                }
-            )
-        out_rows.append(cmd)
-    cmd_section[key] = out_rows
-    profile["web_device_commands"] = cmd_section
+        prev_seen = ws._parse_iso_timestamp(str(session_row.get("last_seen", "") or ""))
+        seen_stale = (
+            prev_seen is None or (now - prev_seen).total_seconds() >= LAST_SEEN_PERSIST_SECONDS
+        )
+        session_row["last_seen"] = to_iso(now)
+        sessions[device_id] = session_row
+        profile["device_sessions"] = sessions
 
-    desired_state = _assemble_desired_state(ws, profile, key)
-    ws._save_profile(profile)
+        key = _find_user_key_for_device(ws, profile, device_id)
+        if not key:
+            if seen_stale:
+                ws._save_profile(profile)
+            return {
+                "server_time": to_iso(now),
+                "commands": [],
+                "desired_state": None,
+                "state_version": "",
+            }
+
+        cmd_section = ws._get_scoped_profile_section(profile, "web_device_commands")
+        raw_rows = cmd_section.get(key, [])
+        raw_rows = raw_rows if isinstance(raw_rows, list) else []
+        out_rows: list[dict[str, Any]] = []
+        to_dispatch: list[dict[str, Any]] = []
+        for row in raw_rows:
+            cmd = ws._normalize_command_item(row if isinstance(row, dict) else {})
+            status = str(cmd.get("status", "queued") or "queued")
+            updated = ws._parse_iso_timestamp(str(cmd.get("updated_at", "") or "")) or now
+            stale_dispatch = (
+                status == "dispatched" and (now - updated).total_seconds() >= REDELIVER_SECONDS
+            )
+            if status == "queued" or stale_dispatch:
+                cmd["status"] = "dispatched"
+                cmd["updated_at"] = to_iso(now)
+                to_dispatch.append(
+                    {
+                        "id": str(cmd.get("id", "") or ""),
+                        "action": str(cmd.get("action", "") or ""),
+                        "params": {},
+                        "created_at": str(cmd.get("created_at", "") or ""),
+                    }
+                )
+            out_rows.append(cmd)
+        cmd_section[key] = out_rows
+        profile["web_device_commands"] = cmd_section
+
+        desired_state = _assemble_desired_state(ws, profile, key)
+        if to_dispatch or seen_stale:
+            ws._save_profile(profile)
     return {
         "server_time": to_iso(now),
         "commands": to_dispatch,
@@ -297,39 +313,45 @@ def device_command_result(
     import web_server as ws
 
     device_id = str(device.get("device_id", "") or "")
-    profile = ws._safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-    key = _find_user_key_for_device(ws, profile, device_id)
-    if not key:
-        raise HTTPException(status_code=404, detail="Device is not paired")
+    with ws._profile_rw():
+        profile = ws._safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        key = _find_user_key_for_device(ws, profile, device_id)
+        if not key:
+            raise HTTPException(status_code=404, detail="Device is not paired")
 
-    cmd_section = ws._get_scoped_profile_section(profile, "web_device_commands")
-    raw_rows = cmd_section.get(key, [])
-    raw_rows = raw_rows if isinstance(raw_rows, list) else []
-    target: dict[str, Any] | None = None
-    out_rows: list[dict[str, Any]] = []
-    for row in raw_rows:
-        cmd = ws._normalize_command_item(row if isinstance(row, dict) else {})
-        if str(cmd.get("id", "") or "") == str(command_id):
-            cmd["status"] = payload.status
-            cmd["updated_at"] = ws._now_utc_iso()
-            if payload.status == "completed":
-                cmd["completed_at"] = ws._now_utc_iso()
-            if payload.detail:
-                cmd["message"] = str(payload.detail)[:200]
-            target = cmd
-        out_rows.append(cmd)
-    if target is None:
-        raise HTTPException(status_code=404, detail="Command not found")
+        cmd_section = ws._get_scoped_profile_section(profile, "web_device_commands")
+        raw_rows = cmd_section.get(key, [])
+        raw_rows = raw_rows if isinstance(raw_rows, list) else []
+        target: dict[str, Any] | None = None
+        out_rows: list[dict[str, Any]] = []
+        for row in raw_rows:
+            cmd = ws._normalize_command_item(row if isinstance(row, dict) else {})
+            if str(cmd.get("id", "") or "") == str(command_id):
+                cmd["status"] = payload.status
+                cmd["updated_at"] = ws._now_utc_iso()
+                if payload.status == "completed":
+                    cmd["completed_at"] = ws._now_utc_iso()
+                if payload.detail:
+                    cmd["message"] = str(payload.detail)[:200]
+                target = cmd
+            out_rows.append(cmd)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Command not found")
 
-    cmd_section[key] = out_rows
-    profile["web_device_commands"] = cmd_section
-    ws._store_last_command_result(profile, key, ws._build_last_command_result_from_command(target))
-    ws._save_profile(profile)
+        cmd_section[key] = out_rows
+        profile["web_device_commands"] = cmd_section
+        ws._store_last_command_result(
+            profile, key, ws._build_last_command_result_from_command(target)
+        )
+        ws._save_profile(profile)
 
-    links = ws._get_scoped_profile_section(profile, "mobile_bed_links")
-    link_row = links.get(key, {}) if isinstance(links.get(key, {}), dict) else {}
+        links = ws._get_scoped_profile_section(profile, "mobile_bed_links")
+        link_row = links.get(key, {}) if isinstance(links.get(key, {}), dict) else {}
+
+    # DB write stays outside the lock — it does not touch the profile file,
+    # and holding a file lock across a DB call is needless serialization.
     ws._persist_mobile_command_record(
         user_id=str(link_row.get("user_id", "") or key), command=target
     )
