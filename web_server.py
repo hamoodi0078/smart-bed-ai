@@ -3331,6 +3331,12 @@ def _winddown_sessions_7d_from_db(user_id: str, now_utc: datetime) -> int | None
         )
         return None
 
+    if not sessions:
+        # No sleep-session rows at all means "no data", not "zero winddowns" —
+        # returning 0 here would zero out the command-derived proxy counts for
+        # users whose beds report commands but no session summaries yet.
+        return None
+
     total = 0
     for row in sessions:
         session_date = getattr(row, "date", None)
