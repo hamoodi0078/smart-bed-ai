@@ -598,6 +598,12 @@ class SubscriptionStore:
                 del sessions[tok]
                 _redis_del_session(tok)
                 revoked += 1
+        admin_repo = self._admin_session_repo()
+        if admin_repo is not None:
+            try:
+                revoked += admin_repo.delete_for_user(uid)
+            except Exception:
+                _log.warning("Admin session DB revoke failed for user %s", uid)
         # Stamp the user record so token re-use from other systems is also blocked.
         for u in self.db.get("users", []):
             if isinstance(u, dict) and str(u.get("user_id", "") or "") == uid:
@@ -623,6 +629,13 @@ class SubscriptionStore:
         if token_key in self.db.get("mobile_refresh_sessions", {}):
             del self.db["mobile_refresh_sessions"][token_key]
             removed = True
+        admin_repo = self._admin_session_repo()
+        if admin_repo is not None:
+            try:
+                if admin_repo.delete(token_key):
+                    removed = True
+            except Exception:
+                _log.warning("Admin session DB revoke failed")
         if removed:
             self.save()
         _redis_del_session(token_key)
@@ -1874,9 +1887,16 @@ class SubscriptionStore:
     def issue_admin_token(self, user_id: str, role: str, ttl_hours: int = 12) -> dict:
         token = token_urlsafe(36)
         expires_at = to_iso((self._utc_now() + timedelta(hours=ttl_hours)).replace(microsecond=0))
+        role_key = (role or "viewer").strip().lower()
+        admin_repo = self._admin_session_repo()
+        if admin_repo is not None:
+            try:
+                admin_repo.create(token, user_id, role_key, expires_at)
+            except Exception:
+                _log.warning("Admin session DB write failed (JSON store still updated)")
         self.db["admin_sessions"][token] = {
             "user_id": user_id,
-            "role": (role or "viewer").strip().lower(),
+            "role": role_key,
             "expires_at": expires_at,
             "revoked": False,
         }
@@ -1885,6 +1905,23 @@ class SubscriptionStore:
 
     def validate_admin_token(self, token: str) -> Optional[dict]:
         sess = self.db.get("admin_sessions", {}).get(token)
+        if not sess:
+            admin_repo = self._admin_session_repo()
+            if admin_repo is not None:
+                try:
+                    db_sess = admin_repo.get(token)
+                except Exception:
+                    _log.debug("Admin session DB read failed", exc_info=True)
+                    db_sess = None
+                if db_sess is not None:
+                    # Backfill the JSON row so subsequent validates skip the DB.
+                    sess = {
+                        "user_id": db_sess.get("user_id", ""),
+                        "role": db_sess.get("role", "viewer"),
+                        "expires_at": db_sess.get("expires_at", ""),
+                        "revoked": bool(db_sess.get("revoked", False)),
+                    }
+                    self.db["admin_sessions"][token] = sess
         if not sess or bool(sess.get("revoked", False)):
             return None
         expires_at = self._parse_datetime_utc(sess.get("expires_at", ""))

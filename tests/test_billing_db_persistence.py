@@ -147,6 +147,23 @@ class AdminSessionPersistenceTests(BillingDbPersistenceCase):
         self.assertIsNotNone(payload, "admin session must survive a restart")
         self.assertEqual(payload["user_id"], "user-adm-1")
 
+    def test_revoked_admin_session_does_not_resurrect_from_db(self):
+        store_a = self.fresh_store("a")
+        store_a.upsert_admin_user(
+            user_id="user-adm-2", email="admin2@example.com", role="admin"
+        )
+        token = store_a.issue_admin_token(user_id="user-adm-2", role="admin")["access_token"]
+        self.assertTrue(store_a.revoke_session(token))
+
+        store_b = self.fresh_store("b")
+        store_b.upsert_admin_user(
+            user_id="user-adm-2", email="admin2@example.com", role="admin"
+        )
+        self.assertIsNone(
+            store_b.validate_admin_token(token),
+            "revoked session must not resurrect through the DB fallback",
+        )
+
 
 class NoDatabaseFallbackTests(unittest.TestCase):
     """Without DATABASE_URL every flow must behave exactly as today (JSON only)."""
