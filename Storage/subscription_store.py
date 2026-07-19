@@ -138,6 +138,46 @@ class SubscriptionStore:
         self.db_path = db_path
         self._io_lock = threading.RLock()
         self.db = self._load()
+        self._hydrate_subscriptions_from_db()
+
+    def _hydrate_subscriptions_from_db(self) -> None:
+        """Restart durability: pull subscription rows the JSON file lacks.
+
+        The JSON file lives on an ephemeral container filesystem; the DB
+        mirror (written on every save) is the durable copy. get_subscription
+        stays an in-memory read, so this runs once at boot, not per request.
+        """
+        repo = self._billing_repo()
+        if repo is None:
+            return
+        try:
+            db_rows = repo.load_subscriptions()
+        except Exception:
+            _log.debug("Subscription hydration skipped", exc_info=True)
+            return
+        if not db_rows:
+            return
+        known = {
+            str(row.get("user_id", "") or "").strip()
+            for row in self.db.get("subscriptions", [])
+            if isinstance(row, dict)
+        }
+        added = False
+        for row in db_rows:
+            uid = str(row.get("user_id", "") or "").strip()
+            if not uid or uid in known:
+                continue
+            merged, _ = self._ensure_subscription_defaults(dict(row))
+            if not str(merged.get("updated_at", "") or "").strip():
+                merged["updated_at"] = self._now_iso()
+            self.db["subscriptions"].append(merged)
+            added = True
+        if added:
+            # Direct file write — self.save() would immediately sync back to
+            # the DB we just read from.
+            with self._io_lock:
+                self.db, _ = self._normalize_db(self.db)
+                atomic_write_json(self.db_path, self.db)
 
     def _billing_repo(self):
         """DB-first billing storage; None when no DATABASE_URL (JSON-only mode).
@@ -298,16 +338,14 @@ class SubscriptionStore:
         that the primary JSON store continues to work in all environments.
         """
         try:
-            import os
-
             env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
             if not env_url:
                 return
-            from database.connection import DatabaseConnection
+            from database.connection import get_shared_connection
             from database.models import SubscriptionRecord
             from sqlalchemy import select
 
-            conn = DatabaseConnection(database_url=env_url)
+            conn = get_shared_connection()
             subscriptions = list(self.db.get("subscriptions", []))
             if not subscriptions:
                 return
