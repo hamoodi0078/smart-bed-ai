@@ -13,10 +13,13 @@ from time_utils import ensure_utc, from_iso, to_iso, utcnow
 
 from .connection import AsyncDatabaseConnection, DatabaseConnection, get_shared_connection
 from .models import (
+    AdminSessionRecord,
     Alarm,
     AppVersion,
     BetaCohortMember,
     BetaMetricsSnapshot,
+    BillingWebhookReceipt,
+    CheckoutSessionRecord,
     Event,
     FeatureFlag,
     FirmwareVersion,
@@ -26,8 +29,10 @@ from .models import (
     MobileAuthSession,
     NightlySummaryFeedbackProgress,
     OtpRequest,
+    PaymentEventRecord,
     SleepSession,
     SpotifyToken,
+    SubscriptionRecord,
     User,
     UserFeatureOverride,
     UserProfilePrefs,
@@ -2527,3 +2532,303 @@ class SpotifyTokenRepository:
             "spotify_email": row.spotify_email or "",
             "expires_at": row.expires_at or "",
         }
+
+
+class BillingStateRepository:
+    """DB-first storage for the subscription store's billing state (Plan 8).
+
+    Row dicts use the exact key names the JSON store uses, so the store can
+    dual-write without any translation at the call sites.
+    """
+
+    _CHECKOUT_FIELDS = (
+        "session_id",
+        "user_id",
+        "tier",
+        "interval",
+        "payment_provider",
+        "price_kwd",
+        "status",
+        "approve_url",
+        "return_url",
+        "cancel_url",
+        "provider_order_id",
+        "provider_subscription_id",
+        "provider_plan_id",
+        "provider_capture_id",
+        "provider_environment",
+        "provider_currency",
+        "provider_status",
+        "created_at",
+        "captured_at",
+        "cancelled_at",
+    )
+
+    def __init__(self, db: DatabaseConnection | None = None) -> None:
+        self._db = db or get_shared_connection()
+
+    # ── checkout sessions ─────────────────────────────────────────────────
+
+    def create_checkout(self, row: dict[str, Any]) -> None:
+        with self._db.get_session() as session:
+            record = CheckoutSessionRecord()
+            for field in self._CHECKOUT_FIELDS:
+                if field in row:
+                    setattr(record, field, row[field])
+            session.add(record)
+
+    def _get_checkout_by(self, column, value: str) -> dict[str, Any] | None:
+        key = str(value or "").strip()
+        if not key:
+            return None
+        with self._db.get_session() as session:
+            record = session.scalars(
+                select(CheckoutSessionRecord).where(column == key)
+            ).first()
+            return self._checkout_to_dict(record) if record is not None else None
+
+    def get_checkout(self, session_id: str) -> dict[str, Any] | None:
+        return self._get_checkout_by(CheckoutSessionRecord.session_id, session_id)
+
+    def get_checkout_by_order_id(self, provider_order_id: str) -> dict[str, Any] | None:
+        return self._get_checkout_by(CheckoutSessionRecord.provider_order_id, provider_order_id)
+
+    def get_checkout_by_subscription_id(
+        self, provider_subscription_id: str
+    ) -> dict[str, Any] | None:
+        return self._get_checkout_by(
+            CheckoutSessionRecord.provider_subscription_id, provider_subscription_id
+        )
+
+    def update_checkout(self, session_id: str, **fields: Any) -> dict[str, Any] | None:
+        key = str(session_id or "").strip()
+        if not key:
+            return None
+        with self._db.get_session() as session:
+            record = session.scalars(
+                select(CheckoutSessionRecord).where(CheckoutSessionRecord.session_id == key)
+            ).first()
+            if record is None:
+                return None
+            for field, value in fields.items():
+                if field in self._CHECKOUT_FIELDS and field != "session_id":
+                    setattr(record, field, value)
+            session.flush()
+            return self._checkout_to_dict(record)
+
+    def _checkout_to_dict(self, record: CheckoutSessionRecord) -> dict[str, Any]:
+        out = {field: getattr(record, field) for field in self._CHECKOUT_FIELDS}
+        out["price_kwd"] = float(out.get("price_kwd") or 0.0)
+        return out
+
+    # ── payment events ────────────────────────────────────────────────────
+
+    def add_payment_event(self, row: dict[str, Any]) -> None:
+        with self._db.get_session() as session:
+            session.add(
+                PaymentEventRecord(
+                    event_id=str(row.get("event_id", "") or ""),
+                    user_id=str(row.get("user_id", "") or ""),
+                    event_type=str(row.get("event_type", "") or ""),
+                    tier=str(row.get("tier", "") or ""),
+                    interval=str(row.get("interval", "monthly") or "monthly"),
+                    payment_provider=str(row.get("payment_provider", "paypal") or "paypal"),
+                    summary=str(row.get("summary", "") or ""),
+                    status=str(row.get("status", "") or ""),
+                    amount_value=str(row.get("amount_value", "") or ""),
+                    currency=str(row.get("currency", "") or ""),
+                    provider_reference=str(row.get("provider_reference", "") or ""),
+                    provider_subscription_id=str(row.get("provider_subscription_id", "") or ""),
+                    provider_plan_id=str(row.get("provider_plan_id", "") or ""),
+                    raw=row.get("raw") if isinstance(row.get("raw"), dict) else {},
+                    created_at=str(row.get("created_at", "") or ""),
+                )
+            )
+
+    def list_payment_events(self, user_id: str = "", limit: int = 100) -> list[dict[str, Any]]:
+        lim = max(1, min(500, int(limit or 100)))
+        with self._db.get_session() as session:
+            query = select(PaymentEventRecord).order_by(PaymentEventRecord.created_at.desc())
+            user_key = str(user_id or "").strip()
+            if user_key:
+                query = query.where(PaymentEventRecord.user_id == user_key)
+            rows = session.scalars(query.limit(lim)).all()
+            return [self._event_to_dict(row) for row in rows]
+
+    @staticmethod
+    def _event_to_dict(row: PaymentEventRecord) -> dict[str, Any]:
+        return {
+            "event_id": row.event_id or "",
+            "event_type": row.event_type or "",
+            "user_id": row.user_id or "",
+            "tier": row.tier or "",
+            "interval": row.interval or "monthly",
+            "payment_provider": row.payment_provider or "paypal",
+            "summary": row.summary or "",
+            "status": row.status or "",
+            "amount_value": row.amount_value or "",
+            "currency": row.currency or "",
+            "provider_reference": row.provider_reference or "",
+            "provider_subscription_id": row.provider_subscription_id or "",
+            "provider_plan_id": row.provider_plan_id or "",
+            "raw": row.raw if isinstance(row.raw, dict) else {},
+            "created_at": row.created_at or "",
+        }
+
+    # ── webhook receipts (idempotency + replay) ───────────────────────────
+
+    def get_receipt(self, kind: str, key: str) -> dict[str, Any] | None:
+        receipt_key = str(key or "").strip()
+        if not receipt_key:
+            return None
+        with self._db.get_session() as session:
+            row = session.scalars(
+                select(BillingWebhookReceipt).where(
+                    BillingWebhookReceipt.kind == kind,
+                    BillingWebhookReceipt.receipt_key == receipt_key,
+                )
+            ).first()
+            if row is None:
+                return None
+            return dict(row.payload) if isinstance(row.payload, dict) else {}
+
+    def remember_receipt(self, kind: str, key: str, payload: dict[str, Any]) -> None:
+        receipt_key = str(key or "").strip()
+        if not receipt_key:
+            return
+        processed_at = str(payload.get("processed_at", "") or "")
+        with self._db.get_session() as session:
+            row = session.scalars(
+                select(BillingWebhookReceipt).where(
+                    BillingWebhookReceipt.kind == kind,
+                    BillingWebhookReceipt.receipt_key == receipt_key,
+                )
+            ).first()
+            if row is None:
+                row = BillingWebhookReceipt(kind=kind, receipt_key=receipt_key)
+                session.add(row)
+            row.payload = dict(payload)
+            row.processed_at = processed_at
+
+    def prune_receipts(self, kind: str, cutoff_iso: str) -> int:
+        cutoff = str(cutoff_iso or "").strip()
+        if not cutoff:
+            return 0
+        with self._db.get_session() as session:
+            rows = session.scalars(
+                select(BillingWebhookReceipt).where(BillingWebhookReceipt.kind == kind)
+            ).all()
+            removed = 0
+            for row in rows:
+                # ISO-8601 strings with a fixed offset compare lexicographically;
+                # blank/malformed processed_at is treated as expired (same as
+                # the JSON store's prune).
+                if not row.processed_at or row.processed_at < cutoff:
+                    session.delete(row)
+                    removed += 1
+            return removed
+
+    # ── subscriptions (hydration read) ────────────────────────────────────
+
+    def load_subscriptions(self) -> list[dict[str, Any]]:
+        with self._db.get_session() as session:
+            rows = session.scalars(select(SubscriptionRecord)).all()
+            return [
+                {
+                    "user_id": row.user_id or "",
+                    "tier": row.tier or "free",
+                    "status": row.status or "active",
+                    "interval": row.interval or "monthly",
+                    "payment_provider": row.payment_provider or "none",
+                    "price_kwd": float(row.price_kwd or 0.0),
+                    "provider_subscription_id": row.provider_subscription_id or "",
+                    "provider_plan_id": row.provider_plan_id or "",
+                    "provider_status": row.provider_status or "",
+                    "next_renewal_at": row.next_renewal_at or "",
+                    "grace_end_at": row.grace_end_at or "",
+                    "started_at": row.started_at or "",
+                    "last_payment_at": row.last_payment_at or "",
+                    "cancelled_at": row.cancelled_at or "",
+                }
+                for row in rows
+            ]
+
+    # ── GDPR delete ───────────────────────────────────────────────────────
+
+    def delete_user_billing(self, user_id: str) -> dict[str, int]:
+        user_key = str(user_id or "").strip()
+        counts = {"checkout_sessions": 0, "payment_events": 0, "subscriptions": 0}
+        if not user_key:
+            return counts
+        with self._db.get_session() as session:
+            for model, key in (
+                (CheckoutSessionRecord, "checkout_sessions"),
+                (PaymentEventRecord, "payment_events"),
+                (SubscriptionRecord, "subscriptions"),
+            ):
+                rows = session.scalars(select(model).where(model.user_id == user_key)).all()
+                for row in rows:
+                    session.delete(row)
+                counts[key] = len(rows)
+        return counts
+
+
+class AdminSessionRepository:
+    """DB-backed admin console sessions (Plan 8)."""
+
+    def __init__(self, db: DatabaseConnection | None = None) -> None:
+        self._db = db or get_shared_connection()
+
+    def create(self, token: str, user_id: str, role: str, expires_at: str) -> None:
+        with self._db.get_session() as session:
+            session.add(
+                AdminSessionRecord(
+                    token=str(token or ""),
+                    user_id=str(user_id or ""),
+                    role=str(role or "viewer"),
+                    expires_at=str(expires_at or ""),
+                    revoked=False,
+                )
+            )
+
+    def get(self, token: str) -> dict[str, Any] | None:
+        key = str(token or "").strip()
+        if not key:
+            return None
+        with self._db.get_session() as session:
+            row = session.scalars(
+                select(AdminSessionRecord).where(AdminSessionRecord.token == key)
+            ).first()
+            if row is None:
+                return None
+            return {
+                "user_id": row.user_id or "",
+                "role": row.role or "viewer",
+                "expires_at": row.expires_at or "",
+                "revoked": bool(row.revoked),
+            }
+
+    def delete(self, token: str) -> bool:
+        key = str(token or "").strip()
+        if not key:
+            return False
+        with self._db.get_session() as session:
+            row = session.scalars(
+                select(AdminSessionRecord).where(AdminSessionRecord.token == key)
+            ).first()
+            if row is None:
+                return False
+            session.delete(row)
+            return True
+
+    def delete_for_user(self, user_id: str) -> int:
+        user_key = str(user_id or "").strip()
+        if not user_key:
+            return 0
+        with self._db.get_session() as session:
+            rows = session.scalars(
+                select(AdminSessionRecord).where(AdminSessionRecord.user_id == user_key)
+            ).all()
+            for row in rows:
+                session.delete(row)
+            return len(rows)

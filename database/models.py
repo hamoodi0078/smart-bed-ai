@@ -717,6 +717,94 @@ class SpotifyToken(Base):
     )
 
 
+class CheckoutSessionRecord(Base):
+    """Durable checkout session — DB-first storage for the subscription store.
+
+    user_id has no FK on purpose: billing rows may reference legacy-web users
+    that never existed in the users table (same semantics as the JSON store).
+    ISO timestamps stay strings to mirror the store's dict shape exactly.
+    """
+
+    __tablename__ = "checkout_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    session_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    tier: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
+    interval: Mapped[str] = mapped_column(String(20), nullable=False, default="monthly")
+    payment_provider: Mapped[str] = mapped_column(String(40), nullable=False, default="paypal")
+    price_kwd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="created")
+    approve_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    return_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    cancel_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    provider_order_id: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="", index=True
+    )
+    provider_subscription_id: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="", index=True
+    )
+    provider_plan_id: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    provider_capture_id: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    provider_environment: Mapped[str] = mapped_column(String(60), nullable=False, default="")
+    provider_currency: Mapped[str] = mapped_column(String(60), nullable=False, default="")
+    provider_status: Mapped[str] = mapped_column(String(60), nullable=False, default="")
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    captured_at: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    cancelled_at: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+
+
+class PaymentEventRecord(Base):
+    """Durable billing timeline event (webhooks, captures, renewals)."""
+
+    __tablename__ = "payment_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    event_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    tier: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    interval: Mapped[str] = mapped_column(String(20), nullable=False, default="monthly")
+    payment_provider: Mapped[str] = mapped_column(String(40), nullable=False, default="paypal")
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(60), nullable=False, default="")
+    amount_value: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="")
+    provider_reference: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    provider_subscription_id: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    provider_plan_id: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    raw: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False, default="", index=True)
+
+
+class BillingWebhookReceipt(Base):
+    """Webhook idempotency + replay receipts — the double-charge guard."""
+
+    __tablename__ = "billing_webhook_receipts"
+    __table_args__ = (
+        UniqueConstraint("kind", "receipt_key", name="uq_billing_receipt_kind_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)  # idempotency | replay
+    receipt_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    processed_at: Mapped[str] = mapped_column(String(40), nullable=False, default="", index=True)
+
+
+class AdminSessionRecord(Base):
+    """Durable admin console session token."""
+
+    __tablename__ = "admin_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    token: Mapped[str] = mapped_column(String(80), unique=True, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="viewer")
+    expires_at: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
 __all__ = [
     "Base",
     "User",
@@ -746,4 +834,8 @@ __all__ = [
     "UserPhoneAuth",
     "OtpRequest",
     "SpotifyToken",
+    "CheckoutSessionRecord",
+    "PaymentEventRecord",
+    "BillingWebhookReceipt",
+    "AdminSessionRecord",
 ]
