@@ -6164,50 +6164,55 @@ def admin_diagnostics(request: Request) -> dict[str, Any]:
 @app.get("/v1/mobile/dashboard", response_model=None)
 def mobile_dashboard(request: Request) -> dict[str, Any]:
     user = _require_user(request)
-    profile = _safe_profile()
-    if not isinstance(profile, dict):
-        profile = {}
-    key = _user_profile_key(user)
-    profile_prefs = _chat_profile_prefs_for_user(profile, user)
-    resolved_name = _resolved_user_display_name(user, profile_prefs)
-    location_summary = _profile_location_summary(profile_prefs)
-    resolved = _resolved_user_settings(profile, user)
-    commands: list[dict[str, Any]] = []
-    last_command_result = _last_command_result_from_profile(profile, key)
-    profile_dirty = False
-    if key:
-        commands, changed = _progress_user_commands(
-            profile,
-            key,
-            user_id=str(user.get("user_id", "") or key),
-        )
-        if commands:
-            latest_result = _build_last_command_result_from_command(commands[0])
-            last_command_result = latest_result
+    # The simulator-advance persist below is a read-modify-write cycle on the
+    # profile file — hold the RW lock across it (Plan 8 Task 5).
+    with _profile_rw():
+        profile = _safe_profile()
+        if not isinstance(profile, dict):
+            profile = {}
+        key = _user_profile_key(user)
+        profile_prefs = _chat_profile_prefs_for_user(profile, user)
+        resolved_name = _resolved_user_display_name(user, profile_prefs)
+        location_summary = _profile_location_summary(profile_prefs)
+        resolved = _resolved_user_settings(profile, user)
+        commands: list[dict[str, Any]] = []
+        last_command_result = _last_command_result_from_profile(profile, key)
+        profile_dirty = False
+        if key:
+            commands, changed = _progress_user_commands(
+                profile,
+                key,
+                user_id=str(user.get("user_id", "") or key),
+            )
+            if commands:
+                latest_result = _build_last_command_result_from_command(commands[0])
+                last_command_result = latest_result
+                if changed:
+                    _store_last_command_result(profile, key, latest_result)
             if changed:
-                _store_last_command_result(profile, key, latest_result)
-        if changed:
-            cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
-            cmd_section[key] = commands
-            profile["web_device_commands"] = cmd_section
-            profile_dirty = True
-    first_3_nights_checklist = _first_3_nights_payload(_normalize_first_3_nights_state({}))
-    nightly_summary_feedback = _nightly_summary_feedback_payload(
-        _normalize_nightly_summary_feedback({})
-    )
-    command_feedback_loop = _command_feedback_payload(_normalize_command_feedback_summary({}))
-    if key:
-        first_3_nights_checklist, _ = _sync_first_3_nights_state(
-            profile,
-            user,
-            commands=commands,
-        )
+                cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
+                cmd_section[key] = commands
+                profile["web_device_commands"] = cmd_section
+                profile_dirty = True
+        first_3_nights_checklist = _first_3_nights_payload(_normalize_first_3_nights_state({}))
         nightly_summary_feedback = _nightly_summary_feedback_payload(
-            _nightly_summary_feedback_for_user(profile, key)
+            _normalize_nightly_summary_feedback({})
         )
-        command_feedback_loop = _command_feedback_payload(_command_feedback_for_user(profile, key))
-    if profile_dirty:
-        _save_profile(profile)
+        command_feedback_loop = _command_feedback_payload(_normalize_command_feedback_summary({}))
+        if key:
+            first_3_nights_checklist, _ = _sync_first_3_nights_state(
+                profile,
+                user,
+                commands=commands,
+            )
+            nightly_summary_feedback = _nightly_summary_feedback_payload(
+                _nightly_summary_feedback_for_user(profile, key)
+            )
+            command_feedback_loop = _command_feedback_payload(
+                _command_feedback_for_user(profile, key)
+            )
+        if profile_dirty:
+            _save_profile(profile)
     weekly_insight = _weekly_insight_payload(
         commands,
         user_id=key,
@@ -8478,67 +8483,70 @@ def upsert_mobile_device_controls(
 @app.get("/v1/mobile/timeline", response_model=None)
 def mobile_timeline(request: Request) -> dict[str, Any]:
     user = _require_user(request)
-    profile = _safe_profile()
-    key = _user_profile_key(user)
     trace_id = _request_trace_id(request)
-    if not isinstance(profile, dict):
-        profile = {}
-    section = _get_scoped_profile_section(profile, "web_timeline")
-    scoped = section.get(key, []) if key else []
-    if key:
-        items = _mobile_timeline_items_db_first(
-            str(user.get("user_id", "") or key),
-            scoped if isinstance(scoped, list) else [],
-            trace_id=trace_id,
-        )
-    else:
-        items = _normalize_timeline_items(scoped if isinstance(scoped, list) else [])
-    profile_dirty = False
-
-    if key:
-        commands, changed = _progress_user_commands(
-            profile,
-            key,
-            user_id=str(user.get("user_id", "") or key),
-        )
-        command_map = {str(c.get("id", "")): c for c in commands if str(c.get("id", ""))}
-        items = _apply_command_status_to_timeline(items, command_map)
-        if changed and commands:
-            _store_last_command_result(
-                profile, key, _build_last_command_result_from_command(commands[0])
+    # Simulator advance + drift marking persist on read — hold the RW lock
+    # across the whole read-modify-write cycle (Plan 8 Task 5).
+    with _profile_rw():
+        profile = _safe_profile()
+        key = _user_profile_key(user)
+        if not isinstance(profile, dict):
+            profile = {}
+        section = _get_scoped_profile_section(profile, "web_timeline")
+        scoped = section.get(key, []) if key else []
+        if key:
+            items = _mobile_timeline_items_db_first(
+                str(user.get("user_id", "") or key),
+                scoped if isinstance(scoped, list) else [],
+                trace_id=trace_id,
             )
-            profile_dirty = True
-        if changed:
-            cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
-            cmd_section[key] = commands
-            profile["web_device_commands"] = cmd_section
-            profile_dirty = True
-    now = utcnow()
-    resolved_settings = _resolved_user_settings(profile, user)
-    drift_enabled = bool(resolved_settings.get("bedtime_drift_automation_enabled", True))
-    drift_row, drift_marked = (
-        _bedtime_drift_timeline_item(profile, now_utc=now) if drift_enabled else (None, False)
-    )
-    quiet_row = _quiet_hours_status_timeline_item(profile, user, now_utc=now)
-    cooldown_rows = _automation_cooldown_timeline_items(now_utc=now)
-    if drift_row:
-        items = [drift_row] + items
-    if drift_marked:
-        profile_dirty = True
-    if cooldown_rows:
-        pinned_cooldowns: list[dict[str, Any]] = []
-        normalized_cooldowns = _normalize_timeline_items(cooldown_rows)
-        for idx, row in enumerate(normalized_cooldowns):
-            pinned_cooldowns.append(_with_min_timeline_priority(row, 98 - min(idx, 6)))
-        items = pinned_cooldowns + items
-    if quiet_row:
-        items = [_with_min_timeline_priority(quiet_row, 99)] + items
+        else:
+            items = _normalize_timeline_items(scoped if isinstance(scoped, list) else [])
+        profile_dirty = False
 
-    if not items:
-        items = _default_user_timeline()
-    normalized_items = _prioritize_timeline_items(items, limit=20)
-    if profile_dirty:
-        _save_profile(profile)
+        if key:
+            commands, changed = _progress_user_commands(
+                profile,
+                key,
+                user_id=str(user.get("user_id", "") or key),
+            )
+            command_map = {str(c.get("id", "")): c for c in commands if str(c.get("id", ""))}
+            items = _apply_command_status_to_timeline(items, command_map)
+            if changed and commands:
+                _store_last_command_result(
+                    profile, key, _build_last_command_result_from_command(commands[0])
+                )
+                profile_dirty = True
+            if changed:
+                cmd_section = _get_scoped_profile_section(profile, "web_device_commands")
+                cmd_section[key] = commands
+                profile["web_device_commands"] = cmd_section
+                profile_dirty = True
+        now = utcnow()
+        resolved_settings = _resolved_user_settings(profile, user)
+        drift_enabled = bool(resolved_settings.get("bedtime_drift_automation_enabled", True))
+        drift_row, drift_marked = (
+            _bedtime_drift_timeline_item(profile, now_utc=now) if drift_enabled else (None, False)
+        )
+        quiet_row = _quiet_hours_status_timeline_item(profile, user, now_utc=now)
+        cooldown_rows = _automation_cooldown_timeline_items(now_utc=now)
+        if drift_row:
+            items = [drift_row] + items
+        if drift_marked:
+            profile_dirty = True
+        if cooldown_rows:
+            pinned_cooldowns: list[dict[str, Any]] = []
+            normalized_cooldowns = _normalize_timeline_items(cooldown_rows)
+            for idx, row in enumerate(normalized_cooldowns):
+                pinned_cooldowns.append(_with_min_timeline_priority(row, 98 - min(idx, 6)))
+            items = pinned_cooldowns + items
+        if quiet_row:
+            items = [_with_min_timeline_priority(quiet_row, 99)] + items
+
+        if not items:
+            items = _default_user_timeline()
+        normalized_items = _prioritize_timeline_items(items, limit=20)
+        if profile_dirty:
+            _save_profile(profile)
     return {"ok": True, "items": normalized_items}
 
 

@@ -373,6 +373,77 @@ class DeviceSyncLockingTests(DeviceBridgeContractCase):
         save_spy.assert_not_called()
 
 
+class GetWriteOnReadLockingTests(DeviceBridgeContractCase):
+    """Plan 8 Task 5: the dashboard/timeline GETs persist simulator state on
+    read — those read-modify-write cycles must hold the profile RW lock or
+    they race the 2.5s bed poll and every concurrent mobile write."""
+
+    def _seed_old_queued_command(self, key: str, command_id: str) -> None:
+        import web_server
+
+        profile = web_server._safe_profile()
+        old_iso = to_iso(utcnow() - timedelta(seconds=10))
+        section = web_server._get_scoped_profile_section(profile, "web_device_commands")
+        section[key] = [
+            {
+                "id": command_id,
+                "action": "winddown",
+                "event": "Wind-down autopilot started",
+                "message": "Wind-down autopilot is now active.",
+                "status": "queued",
+                "trace_id": "",
+                "created_at": old_iso,
+                "updated_at": old_iso,
+                "completed_at": "",
+            }
+        ]
+        profile["web_device_commands"] = section
+        web_server._save_profile(profile)
+
+    def _assert_get_persists_under_lock(self, email: str, path: str, command_id: str):
+        import web_server
+
+        auth = self.register(email)
+        user_id = str(auth.get("user", {}).get("user_id", "") or "")
+        self.assertTrue(user_id)
+        # Old queued command + no live bed -> the wall-clock simulator
+        # advances it, forcing the handler's persist branch.
+        self._seed_old_queued_command(user_id, command_id)
+
+        real_save = web_server._save_profile
+        probe_results: list[bool] = []
+
+        def probing_save(payload):
+            def try_acquire() -> bool:
+                got = web_server._PROFILE_RW_LOCK.acquire(blocking=False)
+                if got:
+                    web_server._PROFILE_RW_LOCK.release()
+                return got
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                probe_results.append(pool.submit(try_acquire).result())
+            return real_save(payload)
+
+        with patch.object(web_server, "_save_profile", side_effect=probing_save):
+            resp = self.client.get(path, headers=self.bearer(auth))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertTrue(probe_results, f"{path} must persist the advanced command state")
+        self.assertTrue(
+            all(r is False for r in probe_results),
+            f"{path} must hold the profile RW lock across its persist cycle",
+        )
+
+    def test_dashboard_persist_holds_profile_rw_lock(self):
+        self._assert_get_persists_under_lock(
+            "dash-lock@example.com", "/v1/mobile/dashboard", "cmd_dash_lock_1"
+        )
+
+    def test_timeline_persist_holds_profile_rw_lock(self):
+        self._assert_get_persists_under_lock(
+            "timeline-lock@example.com", "/v1/mobile/timeline", "cmd_timeline_lock_1"
+        )
+
+
 class DeviceAuthProductionGateTests(DeviceBridgeContractCase):
     """NEW-P0-B: with no DEVICE_FACTORY_SECRET, /v1/device/auth is open —
     anyone with a provisioned serial can mint a device token. Production
