@@ -559,6 +559,10 @@ def validate_production_secrets() -> list[str]:
         warnings.append("PAYPAL_CLIENT_ID not set — billing unavailable")
     if not settings.aws_ses_from_email and is_production:
         warnings.append("AWS_SES_FROM_EMAIL not set — email notifications unavailable")
+    if not os.getenv("DEVICE_FACTORY_SECRET", "").strip() and is_production:
+        warnings.append(
+            "DEVICE_FACTORY_SECRET not set — /v1/device/auth returns 503 until it is"
+        )
 
     return warnings
 

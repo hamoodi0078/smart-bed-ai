@@ -102,9 +102,12 @@ def device_auth(payload: DeviceAuthRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="device_id is required")
 
     required_secret = os.getenv("DEVICE_FACTORY_SECRET", "").strip()
-    if required_secret and not hmac.compare_digest(
-        str(payload.factory_secret or ""), required_secret
-    ):
+    if not required_secret:
+        if os.getenv("DANAH_ENV", "development").lower() == "production":
+            # Never serve open device auth to a real fleet: anyone with a
+            # serial could mint a device token (audit 2026-07-18 NEW-P0-B).
+            raise HTTPException(status_code=503, detail="Device bridge is not configured")
+    elif not hmac.compare_digest(str(payload.factory_secret or ""), required_secret):
         raise HTTPException(status_code=401, detail="Invalid factory secret")
 
     from qr_code.pair_device import get_device_status

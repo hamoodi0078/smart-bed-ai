@@ -8,6 +8,7 @@ device JWT (role="device"), never the mobile user JWT.
 from __future__ import annotations
 
 import concurrent.futures
+import os
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -30,8 +31,17 @@ class DeviceBridgeContractCase(AppFactoryContractCase):
         profile_path.write_text("{}", encoding="utf-8")
         self._profile_patcher = patch.object(web_server, "PROFILE_PATH", profile_path)
         self._profile_patcher.start()
+        # Hermetic env: the dev box's .env may set DANAH_ENV=production
+        # (load_dotenv exports it), which would trip the device-auth
+        # production gate in every test. Production-path tests set their
+        # own env explicitly on top of this baseline.
+        self._env_patcher = patch.dict(
+            os.environ, {"DANAH_ENV": "development", "DEVICE_FACTORY_SECRET": ""}, clear=False
+        )
+        self._env_patcher.start()
 
     def tearDown(self):
+        self._env_patcher.stop()
         self._profile_patcher.stop()
         super().tearDown()
 
@@ -361,3 +371,43 @@ class DeviceSyncLockingTests(DeviceBridgeContractCase):
             resp = self.client.get("/v1/device/sync", headers=headers)
         self.assertEqual(resp.status_code, 200, resp.text)
         save_spy.assert_not_called()
+
+
+class DeviceAuthProductionGateTests(DeviceBridgeContractCase):
+    """NEW-P0-B: with no DEVICE_FACTORY_SECRET, /v1/device/auth is open —
+    anyone with a provisioned serial can mint a device token. Production
+    must refuse to serve open device auth."""
+
+    def test_production_without_factory_secret_is_503(self):
+        env = {"DANAH_ENV": "production", "DEVICE_FACTORY_SECRET": ""}
+        with patch.dict(os.environ, env, clear=False):
+            with patch("qr_code.pair_device.get_device_status", return_value=dict(_QR_OK)):
+                resp = self.client.post("/v1/device/auth", json={"device_id": "BED-P-01"})
+        self.assertEqual(resp.status_code, 503, resp.text)
+
+    def test_wrong_factory_secret_is_401(self):
+        with patch.dict(os.environ, {"DEVICE_FACTORY_SECRET": "correct-secret"}, clear=False):
+            with patch("qr_code.pair_device.get_device_status", return_value=dict(_QR_OK)):
+                resp = self.client.post(
+                    "/v1/device/auth",
+                    json={"device_id": "BED-P-02", "factory_secret": "wrong"},
+                )
+        self.assertEqual(resp.status_code, 401, resp.text)
+
+    def test_correct_factory_secret_succeeds(self):
+        with patch.dict(os.environ, {"DEVICE_FACTORY_SECRET": "correct-secret"}, clear=False):
+            with patch("qr_code.pair_device.get_device_status", return_value=dict(_QR_OK)):
+                resp = self.client.post(
+                    "/v1/device/auth",
+                    json={"device_id": "BED-P-03", "factory_secret": "correct-secret"},
+                )
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertTrue(resp.json()["device_access_token"])
+
+    def test_missing_secret_warns_for_production(self):
+        from config.settings import validate_production_secrets
+
+        env = {"DANAH_ENV": "production", "DEVICE_FACTORY_SECRET": ""}
+        with patch.dict(os.environ, env, clear=False):
+            warnings = validate_production_secrets()
+        self.assertTrue(any("DEVICE_FACTORY_SECRET" in w for w in warnings), warnings)
