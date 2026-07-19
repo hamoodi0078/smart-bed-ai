@@ -9,7 +9,9 @@ User=pi
 Group=pi
 WorkingDirectory=/opt/smart-bed
 EnvironmentFile=/opt/smart-bed/.env
-ExecStart=/opt/smart-bed/.venv/bin/python -m uvicorn web_server:app --host 0.0.0.0 --port 8001
+# Same entry point as the cloud deploy (Dockerfile/nixpacks) — web_server:app
+# is the legacy monolith app and will be deleted once router extraction lands.
+ExecStart=/opt/smart-bed/.venv/bin/python -m uvicorn api.app_factory:app --host 0.0.0.0 --port 8001
 Restart=always
 RestartSec=3
 
