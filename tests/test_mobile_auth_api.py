@@ -62,6 +62,15 @@ class TestMobileAuthApi(unittest.TestCase):
         web_server._DB_SLEEP_SESSION_REPOSITORY = None
         web_server._DB_COMMAND_REPOSITORY = None
         web_server._DB_MOBILE_AUTH_REPOSITORY = None
+        # OtpRepository (and other repos) use database.get_shared_connection(),
+        # a singleton NOT keyed on DATABASE_URL. Repoint it at this test's
+        # sqlite and create its tables, so the OTP flow and the user/token
+        # repos (web_server._database_connection, env-keyed) share one DB
+        # instead of splitting across the tests/conftest guard sqlite.
+        from database.connection import get_shared_connection, reset_shared_connection
+
+        reset_shared_connection()
+        get_shared_connection().create_tables()
         self.client = TestClient(web_server.app)
 
     def tearDown(self):
@@ -80,6 +89,9 @@ class TestMobileAuthApi(unittest.TestCase):
         web_server._DB_SLEEP_SESSION_REPOSITORY = None
         web_server._DB_COMMAND_REPOSITORY = None
         web_server._DB_MOBILE_AUTH_REPOSITORY = None
+        from database.connection import reset_shared_connection
+
+        reset_shared_connection()
         self._io_lock_patch.stop()
         self._patch_profile.stop()
         self._patch_store.stop()
