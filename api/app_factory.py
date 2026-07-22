@@ -36,6 +36,18 @@ async def _lifespan(app: FastAPI):
     from config.settings import settings
     from core.logger import logger
 
+    # Deployment-environment banner — first line in the logs so it is impossible
+    # to mistake a dev instance (Cloudflare tunnel) for the Railway production API.
+    _env = os.getenv("DANAH_ENV", "development").lower()
+    if _env != "production":
+        logger.warning(
+            "⚠️  WARNING: Running in non-production mode (DANAH_ENV=%s). "
+            "Do NOT use this as the live API.",
+            _env,
+        )
+    else:
+        logger.info("DANAH_ENV=production — this instance is the live API.")
+
     # Validate production secrets on startup — warns in dev, refuses to boot
     # in production (deliberately NOT wrapped in try/except).
     from config.settings import enforce_production_secrets

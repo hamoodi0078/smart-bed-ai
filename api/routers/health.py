@@ -5,7 +5,9 @@ These are fully self-contained: no profile state, no user auth.
 
 from __future__ import annotations
 
+import os
 import shutil
+import socket
 from typing import Any
 
 from fastapi import APIRouter
@@ -20,6 +22,23 @@ router = APIRouter(tags=["health"])
 @router.get("/healthz")
 def healthz() -> dict[str, Any]:
     return {"ok": True, "service": "web_runtime"}
+
+
+@router.get("/whoami")
+def whoami() -> dict[str, Any]:
+    """Identify which deployment answered this request.
+
+    Two backends share the same Neon database (Railway production at
+    api.danaabuhalifa.com, Cloudflare-tunneled dev box at
+    admin.danaabuhalifa.com).  Hit this endpoint to confirm which one
+    you are actually talking to.  Deliberately unauthenticated.
+    """
+    env = os.getenv("DANAH_ENV", "development").lower()
+    return {
+        "deployment": "railway-production" if env == "production" else "local-dev",
+        "host": socket.gethostname(),
+        "env": env,
+    }
 
 
 @router.get("/readyz")

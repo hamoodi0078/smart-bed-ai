@@ -553,10 +553,23 @@ def validate_production_secrets() -> list[str]:
 
     if settings.secret_key in _unsafe_key:
         warnings.append("SECRET_KEY is not set or uses the insecure default")
+    # database/connection.py reads DATABASE_URL via os.getenv directly (settings
+    # freezes at first import), so check the environment the same way. Without
+    # this the lifespan's non-fatal DB init lets production boot with no database.
+    if not os.getenv("DATABASE_URL", "").strip() and is_production:
+        warnings.append(
+            "DATABASE_URL not set — auth, billing, and admin state unavailable "
+            "(app would boot but every DB-backed endpoint fails)"
+        )
     if not settings.deepgram_api_key and is_production:
         warnings.append("DEEPGRAM_API_KEY not set — voice features unavailable")
     if not settings.paypal_client_id and is_production:
         warnings.append("PAYPAL_CLIENT_ID not set — billing unavailable")
+    if not settings.paypal_client_secret and is_production:
+        warnings.append(
+            "PAYPAL_CLIENT_SECRET not set — PayPal OAuth token requests fail, "
+            "billing unavailable even with PAYPAL_CLIENT_ID present"
+        )
     if not settings.aws_ses_from_email and is_production:
         warnings.append("AWS_SES_FROM_EMAIL not set — email notifications unavailable")
     if not os.getenv("DEVICE_FACTORY_SECRET", "").strip() and is_production:

@@ -1,5 +1,12 @@
 # Smart Bed AI Runtime
 
+> ## ⚠️ Which backend am I talking to?
+>
+> **PRODUCTION** = `https://api.danaabuhalifa.com` (Railway only)
+> **LOCAL/DEV**  = Cloudflare tunnel (`admin.danaabuhalifa.com`) — **NEVER** point the Flutter app or webhooks here
+>
+> Both currently share the same Neon `DATABASE_URL`. To verify which instance you are hitting, call `GET /whoami` — it returns `railway-production` or `local-dev` plus the machine hostname. Non-production instances also print a loud `⚠️ WARNING` banner on startup (gated on `DANAH_ENV`).
+
 Production-ready backend runtime for the Smart Bed voice assistant, with realtime voice flow, adaptive personality, long-term memory, and web/mobile bridge APIs.
 
 ## Project Structure
