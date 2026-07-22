@@ -22,7 +22,15 @@
       "Bash(.venv/Scripts/python.exe -m pytest tests/ --collect-only)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_web_auth_flows.py -q --tb=line)",
       "Bash(python -)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/test_scene_endpoints.py tests/test_mobile_vertical_slice_contract.py tests/test_admin_mobile_beta_acceptance.py tests/test_mobile_timeline_db_first.py -q --tb=no -p no:cacheprovider)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_scene_endpoints.py tests/test_mobile_vertical_slice_contract.py tests/test_admin_mobile_beta_acceptance.py tests/test_mobile_timeline_db_first.py -q --tb=no -p no:cacheprovider)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ --collect-only -q)",
+      "Bash(powershell -Command \"\\(Get-Item 'audit.md'\\).LastWriteTime\")",
+      "Bash(git -C \"C:/Users/PC#####/Desktop/smart bed by me\" log --oneline -10)",
+      "Bash(git -C \"C:/Users/PC#####/Desktop/smart bed by me\" status --short)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'docs: design spec for 55%->90% production-readiness campaign *)",
+      "Bash(bash \"C:/Users/PC#####/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/task-brief\" docs/superpowers/plans/2026-07-08-plan1-phase0-1-p0-fixes.md 1)",
+      "WebSearch"
     ]
   }
 }

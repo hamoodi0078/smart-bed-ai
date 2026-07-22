@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "727106830062",
+    "firebase_url": "https://smart-bed-2da03-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "smart-bed-2da03",
+    "storage_bucket": "smart-bed-2da03.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:727106830062:android:09f0706fdc4d53e5b7bdff",
+        "android_client_info": {
+          "package_name": "com.hamoud.smartbed"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAw9hzpLco7iyqN3zAueP1KQt1nVrWupLk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

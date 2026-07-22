@@ -81,6 +81,7 @@ dependencies:
 
   # Error tracking
   sentry_flutter: ^9.4.1
+  firebase_core: ^4.12.1
 
 dev_dependencies:
   flutter_test:

@@ -398,12 +398,19 @@ def mobile_auth_logout(payload: MobileLogoutRequest, request: Request) -> dict[s
 
 @router.get("/v1/mobile/auth/me")
 def mobile_auth_me(current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
+    from services.auth_service import get_auth_service
+
+    # Access-token claims carry no email/name — resolve identity from the DB
+    # (matches the web_server monolith's /me contract).
+    user = get_auth_service().get_user_by_id(str(current_user.get("sub", "") or ""))
+    if user is None:
+        raise HTTPException(status_code=401, detail="User no longer exists")
     return {
         "ok": True,
         "user": {
-            "user_id": str(current_user.get("sub", "") or ""),
-            "email": str(current_user.get("email", "") or ""),
-            "name": str(current_user.get("name", "") or ""),
+            "user_id": str(user.get("user_id", "") or ""),
+            "email": str(user.get("email", "") or ""),
+            "name": str(user.get("name", "") or ""),
             "client_name": str(current_user.get("client", "") or ""),
         },
     }

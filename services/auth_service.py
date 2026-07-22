@@ -241,6 +241,17 @@ class AuthService:
             return None
         return _row_to_dict(user_row)
 
+    def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
+        """Fetch a user by id and return the standard user dict, or None.
+
+        For callers that have already validated the token (e.g. via the
+        get_current_user dependency) and only need the DB identity.
+        """
+        user_row = self._users.get_user_by_id(str(user_id or "").strip())
+        if user_row is None:
+            return None
+        return _row_to_dict(user_row)
+
     # ── Cookie-flow helpers (create/verify without token issuance) ───────────
 
     def create_user_only(

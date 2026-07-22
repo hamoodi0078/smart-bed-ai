@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "api.app_factory:app", "--reload", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "flutter-web",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": ["run", "-d", "web-server", "--web-port", "5001"],
+      "cwd": "mobile_app",
+      "port": 5001
+    }
+  ]
+}

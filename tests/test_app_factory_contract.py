@@ -93,7 +93,11 @@ class AuthWalkTests(AppFactoryContractCase):
         headers = self.bearer(resp.json())
         resp = self.client.get("/v1/mobile/auth/me", headers=headers)
         self.assertEqual(resp.status_code, 200, resp.text)
-        self.assertEqual(resp.json()["user"]["user_id"], user_id)
+        me_user = resp.json()["user"]
+        self.assertEqual(me_user["user_id"], user_id)
+        # DB-backed identity, not token-claim echo (claims carry no email)
+        self.assertEqual(me_user["email"], "contract-tester@example.com")
+        self.assertEqual(me_user["name"], self.test_name)
 
         # Dashboard triggers the lazy web_server import — the full production path
         resp = self.client.get("/v1/mobile/dashboard", headers=headers)
