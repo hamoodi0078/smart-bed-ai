@@ -102,14 +102,16 @@ async def _get_counter() -> _RedisCounter | _InMemoryCounter:
         try:
             import redis.asyncio as aioredis
 
-            # Fail fast when Redis is down so startup/first-request isn't stalled
-            # by redis-py's default connect retries.
+            # 5s timeouts: tolerant of proxied/remote Redis (e.g. Railway public
+            # endpoint) while still bounding the stall when Redis is down. The
+            # result is cached in _counter either way, so only the first request
+            # ever pays this cost.
             client = aioredis.from_url(
                 redis_url,
                 encoding="utf-8",
                 decode_responses=True,
-                socket_connect_timeout=0.5,
-                socket_timeout=0.5,
+                socket_connect_timeout=5,
+                socket_timeout=5,
                 retry_on_timeout=False,
             )
             await client.ping()

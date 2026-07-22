@@ -45,7 +45,9 @@ def readyz() -> dict[str, Any]:
     try:
         import redis as _redis
 
-        r = _redis.from_url(settings.celery_broker_url, socket_connect_timeout=2)
+        r = _redis.from_url(
+            settings.celery_broker_url, socket_connect_timeout=5, socket_timeout=5
+        )
         r.ping()
         checks["redis"] = {"ok": True}
     except Exception as exc:

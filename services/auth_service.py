@@ -56,14 +56,15 @@ class BruteForceGuard:
             try:
                 import redis as _r
 
-                # Fail fast: a missing Redis must not add seconds to every login.
-                # Without connect timeout + no retries, redis-py retries 5x with
-                # backoff on a dead host (multi-second stall per call).
+                # 5s timeouts: tolerant of proxied/remote Redis. A dead Redis
+                # costs at most one 5s stall on the FIRST login only — the
+                # sticky _unavailable flag below skips Redis for all later
+                # logins in this process.
                 client = _r.from_url(
                     self._url,
                     decode_responses=True,
-                    socket_timeout=0.5,
-                    socket_connect_timeout=0.5,
+                    socket_timeout=5,
+                    socket_connect_timeout=5,
                     retry_on_timeout=False,
                 )
                 client.ping()

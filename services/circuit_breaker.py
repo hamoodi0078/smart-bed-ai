@@ -191,7 +191,13 @@ async def _get_redis():
     try:
         import redis.asyncio as aioredis
 
-        client = aioredis.from_url(redis_url, encoding="utf-8", decode_responses=True)
+        client = aioredis.from_url(
+            redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+        )
         await client.ping()
         _redis_client = client
         logger.info("Circuit breaker: using Redis backend")

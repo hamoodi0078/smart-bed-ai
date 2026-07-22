@@ -43,6 +43,30 @@ async def _lifespan(app: FastAPI):
     for w in enforce_production_secrets():
         logger.warning("Secret config: %s", w)
 
+    # Redis connectivity probe — one unambiguous startup line for deploy logs.
+    # Never crashes boot: Redis being down means degraded mode, not failure.
+    try:
+        _redis_url = os.environ.get("REDIS_URL", "")
+        if not _redis_url:
+            logger.warning(
+                "Redis: NOT CONFIGURED — degraded fallback mode "
+                "(in-memory rate limits, no brute-force lockout, no background jobs)"
+            )
+        else:
+            import redis as _redis_probe
+
+            _redis_probe.from_url(
+                _redis_url, socket_connect_timeout=5, socket_timeout=5
+            ).ping()
+            logger.info("Redis: CONNECTED (%s)", _redis_url.split("@")[-1])
+    except Exception as exc:
+        logger.warning(
+            "Redis: UNAVAILABLE (%s: %s) — degraded fallback mode "
+            "(in-memory rate limits, no brute-force lockout, no background jobs)",
+            type(exc).__name__,
+            exc,
+        )
+
     # Service registry (automations, health monitor, etc.)
     try:
         from api.service_registry import initialize_services
@@ -110,9 +134,12 @@ async def _lifespan(app: FastAPI):
         from arq import create_pool
         from arq.connections import RedisSettings
 
-        app.state.arq = await create_pool(RedisSettings.from_dsn(settings.arq_redis_url))
+        _arq_settings = RedisSettings.from_dsn(settings.arq_redis_url)
+        _arq_settings.conn_timeout = 5  # default 1s is too tight for proxied Redis
+        app.state.arq = await create_pool(_arq_settings)
+        logger.info("arq job queue: CONNECTED")
     except Exception as exc:
-        logger.warning("arq pool init skipped: %s", exc)
+        logger.warning("arq pool init skipped (background jobs disabled): %s", exc)
         app.state.arq = None
 
     # Firebase FCM

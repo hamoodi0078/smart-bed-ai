@@ -7208,7 +7208,12 @@ def _get_lockout_redis():
         try:
             import redis as _redis_lib
 
-            client = _redis_lib.from_url(redis_url, decode_responses=True, socket_timeout=1.0)
+            client = _redis_lib.from_url(
+                redis_url,
+                decode_responses=True,
+                socket_timeout=5.0,
+                socket_connect_timeout=5.0,
+            )
             client.ping()
             _redis_lockout_client = client
         except Exception:
